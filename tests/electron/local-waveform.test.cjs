@@ -134,7 +134,7 @@ test("the waveform deadline covers the final source-version stat after decoding"
 test("waveform IPC accepts only authorized local audio and the main renderer", async () => {
   const main = fs.readFileSync(path.resolve(__dirname, "../../electron/main.ts"), "utf8");
   const start = main.indexOf('  ipcMain.handle("library:waveform",');
-  const end = main.indexOf('  ipcMain.handle("vst:scan",', start);
+  const end = main.indexOf('  registerVstPluginIpc(', start);
   assert.ok(start > 0 && end > start);
   const handlers = new Map(), sender = {}, accepted = [], cancelled = [], source = path.resolve("synthetic-authorized.flac");
   vm.runInNewContext(ts.transpileModule(main.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2022,

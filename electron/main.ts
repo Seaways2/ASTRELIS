@@ -1,8 +1,6 @@
 import { fitWindowBounds, fittedUiZoom } from "./windowFit";
-import { MusicBrainzClient } from "./library/media/MusicBrainzClient";
 import { FolderVisibility } from "./FolderVisibility";
 import { restoreVisibleLibrary } from "./library/migration/RestoreVisibleLibrary";
-import { TmdbClient } from "./library/media/TmdbClient";
 import { videoDisplayName } from "./library/media/videoDisplayName";
 import { VstStateProfiles } from "./vstStateProfiles";
 import { VideoLibraryProbe } from "./library/media/VideoLibraryProbe";
@@ -18,40 +16,18 @@ import { applyNativeWindowOutline, setNativeAccentAcrylic, restoreNativeTranspar
 import { onlineVolumeScript } from "./onlineVolume";
 import { onlinePlayerTimelineScript, onlinePlayerSeekScript } from "./onlinePlayerTimeline";
 import { app, BrowserWindow, safeStorage, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, protocol, screen, shell, Tray, WebContentsView, type IpcMainEvent, type WebContents } from "electron";
-import { checkNeteaseQr, configureNeteaseSession, createNeteaseQr, createNeteaseTrackUrl, getNeteaseLoginStatus, getNeteasePlaylists, getNeteasePlaylistTracks, logoutNetease, resolveNeteaseStream, searchNetease } from "./neteaseApi";
+import { configureNeteaseSession, resolveNeteaseStream } from "./neteaseApi";
 import fs from "node:fs";
 import path from "node:path";
 import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { promisify } from "node:util";
 import readline from "node:readline";
 import { Readable } from "node:stream";
-import http from "node:http";
-import https from "node:https";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import crypto from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { PcmDiagnostics, type PcmPacketMetadata } from "./pcmDiagnostics";
-import {
-  AURALIS_COMPATIBILITY_POLICY_VERSION,
-  PLUGIN_CATALOG_SCHEMA_VERSION,
-  PLUGIN_PROBE_VERSION,
-  PLUGIN_SCANNER_PROTOCOL_VERSION,
-  createPluginDescriptor,
-  createPluginModule,
-  normalizeModulePath,
-  type PluginDescriptor,
-  type PluginModule,
-  type PluginScanResult,
-  type ScannerFailure
-} from "./pluginDomain";
-import { PluginDirectoryStore, type DirectoryScanOutcome } from "./pluginDirectories";
-import { inspectPluginModule } from "./pluginScannerProtocol";
-import {
-  discoverablePluginFormatAdapterForPath,
-  pluginFormatAdapterForPath,
-  pluginFormatAdapters
-} from "./pluginFormatAdapters";
-import { PluginQuarantineStore, PluginScanCache, writePluginScanLog } from "./pluginScanPersistence";
+import { pluginFormatAdapterForPath } from "./pluginFormatAdapters";
 import { nativeHostCompatibilityError, readVersionManifest, type NativeHostBuildInfo } from "./nativeHostCompatibility";
 import { readNativeOutputState, writeNativeOutputState, type NativeOutputCandidate } from "./nativeOutputPersistence";
 import { AudioRouteCoordinator, type AudioRouteSource } from "./audioRouteCoordinator";
@@ -71,31 +47,18 @@ import { LibraryDerivedIndexCache } from "./library/derived/LibraryDerivedIndexC
 import { parseAbsolutePath, parseCommandMeta, parseLegacyMutation, parsePathList, parseRescanRequest } from "./library/validation/LibraryIpcValidator";
 import { LocalMediaAccessPolicy, safeExternalUrl, sameCanonicalPath, sameOriginNavigation } from "./security/ElectronSecurity";
 import { DesktopMediaKeys, DesktopPreferenceService, defaultDesktopPreferences } from "./desktopPreferences";
+import { AUDIO_EXTENSIONS, externalAudioPaths } from "./externalOpenPaths";
+import { fetchNativeStream } from "./nativeHttpStream";
+import { nativePluginHostPath } from "./pluginScanService";
+import { registerNeteaseIpc } from "./ipc/neteaseIpc";
+import { registerMediaMetadataIpc } from "./ipc/mediaMetadataIpc";
+import { registerVstPluginIpc } from "./ipc/vstPluginIpc";
 
 const execFileAsync = promisify(execFile);
 // TypeScript rewrites import() to require() in this CommonJS main process,
 // while music-metadata v11 is ESM-only. Constructing the native importer keeps
 // Node's ESM loader intact in the emitted Electron bundle.
 const importMusicMetadata = new Function("return import('music-metadata')") as () => Promise<typeof import("music-metadata")>;
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".ape", ".dsf", ".aiff", ".aif", ".opus", ".wma", ".dts", ".ac3", ".eac3"]);
-
-function externalAudioPaths(argv: string[], workingDirectory = process.cwd()) {
-  const unique = new Map<string, string>();
-  for (const argument of argv) {
-    if (typeof argument !== "string") continue;
-    let candidate = argument.trim();
-    if (candidate.length >= 2 && candidate[0] === candidate.at(-1) && (candidate[0] === '"' || candidate[0] === "'"))
-      candidate = candidate.slice(1, -1);
-    if (!candidate || candidate.startsWith("--")) continue;
-    try {
-      candidate = candidate.startsWith("file://") ? fileURLToPath(candidate) : path.resolve(workingDirectory, candidate);
-      if (!AUDIO_EXTENSIONS.has(path.extname(candidate).toLowerCase()) && !videoExtensions.includes(path.extname(candidate).slice(1).toLowerCase())) continue;
-      if (!fs.statSync(candidate).isFile()) continue;
-      unique.set(candidate.toLocaleLowerCase(), candidate);
-    } catch { /* Command lines also contain the executable and development directory. */ }
-  }
-  return [...unique.values()];
-}
 protocol.registerSchemesAsPrivileged([
   { scheme: "auralis-media", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
   { scheme: "auralis-netease", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
@@ -136,47 +99,6 @@ async function clearCustomBackgroundFiles(exceptPath?: string) {
     if (exceptPath && path.resolve(candidate) === path.resolve(exceptPath)) return;
     await fs.promises.rm(candidate, { force: true });
   }));
-}
-
-interface NativeHttpResponse {
-  status: number;
-  statusText: string;
-  headers: Headers;
-  body: ReadableStream<Uint8Array>;
-}
-
-function fetchNativeStream(url: string, method: "GET" | "HEAD", headers: Record<string, string>, redirects = 0): Promise<NativeHttpResponse> {
-  return new Promise((resolve, reject) => {
-    let target: URL;
-    try { target = new URL(url); }
-    catch { reject(new Error("Invalid NetEase CDN URL")); return; }
-    const client = target.protocol === "https:" ? https : target.protocol === "http:" ? http : null;
-    if (!client) { reject(new Error(`Unsupported NetEase CDN protocol: ${target.protocol}`)); return; }
-    const request = client.request(target, { method, headers }, response => {
-      const status = response.statusCode || 502;
-      const location = response.headers.location;
-      if (location && [301, 302, 303, 307, 308].includes(status)) {
-        response.resume();
-        if (redirects >= 5) { reject(new Error("NetEase CDN redirected too many times")); return; }
-        void fetchNativeStream(new URL(location, target).toString(), method, headers, redirects + 1).then(resolve, reject);
-        return;
-      }
-      const responseHeaders = new Headers();
-      for (const [name, value] of Object.entries(response.headers)) {
-        if (Array.isArray(value)) value.forEach(item => responseHeaders.append(name, item));
-        else if (value !== undefined) responseHeaders.set(name, String(value));
-      }
-      resolve({
-        status,
-        statusText: response.statusMessage || "",
-        headers: responseHeaders,
-        body: Readable.toWeb(response) as ReadableStream<Uint8Array>
-      });
-    });
-    request.setTimeout(20_000, () => request.destroy(new Error("NetEase CDN request timed out")));
-    request.once("error", reject);
-    request.end();
-  });
 }
 
 // The source-test build must not share Chromium caches or the single-instance
@@ -766,63 +688,6 @@ async function createTray() {
   }
 }
 
-interface DirectoryDiscovery {
-  normalizedPath: string;
-  candidates: string[];
-  state: "ready" | "missing" | "access-denied" | "no-candidate-modules" | "scanner-error";
-  message?: string;
-}
-
-function errorCode(error: unknown) {
-  return typeof error === "object" && error !== null && "code" in error ? String((error as NodeJS.ErrnoException).code || "") : "";
-}
-
-async function discoverPluginDirectory(directoryPath: string, normalizedPath: string): Promise<DirectoryDiscovery> {
-  try {
-    const stat = await fs.promises.stat(directoryPath);
-    if (!stat.isDirectory()) return { normalizedPath, candidates: [], state: "missing", message: "路径不是文件夹" };
-  } catch (error) {
-    const code = errorCode(error);
-    return {
-      normalizedPath,
-      candidates: [],
-      state: code === "EACCES" || code === "EPERM" ? "access-denied" : "missing",
-      message: code || "目录不可用"
-    };
-  }
-
-  const candidates: string[] = [];
-  let nestedFailure = "";
-  const visit = async (current: string): Promise<void> => {
-    let entries: fs.Dirent[];
-    try { entries = await fs.promises.readdir(current, { withFileTypes: true }); }
-    catch (error) { nestedFailure ||= errorCode(error) || "目录读取失败"; return; }
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      const lower = entry.name.toLocaleLowerCase("en-US");
-      const formatAdapter = discoverablePluginFormatAdapterForPath(fullPath);
-      if (formatAdapter && (entry.isFile() || lower.endsWith(".vst3"))) {
-        candidates.push(fullPath);
-        continue;
-      }
-      if (entry.isDirectory()) await visit(fullPath);
-    }
-  };
-  await visit(directoryPath);
-  if (!candidates.length) {
-    return nestedFailure
-      ? { normalizedPath, candidates, state: "scanner-error", message: nestedFailure }
-      : { normalizedPath, candidates, state: "no-candidate-modules" };
-  }
-  return { normalizedPath, candidates, state: "ready", ...(nestedFailure ? { message: nestedFailure } : {}) };
-}
-
-function nativePluginHostPath() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, "native-host", "AuralisPluginHost.exe")
-    : path.join(__dirname, "../native-host/build/AuralisPluginHost_artefacts/Release/AuralisPluginHost.exe");
-}
-
 let checkedNativeHostSignature = "";
 function assertNativeHostCompatibility(executable: string) {
   const stat = fs.statSync(executable);
@@ -1053,343 +918,6 @@ function sendPlaybackPcm(packet: PcmPacketMetadata & { sampleRate?: number; chan
   }
   pcmDiagnostics?.recordStdinWritableLength(engine.stdin.writableLength);
   return true;
-}
-
-interface VstScanProgress {
-  phase: "discovering" | "cache" | "scanning" | "complete";
-  completed: number;
-  total: number;
-  current: string;
-  modulePath?: string;
-  normalizedPath?: string;
-}
-function pluginScanCachePath() { return path.join(app.getPath("userData"), "plugin-scan-cache-v1.json"); }
-function pluginQuarantinePath() { return path.join(app.getPath("userData"), "plugin-quarantine-v1.json"); }
-function pluginScanLogPath() { return path.join(app.getPath("userData"), "logs", "plugin-scans.jsonl"); }
-
-function standardPluginDirectories() {
-  return pluginFormatAdapters.flatMap(adapter => adapter.discoverForDiagnostics
-    ? adapter.standardDirectories(process.env) : []);
-}
-
-let pluginDirectoryStore: PluginDirectoryStore | undefined;
-const activePluginScans = new Map<string, AbortController>();
-function getPluginDirectoryStore() {
-  pluginDirectoryStore ??= new PluginDirectoryStore(
-    path.join(app.getPath("userData"), "plugin-directories-v1.json"),
-    standardPluginDirectories()
-  );
-  return pluginDirectoryStore;
-}
-
-async function scanVstPlugins(
-  onProgress?: (progress: VstScanProgress) => void,
-  options: { retryFailures?: boolean } = {}
-): Promise<PluginScanResult> {
-  const sessionId = crypto.randomUUID();
-  const startedAt = new Date();
-  const startedMs = Date.now();
-  const log = (event: string, data: Record<string, unknown> = {}) =>
-    writePluginScanLog(pluginScanLogPath(), sessionId, event, data);
-  log("session_start", {
-    catalogSchemaVersion: PLUGIN_CATALOG_SCHEMA_VERSION,
-    scannerProtocolVersion: PLUGIN_SCANNER_PROTOCOL_VERSION,
-    probeVersion: PLUGIN_PROBE_VERSION,
-    compatibilityPolicyVersion: AURALIS_COMPATIBILITY_POLICY_VERSION
-  });
-
-  const directoryStore = getPluginDirectoryStore();
-  const directories = directoryStore.list().filter(directory => directory.enabled);
-  const discoveries: DirectoryDiscovery[] = [];
-  const candidatePaths = new Map<string, string>();
-  const directoryCandidates = new Map<string, Set<string>>();
-  for (const directory of directories) {
-    onProgress?.({ phase: "discovering", completed: candidatePaths.size, total: 0, current: directory.path });
-    const discovery = await discoverPluginDirectory(directory.path, directory.normalizedPath);
-    discoveries.push(discovery);
-    log("directory", {
-      path: directory.path,
-      normalizedPath: directory.normalizedPath,
-      state: discovery.state,
-      candidateModules: discovery.candidates.length,
-      message: discovery.message || ""
-    });
-    const keys = new Set<string>();
-    for (const candidate of discovery.candidates) {
-      const key = normalizeModulePath(candidate);
-      candidatePaths.set(key, path.normalize(path.resolve(candidate)));
-      keys.add(key);
-    }
-    directoryCandidates.set(directory.normalizedPath, keys);
-  }
-  const modules: PluginModule[] = [];
-  const descriptors: PluginDescriptor[] = [];
-  const cache = new PluginScanCache(pluginScanCachePath());
-  const quarantineStore = new PluginQuarantineStore(pluginQuarantinePath());
-  const pending: PluginModule[] = [];
-  const scannerFailures = new Map<string, ScannerFailure[]>();
-  const enumeratedModules = new Set<string>();
-  let moduleCacheHits = 0;
-  let pluginCacheHits = 0;
-  let completed = 0;
-  onProgress?.({ phase: "cache", completed, total: candidatePaths.size, current: "读取模块、插件与隔离缓存" });
-  for (const [key, file] of candidatePaths) {
-    let stat: fs.Stats;
-    try { stat = await fs.promises.stat(file); }
-    catch (error) {
-      scannerFailures.set(key, [{
-        code: "ENUMERATION_FAILED", stage: "MODULE_LOAD", modulePath: file,
-        message: errorCode(error) || "无法读取插件模块状态", elapsedMs: 0
-      }]);
-      log("module_stat_failed", { modulePath: file, error: errorCode(error) || "MODULE_STAT_FAILED" });
-      continue;
-    }
-    const module = createPluginModule(file, stat.size, stat.mtimeMs);
-    modules.push(module);
-    const quarantine = quarantineStore.get(module.normalizedPath);
-    if (quarantine && (quarantine.userDisabled || !options.retryFailures)) {
-      const skippedFailure: ScannerFailure = {
-        code: quarantine.userDisabled ? "USER_DISABLED" : "QUARANTINED",
-        stage: quarantine.lastFailureStage,
-        modulePath: module.modulePath,
-        message: quarantine.userDisabled
-          ? "插件已由用户禁用；解除禁用后才会重新扫描"
-          : `插件上次扫描失败（${quarantine.lastFailureCode}），本次启动已自动跳过；点击重新扫描可再次尝试`,
-        elapsedMs: 0
-      };
-      scannerFailures.set(module.normalizedPath, [skippedFailure]);
-      log(quarantine.userDisabled ? "module_user_disabled_skip" : "module_previous_failure_skip", {
-        ...quarantine, moduleFingerprint: module.moduleFingerprint
-      });
-      completed++;
-      continue;
-    }
-    if (module.format === "VST2") {
-      const record = {
-        id: module.normalizedPath,
-        name: path.basename(file, ".dll"),
-        path: file,
-        format: "VST2" as const,
-        category: "Legacy plugin",
-        loadable: false,
-        policyRejectionReason: "FORMAT_NOT_AVAILABLE",
-        error: "VST2 SDK compatibility layer is not installed"
-      };
-      const descriptor = createPluginDescriptor(module, record);
-      descriptors.push(descriptor);
-      cache.putSuccessfulModule(module, [record], [descriptor]);
-      enumeratedModules.add(module.normalizedPath);
-      log("plugin_result", {
-        modulePath: module.modulePath,
-        moduleFingerprint: module.moduleFingerprint,
-        pluginId: descriptor.formatSpecificPluginId,
-        name: descriptor.name,
-        vendor: descriptor.vendor,
-        catalogState: descriptor.catalogState,
-        eligible: descriptor.compatibility.eligible,
-        policyReasons: descriptor.compatibility.reasons
-      });
-      completed++;
-      continue;
-    }
-    const cachedModule = cache.getModule(module);
-    if (cachedModule) {
-      const cachedDescriptors = cachedModule.records.map(record => cache.getPlugin(module.moduleFingerprint, record.id));
-      const policyVersionsCurrent = cachedModule.records.every(record =>
-        record.compatibility?.probeVersion === PLUGIN_PROBE_VERSION
-        && record.compatibility?.policyVersion === AURALIS_COMPATIBILITY_POLICY_VERSION);
-      if (cachedDescriptors.every((descriptor): descriptor is PluginDescriptor => Boolean(descriptor))) {
-        Object.assign(module, {
-          scannerProtocolVersion: cachedModule.module.scannerProtocolVersion,
-          scanElapsedMs: cachedModule.module.scanElapsedMs,
-          lastScanStage: cachedModule.module.lastScanStage
-        });
-        descriptors.push(...cachedDescriptors);
-        moduleCacheHits++;
-        pluginCacheHits += cachedDescriptors.length;
-        enumeratedModules.add(module.normalizedPath);
-        completed++;
-        log("module_cache_hit", { modulePath: module.modulePath, moduleFingerprint: module.moduleFingerprint, pluginCacheHits: cachedDescriptors.length });
-        for (const descriptor of cachedDescriptors) log("plugin_cache_hit", {
-          modulePath: module.modulePath,
-          moduleFingerprint: module.moduleFingerprint,
-          pluginId: descriptor.formatSpecificPluginId,
-          name: descriptor.name,
-          vendor: descriptor.vendor,
-          busCapabilities: descriptor.capabilities,
-          catalogState: descriptor.catalogState,
-          eligible: descriptor.compatibility.eligible,
-          policyReasons: descriptor.compatibility.reasons
-        });
-        continue;
-      }
-      if (policyVersionsCurrent) {
-        const rebuilt = cachedModule.records.map(record => createPluginDescriptor(module, record));
-        descriptors.push(...rebuilt);
-        cache.putSuccessfulModule(module, cachedModule.records, rebuilt);
-        moduleCacheHits++;
-        enumeratedModules.add(module.normalizedPath);
-        completed++;
-        log("module_cache_hit_plugin_cache_rebuilt", { modulePath: module.modulePath, moduleFingerprint: module.moduleFingerprint, descriptors: rebuilt.length });
-        for (const descriptor of rebuilt) log("plugin_cache_rebuilt", {
-          modulePath: module.modulePath,
-          moduleFingerprint: module.moduleFingerprint,
-          pluginId: descriptor.formatSpecificPluginId,
-          name: descriptor.name,
-          vendor: descriptor.vendor,
-          catalogState: descriptor.catalogState,
-          eligible: descriptor.compatibility.eligible,
-          policyReasons: descriptor.compatibility.reasons
-        });
-        continue;
-      }
-      log("module_cache_policy_miss", {
-        modulePath: module.modulePath,
-        moduleFingerprint: module.moduleFingerprint,
-        expectedProbeVersion: PLUGIN_PROBE_VERSION,
-        expectedPolicyVersion: AURALIS_COMPATIBILITY_POLICY_VERSION
-      });
-    } else log("module_cache_miss", { modulePath: module.modulePath, moduleFingerprint: module.moduleFingerprint });
-    pending.push(module);
-  }
-  onProgress?.({ phase: "cache", completed, total: candidatePaths.size, current: `${moduleCacheHits} 个模块缓存命中` });
-  for (let index = 0; index < pending.length; index += 4) {
-    const group = pending.slice(index, index + 4);
-    const inspected = await Promise.all(group.map(async module => {
-      const controller = new AbortController();
-      activePluginScans.set(module.normalizedPath, controller);
-      onProgress?.({
-        phase: "scanning", completed, total: candidatePaths.size, current: path.basename(module.modulePath),
-        modulePath: module.modulePath, normalizedPath: module.normalizedPath
-      });
-      log("module_scan_start", { modulePath: module.modulePath, moduleFingerprint: module.moduleFingerprint, format: module.format });
-      const inspectedModule = await inspectPluginModule(nativePluginHostPath(), module.modulePath, (stage, elapsedMs) => {
-        onProgress?.({
-          phase: "scanning", completed, total: candidatePaths.size,
-          current: `${path.basename(module.modulePath)} · ${stage} · ${Math.round(elapsedMs)} ms`,
-          modulePath: module.modulePath, normalizedPath: module.normalizedPath
-        });
-      }, controller.signal).finally(() => {
-        if (activePluginScans.get(module.normalizedPath) === controller) activePluginScans.delete(module.normalizedPath);
-      });
-      module.scannerProtocolVersion = inspectedModule.protocolVersion;
-      module.scanElapsedMs = inspectedModule.elapsedMs;
-      module.lastScanStage = inspectedModule.lastStage;
-      if (inspectedModule.failures.length) {
-        scannerFailures.set(module.normalizedPath, inspectedModule.failures);
-        cache.deleteModule(module.normalizedPath);
-        const firstFailure = inspectedModule.failures[0];
-        const health = firstFailure.code === "USER_SKIPPED"
-          ? undefined
-          : firstFailure.code === "USER_DISABLED"
-            ? quarantineStore.disable(module, firstFailure)
-            : quarantineStore.recordFailure(module, firstFailure);
-        log("module_scan_failed", {
-          modulePath: module.modulePath,
-          moduleFingerprint: module.moduleFingerprint,
-          stage: inspectedModule.lastStage,
-          elapsedMs: inspectedModule.elapsedMs,
-          failures: inspectedModule.failures,
-          stderrSummary: inspectedModule.stderrSummary,
-          quarantine: health
-        });
-      } else {
-        quarantineStore.recordSuccess(module.normalizedPath);
-        enumeratedModules.add(module.normalizedPath);
-      }
-      const found = inspectedModule.records.map(record => createPluginDescriptor(module, record));
-      if (!inspectedModule.failures.length) cache.putSuccessfulModule(module, inspectedModule.records, found);
-      for (const descriptor of found) log("plugin_result", {
-        modulePath: module.modulePath,
-        moduleFingerprint: module.moduleFingerprint,
-        pluginId: descriptor.formatSpecificPluginId,
-        name: descriptor.name,
-        vendor: descriptor.vendor,
-        elapsedMs: inspectedModule.elapsedMs,
-        lastStage: inspectedModule.lastStage,
-        busCapabilities: descriptor.capabilities,
-        catalogState: descriptor.catalogState,
-        eligible: descriptor.compatibility.eligible,
-        policyReasons: descriptor.compatibility.reasons,
-        scanFailure: descriptor.scanFailure || null
-      });
-      log("module_scan_complete", {
-        modulePath: module.modulePath,
-        moduleFingerprint: module.moduleFingerprint,
-        descriptors: found.length,
-        elapsedMs: inspectedModule.elapsedMs,
-        lastStage: inspectedModule.lastStage,
-        stderrSummary: inspectedModule.stderrSummary
-      });
-      return found;
-    }));
-    for (const result of inspected) descriptors.push(...result);
-    completed += group.length;
-    onProgress?.({ phase: "scanning", completed, total: candidatePaths.size, current: group.map(item => path.basename(item.modulePath)).join(", ") });
-  }
-  cache.retainModules(new Set(candidatePaths.keys()));
-  try { cache.save(); } catch (error) { log("cache_write_failed", { message: error instanceof Error ? error.message : String(error) }); }
-  const uniqueModules = [...new Map(modules.map(module => [module.normalizedPath, module])).values()];
-  const uniqueDescriptors = [...new Map(descriptors.map(descriptor => [`${descriptor.stablePluginUid}\0${descriptor.moduleFingerprint}`, descriptor])).values()]
-    .sort((left, right) => left.name.localeCompare(right.name));
-  const moduleByPath = new Map(uniqueModules.map(module => [module.normalizedPath, module]));
-  const outcomes: DirectoryScanOutcome[] = discoveries.map(discovery => {
-    if (discovery.state !== "ready") return {
-      normalizedPath: discovery.normalizedPath,
-      state: discovery.state,
-      candidateModuleCount: discovery.candidates.length,
-      acceptedPluginCount: 0,
-      ...(discovery.message ? { message: discovery.message } : {})
-    };
-    const candidateKeys = directoryCandidates.get(discovery.normalizedPath) || new Set<string>();
-    const fingerprints = new Set([...candidateKeys].map(key => moduleByPath.get(key)?.moduleFingerprint).filter((value): value is string => Boolean(value)));
-    const acceptedPluginCount = uniqueDescriptors.filter(descriptor => fingerprints.has(descriptor.moduleFingerprint) && descriptor.compatibility.eligible).length;
-    const failures = [...candidateKeys].flatMap(key => scannerFailures.get(key) || []);
-    const state = acceptedPluginCount > 0 ? "ready" : failures.length ? "scanner-error" : "no-accepted-plugins";
-    return {
-      normalizedPath: discovery.normalizedPath,
-      state,
-      candidateModuleCount: candidateKeys.size,
-      acceptedPluginCount,
-      ...(failures.length || discovery.message ? {
-        message: [...new Set([
-          ...failures.map(item => `${item.code} / ${item.stage}: ${item.message}`),
-          discovery.message
-        ].filter((value): value is string => Boolean(value)))].join("；")
-      } : {})
-    };
-  });
-  const resolvedDirectories = directoryStore.applyScanOutcomes(outcomes);
-  const quarantines = quarantineStore.list();
-  const finishedAt = new Date();
-  const session = {
-    id: sessionId,
-    startedAt: startedAt.toISOString(),
-    finishedAt: finishedAt.toISOString(),
-    durationMs: Date.now() - startedMs,
-    directoriesScanned: discoveries.length,
-    candidateModules: candidatePaths.size,
-    modulesEnumerated: enumeratedModules.size,
-    pluginDescriptorsDiscovered: uniqueDescriptors.length,
-    acceptedPlugins: uniqueDescriptors.filter(descriptor => descriptor.catalogState === "accepted").length,
-    policyRejectedPlugins: uniqueDescriptors.filter(descriptor => descriptor.catalogState === "policy-rejected").length,
-    failedModules: scannerFailures.size,
-    failedPlugins: uniqueDescriptors.filter(descriptor => Boolean(descriptor.scanFailure)).length,
-    quarantinedModules: quarantines.filter(record => record.quarantined).length,
-    moduleCacheHits,
-    pluginCacheHits
-  };
-  log("session_end", session);
-  onProgress?.({ phase: "complete", completed: candidatePaths.size, total: candidatePaths.size, current: `${session.pluginDescriptorsDiscovered} 个插件描述符` });
-  return {
-    schemaVersion: PLUGIN_CATALOG_SCHEMA_VERSION,
-    modules: uniqueModules,
-    descriptors: uniqueDescriptors,
-    directories: resolvedDirectories,
-    failures: [...scannerFailures.values()].flat(),
-    quarantines,
-    session
-  };
 }
 
 function setClickThrough(enabled: boolean) {
@@ -2136,44 +1664,7 @@ app.whenReady().then(async () => {
     if (event.sender !== mainWindow?.webContents || !rendererPcmCaptureActive) return;
     sendPlaybackPcm(packet || {});
   });
-  ipcMain.handle("netease:search", async (_, query: string) => {
-    try {
-      return { ok: true, songs: await searchNetease(String(query || "")) };
-    } catch (error) {
-      return { ok: false, songs: [], error: error instanceof Error ? error.message : "网易云搜索失败" };
-    }
-  });
-  ipcMain.handle("netease:login-status", async () => getNeteaseLoginStatus());
-  ipcMain.handle("netease:logout", async () => {
-    try { return { ok: true, ...(await logoutNetease()) }; }
-    catch (error) { return { ok: false, error: error instanceof Error ? error.message : "网易云退出登录失败" }; }
-  });
-  ipcMain.handle("netease:playlists", async () => {
-    try { return { ok: true, playlists: await getNeteasePlaylists() }; }
-    catch (error) { return { ok: false, playlists: [], error: error instanceof Error ? error.message : "网易云歌单加载失败" }; }
-  });
-  ipcMain.handle("netease:playlist-tracks", async (_, id: number) => {
-    try { return { ok: true, songs: await getNeteasePlaylistTracks(Number(id)) }; }
-    catch (error) { return { ok: false, songs: [], error: error instanceof Error ? error.message : "网易云歌单曲目加载失败" }; }
-  });
-  ipcMain.handle("netease:qr-create", async () => {
-    try { return { ok: true, ...(await createNeteaseQr()) }; }
-    catch (error) { return { ok: false, error: error instanceof Error ? error.message : "二维码创建失败" }; }
-  });
-  ipcMain.handle("netease:qr-check", async (_, key: string) => {
-    try { return { ok: true, ...(await checkNeteaseQr(String(key || ""))) }; }
-    catch (error) { return { ok: false, code: 0, loggedIn: false, error: error instanceof Error ? error.message : "扫码状态检查失败" }; }
-  });
-  ipcMain.handle("netease:prepare", async (_, id: number) => {
-    try {
-      await resolveNeteaseStream(Number(id));
-      writeLog("INFO", `NetEase prepare ${Number(id)}: ready`);
-      return { ok: true, url: createNeteaseTrackUrl(Number(id)) };
-    } catch (error) {
-      writeLog("ERROR", `NetEase prepare ${Number(id)} failed: ${error instanceof Error ? error.message : String(error)}`);
-      return { ok: false, error: error instanceof Error ? error.message : "网易云曲目暂时无法播放" };
-    }
-  });
+  registerNeteaseIpc({ writeLog });
   ipcMain.on("library:authorize-dropped-file", (event, input: unknown) => {
     if (event.sender !== mainWindow?.webContents) return;
     try {
@@ -2343,107 +1834,9 @@ app.whenReady().then(async () => {
     }));
     return { tracks, errors: errors.slice(0, 20) };
   });
-  const musicBrainz = new MusicBrainzClient(app.getVersion());
-  ipcMain.handle("library:musicbrainz", async (event, request: unknown) => {
-    if (!trustedCacheRequest(event) || !request || typeof request !== "object") return {ok:false,error:"music.invalidRequest"};
-    const r = request as Record<string, unknown>;
-    try {
-      if (r.action === "search") return {ok:true, results:await musicBrainz.search(String(r.album || ""),String(r.artist || ""),String(r.title || ""))};
-      if (r.action !== "apply" || !Array.isArray(r.trackIds) || !r.trackIds.length || r.trackIds.length>1000 || r.trackIds.some(id=>typeof id!=="string")) throw Error("music.invalidRequest");
-      const ids = new Set(r.trackIds);
-      const snapshot = async () => {
-        const current = await libraryService.getSnapshot();
-        if (!current.snapshot) throw Error("music.libraryUnavailable");
-        const tracks = current.snapshot.tracks as Array<Record<string,unknown>>;
-        const targets = tracks.filter(item=>ids.has(item.id));
-        if (targets.length !== ids.size || targets.some(item=>!localMediaAccess?.isAllowed(String(item.sourcePath || "")) || videoExtensions.includes(path.extname(String(item.sourcePath || "")).slice(1).toLowerCase()))) throw Error("music.accessDenied");
-        return {current:current.snapshot, tracks, targets};
-      };
-      let state = await snapshot();
-      if (state.targets.every(item=>item.coverLocked || item.coverUrl)) return {ok:true,skipped:true};
-      const image = nativeImage.createFromBuffer(await musicBrainz.cover(r.kind as "release"|"release-group",String(r.id || "")));
-      if (image.isEmpty()) throw Error("music.invalidImage");
-      const size=image.getSize();
-      const thumb = Math.max(size.width,size.height)>256 ? image.resize(size.width>=size.height?{width:256}:{height:256}) : image;
-      const png=thumb.toPNG(),directory=path.join(app.getPath("userData"),"artwork-cache");
-      const target=path.join(directory,`musicbrainz-${crypto.createHash("sha256").update(png).digest("hex")}.png`);
-      // Recheck privacy and cover locks after network I/O, before committing current state.
-      state = await snapshot();
-      await fs.promises.mkdir(directory,{recursive:true}); await fs.promises.writeFile(target,png);
-      const result=await libraryService.commitLegacySnapshot({tracks:state.tracks.map(item=>ids.has(item.id) && !item.coverLocked && !item.coverUrl ? {...item,coverUrl:mediaUrl(target),coverLocked:true} : item),folders:state.current.folders},{requestId:crypto.randomUUID(),expectedRevision:state.current.revision});
-      if(result.status!=="committed" && result.status!=="noop")throw Error("music.conflict");
-      return {ok:true};
-    } catch(error) { return {ok:false,error:error instanceof Error?error.message:"music.requestFailed"}; }
-  });
-  const credentialPath = path.join(app.getPath("userData"), "tmdb-credential.bin");
-  const readTmdbToken = () => { try { return safeStorage.decryptString(fs.readFileSync(credentialPath)); } catch { return ""; } };
-  const tmdb = new TmdbClient(readTmdbToken);
-  ipcMain.handle("library:tmdb", async (event, request: unknown) => {
-    if (!trustedCacheRequest(event) || !request || typeof request !== "object") return { ok: false, error: "无效请求" };
-    const r = request as Record<string, unknown>;
-    const matchStarted = performance.now();
-    try {
-      if (r.action === "status") return { ok: true, configured: !!readTmdbToken() };
-      if (r.action === "credentials") {
-        if (typeof r.token !== "string" || r.token.length > 4096) throw new Error("无效凭据");
-        const token = r.token.trim();
-        if (!token) { await fs.promises.rm(credentialPath, { force: true }); return { ok: true, configured: false }; }
-        if (!/^[a-zA-Z0-9._-]+$/.test(token)) throw new Error("请填写 API Key 或 API Read Access Token");
-        if (!safeStorage.isEncryptionAvailable()) throw new Error("本机安全存储暂不可用");
-        await fs.promises.writeFile(credentialPath + ".tmp", safeStorage.encryptString(token));
-        await fs.promises.rename(credentialPath + ".tmp", credentialPath);
-        return { ok: true, configured: true };
-      }
-      if (r.action === "account") { await shell.openExternal("https://www.themoviedb.org/settings/api"); return { ok: true }; }
-      if (r.action === "search") return { ok: true, results: await tmdb.search(String(r.query || ""), r.type as "movie" | "tv", String(r.year || "")) };
-      if (r.action === "details") {
-        const metadata = await tmdb.details(r.type as "movie" | "tv", Number(r.id));
-        let posterPreview: string | undefined;
-        if (metadata.posterPath) { try { const image = nativeImage.createFromBuffer(await tmdb.poster(metadata.posterPath)); if (!image.isEmpty()) posterPreview = image.resize({ height: 240 }).toDataURL(); } catch { /* Text remains available when image CDN is unreachable. */ } }
-        return { ok: true, metadata, posterPreview };
-      }
-      if (r.action !== "apply" && r.action !== "batchApply") throw new Error("无效操作");
-      const current = await libraryService.getSnapshot();
-      if (!current.snapshot) throw new Error("媒体库不可用");
-      const tracks = current.snapshot.tracks as Array<Record<string, unknown>>;
-      const batch = r.action === "batchApply";
-      const ids = batch ? r.trackIds : [r.trackId];
-      if (!Array.isArray(ids) || !ids.length || ids.length > 1000 || ids.some(id => typeof id !== "string")) throw new Error("无效的批量范围");
-      const targets = tracks.filter(item => ids.includes(item.id));
-      if (targets.length !== new Set(ids).size || targets.some(item => !videoExtensions.includes(path.extname(String(item.sourcePath || "")).slice(1).toLowerCase()))) throw new Error("部分视频已移出媒体库，请刷新后重试");
-      if (targets.some(item=>!localMediaAccess?.isAllowed(String(item.sourcePath || "")))) throw Error("music.accessDenied");
-      const eligible = targets.filter(item => !batch || !item.onlineMetadata);
-      if (!eligible.length) return { ok: true };
-      const track = eligible[0];
-      const localCovers = new Map<unknown, string>();
-      if (batch && r.replaceCover === true) {
-        for (const item of eligible) {
-          if (item.coverLocked) continue;
-          const cover = await videoLibraryProbe.localCover(String(item.sourcePath));
-          if (cover) localCovers.set(item.id, cover);
-        }
-      }
-      const metadata = await tmdb.details(r.type as "movie" | "tv", Number(r.id));
-      let coverUrl = track.coverUrl, coverLocked = track.coverLocked;
-      if (r.replaceCover === true && metadata.posterPath && (!batch || eligible.some(item => !item.coverLocked && !localCovers.has(item.id)))) {
-        const bytes = await tmdb.poster(metadata.posterPath);
-        const image = nativeImage.createFromBuffer(bytes);
-        if (image.isEmpty()) throw new Error("海报无法读取，未更改媒体资料");
-        const png = image.toPNG(), directory = path.join(app.getPath("userData"), "artwork-cache");
-        await fs.promises.mkdir(directory, { recursive: true });
-        const target = path.join(directory, `tmdb-${crypto.createHash("sha256").update(png).digest("hex")}.png`);
-        await fs.promises.writeFile(target, png); coverUrl = mediaUrl(target); coverLocked = true;
-      }
-      if (targets.some(item=>!localMediaAccess?.isAllowed(String(item.sourcePath || "")))) throw Error("music.accessDenied");
-      const changes = new Map(eligible.map(item => {
-        const replace = r.replaceCover === true && metadata.posterPath && (!batch || !item.coverLocked);
-        return [item.id, { ...item, name: batch && metadata.mediaType === "tv" ? item.name : metadata.title, year: metadata.year, genre: metadata.genres.join(" / "), onlineMetadata: metadata, coverUrl: localCovers.get(item.id) || (replace ? coverUrl : item.coverUrl), coverLocked: localCovers.has(item.id) ? false : replace ? coverLocked : item.coverLocked }];
-      }));
-      const result = await libraryService.commitLegacySnapshot({ tracks: tracks.map(item => changes.get(item.id) || item), folders: current.snapshot.folders }, { requestId: crypto.randomUUID(), expectedRevision: current.snapshot.revision });
-      if (result.status !== "committed" && result.status !== "noop") throw new Error("媒体库在操作期间发生变化，请重试");
-      return { ok: true };
-    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : "影视匹配失败" }; }
-    finally { writeLog("MATCH", JSON.stringify({ action: String(r.action), durationMs: Math.round(performance.now() - matchStarted), packaged: app.isPackaged })); }
+  registerMediaMetadataIpc({
+    libraryService, videoLibraryProbe, trustedCacheRequest, mediaUrl, writeLog,
+    getLocalMediaAccess: () => localMediaAccess
   });
   ipcMain.handle("library:file-action", async (event, id: unknown, action: unknown) => {
     if (!trustedCacheRequest(event) || typeof id !== "string" || !["remove", "reveal"].includes(String(action))) return {ok:false,error:"INVALID_FILE_ACTION"};
@@ -2557,53 +1950,7 @@ app.whenReady().then(async () => {
     try { localWaveformService?.cancel(parseAbsolutePath(input, "waveform source"), requestId as string | undefined); }
     catch { /* Ignore an obsolete or malformed cancellation. */ }
   });
-  ipcMain.handle("vst:scan", (event, retryFailures: boolean = false) =>
-    scanVstPlugins(
-      progress => event.sender.send("vst:scan-progress", progress),
-      { retryFailures: Boolean(retryFailures) }
-    )
-  );
-  ipcMain.handle("vst:scan-control", (_, action: "skip" | "disable", normalizedPath: string) => {
-    if ((action !== "skip" && action !== "disable") || typeof normalizedPath !== "string" || !normalizedPath)
-      return { ok: false };
-    const controller = activePluginScans.get(normalizedPath);
-    if (!controller) return { ok: false };
-    controller.abort(action);
-    writePluginScanLog(pluginScanLogPath(), "manual", `scan_${action}`, { normalizedPath });
-    return { ok: true };
-  });
-  ipcMain.handle("vst:quarantine-reset", (_, normalizedPath: string) => {
-    if (typeof normalizedPath !== "string" || !normalizedPath) return { ok: false };
-    const quarantine = new PluginQuarantineStore(pluginQuarantinePath());
-    const cache = new PluginScanCache(pluginScanCachePath());
-    quarantine.reset(normalizedPath);
-    cache.deleteModule(normalizedPath);
-    try { cache.save(); } catch { return { ok: false }; }
-    writePluginScanLog(pluginScanLogPath(), "manual", "quarantine_reset", { normalizedPath });
-    return { ok: true };
-  });
-  ipcMain.handle("vst:directories", () => getPluginDirectoryStore().list());
-  ipcMain.handle("vst:directory-import", (_, directories: string[]) =>
-    getPluginDirectoryStore().importUserDirectories(Array.isArray(directories) ? directories : [])
-  );
-  ipcMain.handle("vst:directory-add", (_, directoryPath: string) => {
-    try {
-      return { ok: true, ...getPluginDirectoryStore().addUserDirectory(directoryPath) };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "插件目录无效" };
-    }
-  });
-  ipcMain.handle("vst:directory-remove", (_, id: string) => ({ ok: getPluginDirectoryStore().removeDirectory(id) }));
-  ipcMain.handle("vst:directory-enabled", (_, id: string, enabled: boolean) => ({
-    ok: getPluginDirectoryStore().setEnabled(id, Boolean(enabled))
-  }));
-  ipcMain.handle("vst:choose-folder", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: "选择插件目录",
-      properties: ["openDirectory"]
-    });
-    return result.canceled ? null : result.filePaths[0] || null;
-  });
+  registerVstPluginIpc({ getMainWindow: () => mainWindow });
   ipcMain.handle("vst:engine-status", async () => {
     const executable = nativePluginHostPath();
     if (!fs.existsSync(executable)) return { available: false, backend: "JUCE HOST NOT INSTALLED", detail: "原生宿主程序不可用。" };

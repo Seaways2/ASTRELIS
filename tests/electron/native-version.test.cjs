@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { readMainProcessSource } = require("./helpers/mainProcessSource.cjs");
 
 const root = path.resolve(__dirname, "../..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "auralis-version.json"), "utf8"));
@@ -42,7 +43,7 @@ test("old host and protocol mismatches are rejected", () => {
 });
 
 test("development host path no longer points at build-2.2.7", () => {
-  const main = fs.readFileSync(path.join(root, "electron/main.ts"), "utf8");
+  const main = readMainProcessSource();
   assert.doesNotMatch(main, /native-host\/build-2\.2\.7\/AuralisPluginHost_artefacts/);
   assert.match(main, /native-host\/build\/AuralisPluginHost_artefacts/);
 });

@@ -11,5 +11,5 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["*.ts", "library/**/*.ts", "security/**/*.ts"]
+  "include": ["*.ts", "ipc/**/*.ts", "library/**/*.ts", "security/**/*.ts"]
 }

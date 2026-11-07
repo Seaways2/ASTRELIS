@@ -4,7 +4,7 @@ export interface MusicCoverCandidate {
 const mbid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function validMusicId(id: unknown): id is string { return typeof id === "string" && mbid.test(id); }
 const text = (value: unknown) => typeof value === "string" ? value.slice(0, 300) : "";
-const escapeQuery = (value: string) => value.replace(/[+\-!(){}\[\]^"~*?:\\/|&]/g, " ").replace(/\s+/g, " ").trim();
+const escapeQuery = (value: string) => value.replace(/[+\-!(){}[\]^"~*?:\\/|&]/g, " ").replace(/\s+/g, " ").trim();
 
 /** Public, read-only API. One shared queue enforces MusicBrainz's per-IP request limit. */
 export class MusicBrainzClient {

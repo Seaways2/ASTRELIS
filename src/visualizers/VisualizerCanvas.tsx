@@ -138,7 +138,7 @@ export function VisualizerCanvas({
     let lastDraw = 0;
     let fpsStarted = performance.now();
     let fpsFrames = 0;
-    let displayedBars: number[] = [];
+    const displayedBars: number[] = [];
     let displayedPulseEnergy = 0;
     let pulseBassLevel = 0;
     let pulseBeatTarget = 0;
@@ -174,8 +174,8 @@ export function VisualizerCanvas({
     let galaxyWaveProgress = 2;
     let galaxyWaveStrength = 0;
     let lastGalaxyBeatAt = -10;
-    let peakBars: number[] = [];
-    let peakTimes: number[] = [];
+    const peakBars: number[] = [];
+    const peakTimes: number[] = [];
 
     const rebuildGalaxyLayers = () => {
       if (mode !== "waveform") return;

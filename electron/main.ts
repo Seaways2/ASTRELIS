@@ -37,6 +37,7 @@ import { LibraryMigrator } from "./library/migration/LibraryMigrator";
 import { LibraryDerivedIndexCache } from "./library/derived/LibraryDerivedIndexCache";
 import { parseAbsolutePath } from "./library/validation/LibraryIpcValidator";
 import { LocalMediaAccessPolicy, safeExternalUrl, sameOriginNavigation } from "./security/ElectronSecurity";
+import { AuthorizedFileStore } from "./security/AuthorizedFileStore";
 import { DesktopMediaKeys, DesktopPreferenceService, defaultDesktopPreferences } from "./desktopPreferences";
 import { AUDIO_EXTENSIONS, externalAudioPaths } from "./externalOpenPaths";
 import { nativePluginHostPath } from "./pluginScanService";
@@ -72,6 +73,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let localMediaAccess: LocalMediaAccessPolicy | undefined;
+let authorizedFiles: AuthorizedFileStore | undefined;
 
 // The source-test build must not share Chromium caches or the single-instance
 // lock with an installed production build that may still be running in tray.
@@ -689,6 +691,15 @@ app.whenReady().then(async () => {
   localMediaAccess.registerApplicationDirectory(path.join(app.getPath("userData"), "artwork-cache"));
   localMediaAccess.registerApplicationDirectory(path.join(app.getPath("userData"), "decoded-audio"));
   localMediaAccess.registerApplicationDirectory(customBackgroundDirectory());
+  // Restore explicit file grants before the renderer restores its saved queue,
+  // so queued files outside library roots stay readable across restarts.
+  const grantedMediaPolicy = localMediaAccess;
+  authorizedFiles = new AuthorizedFileStore(path.join(app.getPath("userData"), "authorized-files-v1.json"));
+  const restorableGrants = authorizedFiles.load().filter(file =>
+    AUDIO_EXTENSIONS.has(path.extname(file).toLowerCase()) || videoExtensions.includes(path.extname(file).slice(1).toLowerCase()));
+  restorableGrants.forEach(file => grantedMediaPolicy.authorizeFile(file));
+  authorizedFiles.reset(restorableGrants.filter(file => grantedMediaPolicy.hasExplicitGrant(file)));
+  grantedMediaPolicy.onFileAuthorized = file => authorizedFiles?.record(file);
   pcmDiagnostics = new PcmDiagnostics(message => writeLog("AUDIO", message), currentOnlineWindowState);
   pcmDiagnostics.start();
   configureNeteaseSession(path.join(app.getPath("userData"), "netease-session.json"));
@@ -1780,6 +1791,7 @@ app.on("before-quit", event => {
     });
 });
 app.on("will-quit", () => {
+  authorizedFiles?.flush();
   videoPlayer?.dispose();
   localWaveformService?.cancel();
   globalShortcut.unregisterAll();

@@ -18,6 +18,8 @@ export function sameCanonicalPath(left: string, right: string) {
 
 export class LocalMediaAccessPolicy {
   blocked?: (file: string) => boolean;
+  /** Notified after a new explicit single-file grant is added. */
+  onFileAuthorized?: (filePath: string) => void;
   private readonly roots = new Set<string>();
   private readonly applicationDirectories = new Set<string>();
   private readonly authorizedFiles = new Set<string>();
@@ -37,8 +39,14 @@ export class LocalMediaAccessPolicy {
   authorizeFile(filePath: string) {
     if (!path.isAbsolute(filePath) || this.isAllowed(filePath)) return;
     try {
-      if (fs.statSync(filePath).isFile()) this.authorizedFiles.add(canonical(filePath));
-    } catch { /* A missing file cannot be granted by an explicit-file capability. */ }
+      if (!fs.statSync(filePath).isFile()) return;
+      this.authorizedFiles.add(canonical(filePath));
+    } catch { return; /* A missing file cannot be granted by an explicit-file capability. */ }
+    this.onFileAuthorized?.(filePath);
+  }
+
+  hasExplicitGrant(filePath: string) {
+    return typeof filePath === "string" && path.isAbsolute(filePath) && this.authorizedFiles.has(canonical(filePath));
   }
 
   isAllowed(filePath: string) {

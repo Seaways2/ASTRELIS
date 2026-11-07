@@ -1,0 +1,102 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { AuthorizedFileStore } = require("../../dist-electron/security/AuthorizedFileStore.js");
+const { LocalMediaAccessPolicy } = require("../../dist-electron/security/ElectronSecurity.js");
+
+function withTempDirectory(run) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astrelis-grants-"));
+  try { return run(directory); }
+  finally {
+    assert.ok(path.resolve(directory).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+test("explicit file grants survive a restart through the store", () => withTempDirectory(base => {
+  const storePath = path.join(base, "authorized-files-v1.json");
+  const outside = path.join(base, "outside.flac");
+  fs.writeFileSync(outside, "audio");
+
+  const firstPolicy = new LocalMediaAccessPolicy();
+  const firstStore = new AuthorizedFileStore(storePath);
+  firstStore.load();
+  firstPolicy.onFileAuthorized = file => firstStore.record(file);
+  firstPolicy.authorizeFile(outside);
+  firstStore.flush();
+
+  const restartedPolicy = new LocalMediaAccessPolicy();
+  assert.equal(restartedPolicy.isAllowed(outside), false, "grants are not implicit after a restart");
+  const restartedStore = new AuthorizedFileStore(storePath);
+  restartedStore.load().forEach(file => restartedPolicy.authorizeFile(file));
+  assert.equal(restartedPolicy.isAllowed(outside), true);
+  assert.equal(restartedPolicy.hasExplicitGrant(outside), true);
+}));
+
+test("restore drops files that no longer exist", () => withTempDirectory(base => {
+  const storePath = path.join(base, "authorized-files-v1.json");
+  const kept = path.join(base, "kept.mp3");
+  const removed = path.join(base, "removed.mp3");
+  fs.writeFileSync(kept, "audio");
+  fs.writeFileSync(storePath, JSON.stringify({ version: 1, files: [kept, removed] }));
+
+  const policy = new LocalMediaAccessPolicy();
+  const store = new AuthorizedFileStore(storePath);
+  const persisted = store.load();
+  persisted.forEach(file => policy.authorizeFile(file));
+  store.reset(persisted.filter(file => policy.hasExplicitGrant(file)));
+  store.flush();
+
+  assert.equal(policy.isAllowed(removed), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(storePath, "utf8")).files, [kept]);
+}));
+
+test("only new external grants are reported; library files and missing files are not", () => withTempDirectory(base => {
+  const library = path.join(base, "library");
+  fs.mkdirSync(library);
+  const inLibrary = path.join(library, "song.flac");
+  const outside = path.join(base, "dropped.wav");
+  fs.writeFileSync(inLibrary, "audio");
+  fs.writeFileSync(outside, "audio");
+
+  const reported = [];
+  const policy = new LocalMediaAccessPolicy();
+  policy.registerRoot(library);
+  policy.onFileAuthorized = file => reported.push(file);
+  policy.authorizeFile(inLibrary);
+  policy.authorizeFile(path.join(base, "missing.wav"));
+  policy.authorizeFile("relative.wav");
+  policy.authorizeFile(outside);
+  policy.authorizeFile(outside);
+  assert.deepEqual(reported, [outside]);
+}));
+
+test("folder protection still blocks a persisted grant", () => withTempDirectory(base => {
+  const hidden = path.join(base, "hidden");
+  fs.mkdirSync(hidden);
+  const file = path.join(hidden, "private.flac");
+  fs.writeFileSync(file, "audio");
+
+  const policy = new LocalMediaAccessPolicy();
+  policy.authorizeFile(file);
+  policy.blocked = candidate => candidate.startsWith(hidden);
+  assert.equal(policy.hasExplicitGrant(file), true);
+  assert.equal(policy.isAllowed(file), false);
+}));
+
+test("the store keeps the most recent grants up to its limit and tolerates damage", () => withTempDirectory(base => {
+  const storePath = path.join(base, "authorized-files-v1.json");
+  const store = new AuthorizedFileStore(storePath, 3);
+  store.load();
+  for (const name of ["a", "b", "c", "d"]) store.record(path.join(base, `${name}.mp3`));
+  store.record(path.join(base, "b.mp3"));
+  store.flush();
+  assert.deepEqual(new AuthorizedFileStore(storePath, 3).load(), ["c", "d", "b"].map(name => path.join(base, `${name}.mp3`)));
+
+  fs.writeFileSync(storePath, "{ not json");
+  assert.deepEqual(new AuthorizedFileStore(storePath).load(), []);
+  fs.writeFileSync(storePath, JSON.stringify({ version: 1, files: ["relative.mp3", 7, path.join(base, "ok.mp3")] }));
+  assert.deepEqual(new AuthorizedFileStore(storePath).load(), [path.join(base, "ok.mp3")]);
+}));

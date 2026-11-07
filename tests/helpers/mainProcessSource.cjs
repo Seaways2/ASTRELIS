@@ -4,14 +4,19 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const root = path.resolve(__dirname, "../../..");
+const root = path.resolve(__dirname, "../..");
 const mainProcessModules = [
   "electron/main.ts",
   "electron/externalOpenPaths.ts",
   "electron/nativeHttpStream.ts",
+  "electron/mediaUrls.ts",
+  "electron/mediaProtocols.ts",
   "electron/pluginScanService.ts",
-  "electron/ipc/neteaseIpc.ts",
+  "electron/ipc/appearanceIpc.ts",
+  "electron/ipc/audioCacheIpc.ts",
+  "electron/ipc/libraryIpc.ts",
   "electron/ipc/mediaMetadataIpc.ts",
+  "electron/ipc/neteaseIpc.ts",
   "electron/ipc/vstPluginIpc.ts"
 ];
 

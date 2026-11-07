@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { readMainProcessSource } = require("./helpers/mainProcessSource.cjs");
+const { readMainProcessSource } = require("../helpers/mainProcessSource.cjs");
 
 const root = path.resolve(__dirname, "../..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "auralis-version.json"), "utf8"));
@@ -49,7 +49,7 @@ test("development host path no longer points at build-2.2.7", () => {
 });
 
 test("native output commands use correlated requests, generations, and persisted LKG", () => {
-  const main = fs.readFileSync(path.join(root, "electron/main.ts"), "utf8");
+  const main = readMainProcessSource();
   const persistence = fs.readFileSync(path.join(root, "electron/nativeOutputPersistence.ts"), "utf8");
   assert.match(main, /const playbackRequests = new Map/);
   assert.match(main, /protocolVersion: manifest\.controlProtocolVersion/);
@@ -61,7 +61,7 @@ test("native output commands use correlated requests, generations, and persisted
 });
 
 test("native host restart is single-instance and process-scoped", () => {
-  const main = fs.readFileSync(path.join(root, "electron/main.ts"), "utf8");
+  const main = readMainProcessSource();
   assert.match(main, /new SingleProcessGate/);
   assert.match(main, /request\.engine !== engine/);
   assert.match(main, /rejectPlaybackRequestsForEngine/);
@@ -73,7 +73,7 @@ test("native host restart is single-instance and process-scoped", () => {
 });
 
 test("tray icon has a packaged asset and an executable fallback", () => {
-  const main = fs.readFileSync(path.join(root, "electron/main.ts"), "utf8");
+  const main = readMainProcessSource();
   assert.equal(fs.existsSync(path.join(root, "build/icon.png")), true);
   assert.match(main, /resolveAppIconPath/);
   assert.match(main, /nativeImage\.createFromPath/);
@@ -83,7 +83,7 @@ test("tray icon has a packaged asset and an executable fallback", () => {
 });
 
 test("library scan and hydration recover artwork from the persistent cache", () => {
-  const main = fs.readFileSync(path.join(root, "electron/main.ts"), "utf8");
+  const main = readMainProcessSource();
   const scanner = fs.readFileSync(path.join(root, "electron/library/scanner/LibraryScanner.ts"), "utf8");
   assert.match(main, /function cachedArtworkUrl\(sourcePath: string\)/);
   assert.match(main, /return legacyArtworkUrl\(sourcePath/);

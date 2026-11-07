@@ -6,7 +6,8 @@ const ts = require("typescript");
 
 const root = path.resolve(__dirname, "../..");
 const fixtureRoot = path.join(root, "tests/fixtures/library");
-const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
+const { readMainProcessSource } = require("../helpers/mainProcessSource.cjs");
+const read = relative => relative === "electron/main.ts" ? readMainProcessSource() : fs.readFileSync(path.join(root, relative), "utf8");
 const readFixture = relative => fs.readFileSync(path.join(fixtureRoot, relative), "utf8");
 const parseFixture = relative => JSON.parse(readFixture(relative));
 const { SCALE_PROFILES, makeLegacyLibrary } = require(path.join(fixtureRoot, "fixtureFactory.cjs"));

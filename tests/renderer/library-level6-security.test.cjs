@@ -4,7 +4,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
-const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
+const { readMainProcessSource } = require("../helpers/mainProcessSource.cjs");
+const read = relative => relative === "electron/main.ts" ? readMainProcessSource() : fs.readFileSync(path.join(root, relative), "utf8");
 
 test("Main Window blocks renderer navigation and validates external URLs", () => {
   const main = read("electron/main.ts");

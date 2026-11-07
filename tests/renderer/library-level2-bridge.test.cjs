@@ -4,7 +4,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
-const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
+const { readMainProcessSource } = require("../helpers/mainProcessSource.cjs");
+const read = relative => relative === "electron/main.ts" ? readMainProcessSource() : fs.readFileSync(path.join(root, relative), "utf8");
 
 test("normal library scans are command-oriented and reconciled in Main", () => {
   const main = read("electron/main.ts");

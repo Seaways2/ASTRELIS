@@ -1,7 +1,6 @@
 import { fitWindowBounds, fittedUiZoom } from "./windowFit";
 import { FolderVisibility } from "./FolderVisibility";
 import { restoreVisibleLibrary } from "./library/migration/RestoreVisibleLibrary";
-import { videoDisplayName } from "./library/media/videoDisplayName";
 import { VstStateProfiles } from "./vstStateProfiles";
 import { VideoLibraryProbe } from "./library/media/VideoLibraryProbe";
 import { AudioCacheMaintenance } from "./audioCacheMaintenance";
@@ -16,15 +15,13 @@ import { applyNativeWindowOutline, setNativeAccentAcrylic, restoreNativeTranspar
 import { onlineVolumeScript } from "./onlineVolume";
 import { onlinePlayerTimelineScript, onlinePlayerSeekScript } from "./onlinePlayerTimeline";
 import { app, BrowserWindow, safeStorage, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, protocol, screen, shell, Tray, WebContentsView, type IpcMainEvent, type WebContents } from "electron";
-import { configureNeteaseSession, resolveNeteaseStream } from "./neteaseApi";
+import { configureNeteaseSession } from "./neteaseApi";
 import fs from "node:fs";
 import path from "node:path";
 import { execFile, execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { promisify } from "node:util";
 import readline from "node:readline";
-import { Readable } from "node:stream";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import crypto from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 import { PcmDiagnostics, type PcmPacketMetadata } from "./pcmDiagnostics";
 import { pluginFormatAdapterForPath } from "./pluginFormatAdapters";
@@ -36,23 +33,25 @@ import { LibraryService } from "./library/LibraryService";
 import { WavCodecProbe } from "./library/media/WavCodecProbe";
 import { DirectAudioCache } from "./library/media/DirectAudioCache";
 import { JsonLibraryRepository } from "./library/repository/JsonLibraryRepository";
-import type { LibraryCommandMeta } from "./library/types";
 import { LibraryScanner } from "./library/scanner/LibraryScanner";
-import { cacheArtwork, cacheArtworkThumbnail, legacyArtworkUrl, removeArtworkThumbnailFiles } from "./library/media/ArtworkCache";
+import { cacheArtworkThumbnail } from "./library/media/ArtworkCache";
 import { DecodedAudioCache } from "./library/media/DecodedAudioCache";
 import { LocalWaveformService } from "./library/media/LocalWaveformService";
-import { sanitizeLibraryRoots } from "./library/reconcile/LibraryReconciler";
 import { LibraryMigrator } from "./library/migration/LibraryMigrator";
 import { LibraryDerivedIndexCache } from "./library/derived/LibraryDerivedIndexCache";
-import { parseAbsolutePath, parseCommandMeta, parseLegacyMutation, parsePathList, parseRescanRequest } from "./library/validation/LibraryIpcValidator";
-import { LocalMediaAccessPolicy, safeExternalUrl, sameCanonicalPath, sameOriginNavigation } from "./security/ElectronSecurity";
+import { parseAbsolutePath } from "./library/validation/LibraryIpcValidator";
+import { LocalMediaAccessPolicy, safeExternalUrl, sameOriginNavigation } from "./security/ElectronSecurity";
 import { DesktopMediaKeys, DesktopPreferenceService, defaultDesktopPreferences } from "./desktopPreferences";
 import { AUDIO_EXTENSIONS, externalAudioPaths } from "./externalOpenPaths";
-import { fetchNativeStream } from "./nativeHttpStream";
 import { nativePluginHostPath } from "./pluginScanService";
 import { registerNeteaseIpc } from "./ipc/neteaseIpc";
 import { registerMediaMetadataIpc } from "./ipc/mediaMetadataIpc";
 import { registerVstPluginIpc } from "./ipc/vstPluginIpc";
+import { registerAudioCacheIpc } from "./ipc/audioCacheIpc";
+import { registerLibraryIpc } from "./ipc/libraryIpc";
+import { registerAppearanceIpc, customBackgroundDirectory } from "./ipc/appearanceIpc";
+import { registerMediaProtocols } from "./mediaProtocols";
+import { mediaUrl } from "./mediaUrls";
 
 const execFileAsync = promisify(execFile);
 // TypeScript rewrites import() to require() in this CommonJS main process,
@@ -65,41 +64,6 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let localMediaAccess: LocalMediaAccessPolicy | undefined;
-
-function mediaUrl(filePath: string) {
-  return `auralis-media://local/${encodeURIComponent(filePath)}`;
-}
-
-function cachedArtworkUrl(sourcePath: string) {
-  return legacyArtworkUrl(sourcePath, path.join(app.getPath("userData"), "artwork-cache"), mediaUrl);
-}
-
-const mediaMime = (filePath: string) => ({
-  ".mp3": "audio/mpeg", ".wav": "audio/wav", ".flac": "audio/flac",
-  ".aac": "audio/aac", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
-  ".opus": "audio/ogg", ".aiff": "audio/aiff", ".aif": "audio/aiff",
-  ".wma": "audio/x-ms-wma", ".ape": "audio/ape", ".dsf": "audio/dsf",
-  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".webp": "image/webp", ".bmp": "image/bmp", ".gif": "image/gif"
-} as Record<string, string>)[path.extname(filePath).toLowerCase()] || "application/octet-stream";
-
-const customBackgroundExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"]);
-function customBackgroundDirectory() { return path.join(app.getPath("userData"), "custom-background"); }
-
-async function clearCustomBackgroundFiles(exceptPath?: string) {
-  const directory = customBackgroundDirectory();
-  let entries: fs.Dirent[] = [];
-  try { entries = await fs.promises.readdir(directory, { withFileTypes: true }); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  await Promise.all(entries.filter(entry => entry.isFile()).map(async entry => {
-    const candidate = path.join(directory, entry.name);
-    if (exceptPath && path.resolve(candidate) === path.resolve(exceptPath)) return;
-    await fs.promises.rm(candidate, { force: true });
-  }));
-}
 
 // The source-test build must not share Chromium caches or the single-instance
 // lock with an installed production build that may still be running in tray.
@@ -289,20 +253,6 @@ function vstStateFileForPlugin(pluginId: string) {
 
 function libraryIndexPath() {
   return path.join(app.getPath("userData"), "music-library.json");
-}
-
-function hydrateLibraryTracks(tracks: unknown[]) {
-  return (tracks as Array<Record<string, unknown>>).map(track => {
-    const storedCover = typeof track.coverUrl === "string" && track.coverUrl.startsWith("file:")
-      ? mediaUrl(fileURLToPath(track.coverUrl))
-      : track.coverUrl;
-    return {
-      ...track,
-      ...(!track.onlineMetadata && typeof track.sourcePath === "string" && videoExtensions.includes(path.extname(track.sourcePath).slice(1).toLowerCase()) ? videoDisplayName(track.sourcePath) : {}),
-      url: typeof track.sourcePath === "string" ? mediaUrl(track.sourcePath) : track.url,
-      coverUrl: storedCover || (typeof track.sourcePath === "string" ? cachedArtworkUrl(track.sourcePath) : undefined)
-    };
-  });
 }
 
 function loadWindowState(): WindowState {
@@ -1053,7 +1003,6 @@ app.whenReady().then(async () => {
   }
   const audioCache = new AudioCacheMaintenance(app.getPath("userData"));
   let directGeneration = 0;
-  let prefetchBusy = false;
   const decodedAudioCache = new DecodedAudioCache(path.join(app.getPath("userData"), "decoded-audio"),
     (sourcePath, outputPath) => execFileAsync(findFfmpeg(), ["-v", "error", "-nostdin", "-y", "-i", sourcePath,
       "-map", "0:a:0", "-threads", "1", "-c:a", "pcm_f32le", "-rf64", "auto", "-f", "wav", outputPath],
@@ -1382,44 +1331,8 @@ app.whenReady().then(async () => {
     try { await videoPlayer.addSubtitle(picked.filePaths[0]); return { ok: true }; }
     catch (error) { return { ok: false, error: String(error) }; }
   });
-  ipcMain.handle("cache:inspect", async event => {
-    if (!trustedCacheRequest(event)) return { ok: false, error: "UNTRUSTED_SENDER" };
-    try { return { ok: true, ...await audioCache.inspect() }; }
-    catch (error) { return { ok: false, error: String(error) }; }
-  });
-  ipcMain.handle("cache:clear", async event => {
-    if (!trustedCacheRequest(event)) return { ok: false, error: "UNTRUSTED_SENDER" };
-    try { return await audioCache.clear(); }
-    catch (error) { return { ok: false, error: String(error) }; }
-  });
-  ipcMain.handle("cache:protect", async (event, files: unknown) => {
-    if (!trustedCacheRequest(event) || !Array.isArray(files) || files.length > 4) return;
-    audioCache.protect("renderer", files.filter((file): file is string => typeof file === "string" && path.isAbsolute(file)));
-  });
-  ipcMain.handle("library:prefetch", async (event, input: unknown, direct: boolean) => {
-    if (!trustedCacheRequest(event) || prefetchBusy) return { ok: false, busy: true };
-    prefetchBusy = true;
-    try {
-      const source = authorisedAudio(input);
-      return await audioCache.use(async () => {
-        if (direct === true) {
-          const prepared = await prepareHdmiSource(source);
-          const analysisPath = prepared.codec.startsWith("pcm") ? undefined : await decodedAudioCache.prepare(source);
-          audioCache.protect("next", [prepared.path, ...(analysisPath ? [analysisPath] : [])]);
-        } else audioCache.protect("next", [await prepareLocalSource(source)]);
-        return { ok: true };
-      });
-    } catch (error) { return { ok: false, error: String(error) }; }
-    finally { prefetchBusy = false; }
-  });
-  ipcMain.handle("library:prepare-direct", async (_, input: unknown) => {
-    try {
-      return await audioCache.use(async () => {
-        const prepared = await prepareHdmiSource(authorisedAudio(input));
-        audioCache.protect("prepared-direct", [prepared.path, ...(prepared.analysisPath ? [prepared.analysisPath] : [])]);
-        return { ok: true, codec: prepared.codec };
-      });
-    } catch (error) { return { ok: false, error: String(error) }; }
+  registerAudioCacheIpc({
+    audioCache, decodedAudioCache, trustedCacheRequest, authorisedAudio, prepareLocalSource, prepareHdmiSource
   });
   localWaveformService = new LocalWaveformService({
     executable: findFfmpeg,
@@ -1428,95 +1341,7 @@ app.whenReady().then(async () => {
       return (await metadata.parseFile(sourcePath, { duration: false, skipCovers: true })).format.duration;
     }
   });
-  protocol.handle("auralis-media", request => {
-    try {
-      const parsed = new URL(request.url);
-      const filePath = decodeURIComponent(parsed.pathname.slice(1));
-      if ((request.method !== "GET" && request.method !== "HEAD")
-        || parsed.hostname !== "local" || parsed.search || parsed.hash
-        || !path.isAbsolute(filePath) || !localMediaAccess?.isAllowed(filePath) || !fs.existsSync(filePath))
-        return new Response("Not found", { status: 404 });
-      const stat = fs.statSync(filePath);
-      if (!stat.isFile()) return new Response("Not found", { status: 404 });
-      const commonHeaders: Record<string, string> = {
-        "Accept-Ranges": "bytes",
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": mediaMime(filePath)
-      };
-      const range = request.headers.get("range");
-      if (range) {
-        const match = /^bytes=(\d*)-(\d*)$/i.exec(range.trim());
-        if (!match) return new Response(null, { status: 416, headers: { ...commonHeaders, "Content-Range": `bytes */${stat.size}` } });
-        const suffixLength = !match[1] && match[2] ? Number(match[2]) : 0;
-        const start = suffixLength > 0 ? Math.max(0, stat.size - suffixLength) : Number(match[1] || 0);
-        const requestedEnd = match[1] && match[2] ? Number(match[2]) : stat.size - 1;
-        const end = Math.min(stat.size - 1, requestedEnd);
-        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= stat.size)
-          return new Response(null, { status: 416, headers: { ...commonHeaders, "Content-Range": `bytes */${stat.size}` } });
-        const length = end - start + 1;
-        const headers = { ...commonHeaders, "Content-Length": String(length), "Content-Range": `bytes ${start}-${end}/${stat.size}` };
-        if (request.method === "HEAD") return new Response(null, { status: 206, headers });
-        const body = Readable.toWeb(fs.createReadStream(filePath, { start, end })) as ReadableStream<Uint8Array>;
-        return new Response(body, { status: 206, headers });
-      }
-      const headers = { ...commonHeaders, "Content-Length": String(stat.size) };
-      if (request.method === "HEAD") return new Response(null, { status: 200, headers });
-      const body = Readable.toWeb(fs.createReadStream(filePath)) as ReadableStream<Uint8Array>;
-      return new Response(body, { status: 200, headers });
-    } catch { return new Response("Invalid media path", { status: 400 }); }
-  });
-  protocol.handle("auralis-netease", async request => {
-    try {
-      const parsed = new URL(request.url);
-      const id = Number(parsed.pathname.split("/").filter(Boolean).at(-1));
-      if (parsed.hostname !== "stream" || !Number.isFinite(id))
-        return new Response("Invalid NetEase track", { status: 400 });
-      if (request.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-            "Access-Control-Allow-Headers": "Range"
-          }
-        });
-      }
-      const streamUrl = await resolveNeteaseStream(id);
-      // Do not forward renderer Origin/Referer headers to the NetEase CDN.
-      // Some CDN nodes reject them; seeking only requires the byte range.
-      const upstreamHeaders: Record<string, string> = {};
-      const range = request.headers.get("range");
-      if (range) upstreamHeaders.Range = range;
-      upstreamHeaders.Accept = "audio/*,*/*;q=0.8";
-      upstreamHeaders.Referer = "https://music.163.com/";
-      upstreamHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36";
-      // Electron's Chromium network service can report ERR_BLOCKED_BY_CLIENT
-      // on some PCs due to filters, proxies, or security software. Stream the
-      // CDN response with Node's native HTTP stack so playback is independent
-      // of browser request blocking while retaining byte-range seeking.
-      const upstream = await fetchNativeStream(streamUrl, request.method === "HEAD" ? "HEAD" : "GET", upstreamHeaders);
-      const responseHeaders = new Headers(upstream.headers);
-      responseHeaders.set("Access-Control-Allow-Origin", "*");
-      responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-      responseHeaders.set("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range, Content-Type");
-      if (!responseHeaders.has("Accept-Ranges")) responseHeaders.set("Accept-Ranges", "bytes");
-      const contentType = upstream.headers.get("content-type") || "unknown";
-      const host = (() => { try { return new URL(streamUrl).hostname; } catch { return "unknown"; } })();
-      writeLog(upstream.status >= 200 && upstream.status < 400 ? "INFO" : "ERROR", `NetEase stream ${id}: ${upstream.status} ${contentType} via ${host}${range ? ` ${range}` : ""}`);
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "NetEase stream unavailable";
-      writeLog("ERROR", `NetEase stream failed: ${message}`);
-      return new Response(message, {
-        status: 502,
-        headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "text/plain; charset=utf-8" }
-      });
-    }
-  });
+  registerMediaProtocols({ localMediaAccess, writeLog });
   writeLog("INFO", `ASTRELIS ${app.getVersion()} started`);
   globalShortcut.register("CommandOrControl+Shift+L", () => setClickThrough(!clickThrough));
   ipcMain.on("window:minimize", () => mainWindow?.minimize());
@@ -1665,272 +1490,14 @@ app.whenReady().then(async () => {
     sendPlaybackPcm(packet || {});
   });
   registerNeteaseIpc({ writeLog });
-  ipcMain.on("library:authorize-dropped-file", (event, input: unknown) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    try {
-      const filePath = parseAbsolutePath(input, "dropped audio file");
-      if ((AUDIO_EXTENSIONS.has(path.extname(filePath).toLowerCase()) || videoExtensions.includes(path.extname(filePath).slice(1).toLowerCase())) && fs.statSync(filePath).isFile())
-        localMediaAccess?.authorizeFile(filePath);
-    } catch { /* Ignore forged or stale drag payloads. */ }
-  });
-  const scanCompatibilityResult = async (event: Electron.IpcMainInvokeEvent, roots: string[]) => {
-    roots.forEach(root => localMediaAccess?.registerRoot(root));
-    const scan = await libraryScanner.scanRoots(roots, progress => event.sender.send("library:scan-progress", progress));
-    const root = scan.roots[0];
-    return {
-      ...scan,
-      folder: root?.path || roots[0] || "",
-      skipped: root?.skippedFiles || 0,
-      errors: scan.failures.slice(0, 50).map(item => `${path.basename(item.path)}: ${item.message}`),
-      metadataFailures: scan.failures.filter(item => item.stage === "metadata").length
-    };
-  };
-  const activeLibraryScans = new Map<string, { senderId: number; controller: AbortController }>();
-  const scanAndCommit = async (
-    event: Electron.IpcMainInvokeEvent,
-    scannedRoots: string[],
-    requestedRoots: string[],
-    meta: LibraryCommandMeta,
-    signal?: AbortSignal
-  ) => {
-    requestedRoots.forEach(root => localMediaAccess?.registerRoot(root));
-    const scan = await libraryScanner.scanRoots(scannedRoots, progress => { if (!event.sender.isDestroyed()) event.sender.send("library:scan-progress", progress); }, signal);
-    if (signal?.aborted) return null;
-    activeLibraryScans.delete(meta.requestId);
-    writeLog("LIBRARY", JSON.stringify({
-      action: "library.scan.complete",
-      scanId: scan.scanId,
-      roots: scan.roots.map(root => ({ rootId: root.rootId, status: root.status, scannedFiles: root.scannedFiles })),
-      failures: scan.failures.length
-    }));
-    const applied = await libraryService.applyScan(scan, requestedRoots, meta);
-    const authoritative = await libraryService.getSnapshot();
-    if (authoritative.status === "error")
-      throw new Error(`${authoritative.error?.code || "LIBRARY_UNKNOWN_ERROR"}: ${authoritative.error?.message || "音乐库加载失败"}`);
-    return {
-      mutation: applied.mutation,
-      reconcile: applied.reconcile,
-      scan,
-      status: authoritative.status,
-      revision: authoritative.snapshot?.revision || 0,
-      tracks: hydrateLibraryTracks(authoritative.snapshot?.tracks || []),
-      folders: authoritative.snapshot?.folders || []
-    };
-  };
-  ipcMain.handle("library:choose-folder", async (event, meta: unknown) => {
-    const safeMeta = parseCommandMeta(meta);
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: "选择音乐库目录",
-      properties: ["openDirectory"]
-    });
-    if (result.canceled || !result.filePaths[0]) return null;
-    const current = await libraryService.getSnapshot();
-    if (current.status === "error")
-      throw new Error(`${current.error?.code || "LIBRARY_UNKNOWN_ERROR"}: ${current.error?.message || "音乐库加载失败"}`);
-    const selectedRoot = result.filePaths[0];
-    const requestedRoots = sanitizeLibraryRoots([...(current.snapshot?.folders || []), selectedRoot]);
-    return scanAndCommit(event, [selectedRoot], requestedRoots, safeMeta);
-  });
-  ipcMain.handle("library:scan", async (event, folder: unknown) =>
-    scanCompatibilityResult(event, [parseAbsolutePath(folder, "scan folder")])
-  );
-  ipcMain.handle("library:remove-folder", async (_, folder: unknown, meta: unknown) => {
-    const root = parseAbsolutePath(folder, "library folder");
-    const command = parseCommandMeta(meta);
-    const current = await libraryService.getSnapshot();
-    if (current.status === "error" || !current.snapshot) throw new Error("Library snapshot unavailable");
-    const { removeLibraryFolder } = await import("./library/removeLibraryFolder");
-    const updated = removeLibraryFolder(current.snapshot, root);
-    const trackCoverUrl = (track: unknown) => {
-      if (!track || typeof track !== "object" || Array.isArray(track)) return undefined;
-      const coverUrl = (track as { coverUrl?: unknown }).coverUrl;
-      return typeof coverUrl === "string" ? coverUrl : undefined;
-    };
-    const retainedCovers = new Set(updated.tracks.map(trackCoverUrl).filter((url): url is string => typeof url === "string"));
-    const removedCovers = [...new Set(current.snapshot.tracks.map(trackCoverUrl)
-      .filter((url): url is string => typeof url === "string" && !retainedCovers.has(url)))];
-    const result = await libraryService.commitLegacySnapshot(updated, {
-      ...command, expectedRevision: command.expectedRevision ?? current.snapshot.revision
-    });
-    if (result.status === "committed") {
-      const artworkDirectory = path.join(app.getPath("userData"), "artwork-cache");
-      await Promise.all(removedCovers.map(async coverUrl => {
-        try { await removeArtworkThumbnailFiles(coverUrl, artworkDirectory); }
-        catch (error) { writeLog("LIBRARY", `Thumbnail cleanup failed: ${String(error)}`); }
-      }));
-    }
-    return result;
-  });
-  ipcMain.handle("library:rescan", async (event, payload: unknown) => {
-    if (!trustedCacheRequest(event)) throw new Error("UNTRUSTED_SENDER");
-    const request = parseRescanRequest(payload);
-    if (activeLibraryScans.size) throw new Error("LIBRARY_SCAN_BUSY");
-    const controller = new AbortController();
-    const stopOnClose = () => controller.abort();
-    event.sender.once("destroyed", stopOnClose);
-    activeLibraryScans.set(request.meta.requestId, { senderId: event.sender.id, controller });
-    try {
-    if (request.folders.length === 0)
-      throw new Error("LIBRARY_INVALID_SCHEMA: 音乐库扫描目录无效");
-    const roots = sanitizeLibraryRoots(request.folders);
-    const current = await libraryService.getSnapshot();
-    if (current.status === "error")
-      throw new Error(`${current.error?.code || "LIBRARY_UNKNOWN_ERROR"}: ${current.error?.message || "音乐库加载失败"}`);
-    const authoritativeRoots = sanitizeLibraryRoots(current.snapshot?.folders || []);
-    authoritativeRoots.forEach(root => localMediaAccess?.registerRoot(root));
-    if (roots.length !== authoritativeRoots.length
-      || roots.some(root => !authoritativeRoots.some(authoritative => sameCanonicalPath(root, authoritative))))
-      throw new Error("LIBRARY_INVALID_SCHEMA: 只能重新扫描已登记的音乐库目录");
-    return await scanAndCommit(event, roots, roots, request.meta, controller.signal);
-    } finally { activeLibraryScans.delete(request.meta.requestId); event.sender.removeListener("destroyed", stopOnClose); }
-  });
-  ipcMain.handle("library:cancel-scan", (event, requestId: unknown) => {
-    if (!trustedCacheRequest(event) || typeof requestId !== "string") return { ok: false };
-    const active = activeLibraryScans.get(requestId);
-    if (!active || active.senderId !== event.sender.id) return { ok: false };
-    active.controller.abort();
-    return { ok: true };
-  });
-  ipcMain.handle("library:open-files", async (_, input: unknown) => {
-    const requestedPaths = parsePathList(input, "audio paths").filter(file => !folderVisibility.blocked(file));
-    if (requestedPaths.some(sourcePath => !localMediaAccess?.isAllowed(sourcePath)))
-      throw new Error("LIBRARY_INVALID_SCHEMA: 未授权的外部音频路径");
-    const sourcePaths = externalAudioPaths(requestedPaths);
-    const metadataModule = await importMusicMetadata();
-    const errors: string[] = [];
-    const tracks = await Promise.all(sourcePaths.map(async sourcePath => {
-      const stat = await fs.promises.stat(sourcePath);
-      if (videoExtensions.includes(path.extname(sourcePath).slice(1).toLowerCase())) return {
-        id: crypto.createHash("sha1").update(sourcePath.toLowerCase()).digest("hex"),
-        mediaKind: "video", name: path.basename(sourcePath), artist: "本地视频", album: "", format: path.extname(sourcePath).slice(1).toUpperCase(),
-        size: stat.size, sourcePath, url: mediaUrl(sourcePath)
-      };
-      let name = path.basename(sourcePath, path.extname(sourcePath));
-      let artist = "未知艺术家", album = "未分类专辑", genre = "未分类";
-      let duration: number | undefined, year: number | undefined, coverUrl: string | undefined = cachedArtworkUrl(sourcePath);
-      try {
-        const metadata = await metadataModule.parseFile(sourcePath, { duration: true });
-        name = metadata.common.title || name;
-        artist = metadata.common.artist || artist;
-        album = metadata.common.album || album;
-        genre = metadata.common.genre?.[0] || genre;
-        year = metadata.common.year;
-        duration = metadata.format.duration;
-        const picture = metadata.common.picture?.[0];
-        if (picture && picture.data.length < 8 * 1024 * 1024) {
-          const artworkDirectory = path.join(app.getPath("userData"), "artwork-cache");
-          coverUrl = await cacheArtwork(picture, artworkDirectory, mediaUrl) || coverUrl;
-        }
-      } catch (error) {
-        errors.push(`${path.basename(sourcePath)}: ${error instanceof Error ? error.message : "标签读取失败"}`);
-      }
-      return {
-        id: crypto.createHash("sha1").update(sourcePath.toLowerCase()).digest("hex"),
-        name, artist, album, genre, year, duration, coverUrl,
-        format: path.extname(sourcePath).slice(1).toUpperCase(), size: stat.size,
-        sourcePath, nativePath: /\.(ape|dsf|wma)$/i.test(sourcePath) ? undefined : sourcePath,
-        url: mediaUrl(sourcePath), folder: path.dirname(sourcePath)
-      };
-    }));
-    return { tracks, errors: errors.slice(0, 20) };
+  registerLibraryIpc({
+    getMainWindow: () => mainWindow, localMediaAccess, folderVisibility, libraryService, libraryScanner,
+    libraryDerivedIndexCache, videoLibraryProbe, audioCache, importMusicMetadata, trustedCacheRequest,
+    authorisedAudio, prepareLocalSource, writeLog
   });
   registerMediaMetadataIpc({
     libraryService, videoLibraryProbe, trustedCacheRequest, mediaUrl, writeLog,
     getLocalMediaAccess: () => localMediaAccess
-  });
-  ipcMain.handle("library:file-action", async (event, id: unknown, action: unknown) => {
-    if (!trustedCacheRequest(event) || typeof id !== "string" || !["remove", "reveal"].includes(String(action))) return {ok:false,error:"INVALID_FILE_ACTION"};
-    try {
-      const current = await libraryService.getSnapshot();
-      const track = (current.snapshot?.tracks as Array<Record<string, unknown>> | undefined)?.find(item => item.id === id);
-      const file = track && typeof track.sourcePath === "string" ? track.sourcePath : "";
-      if (!current.snapshot || !file || !localMediaAccess?.isAllowed(file)) throw Error("文件不存在于可访问的媒体库");
-      if (action === "reveal") { shell.showItemInFolder(file); return {ok:true}; }
-      const result = await libraryService.commitLegacySnapshot({tracks:current.snapshot.tracks.filter(item => (item as Record<string, unknown>).id !== id),folders:current.snapshot.folders},
-        {requestId:crypto.randomUUID(),expectedRevision:current.snapshot.revision});
-      if (result.status !== "committed" && result.status !== "noop") throw Error("媒体库已变化，请重试");
-      return {ok:true};
-    } catch (error) { return {ok:false,error:error instanceof Error ? error.message : String(error)}; }
-  });
-  ipcMain.handle("library:artwork", async (event, id: unknown, action: unknown) => {
-    if (!trustedCacheRequest(event) || typeof id !== "string" || !["choose", "frame", "lock", "unlock"].includes(String(action))) return { ok: false, error: "INVALID_ARTWORK_REQUEST" };
-    try {
-      const current = await libraryService.getSnapshot();
-      if (!current.snapshot) throw new Error("媒体库不可用");
-      const tracks = current.snapshot.tracks as Array<Record<string, unknown>>;
-      const track = tracks.find(item => item.id === id);
-      if (!track) throw new Error("媒体已不在库中，请刷新后重试");
-      let coverUrl = track.coverUrl;
-      if (action === "choose") {
-        const picked = await dialog.showOpenDialog(mainWindow!, { title: "选择媒体封面", properties: ["openFile"], filters: [{ name: "图片", extensions: ["jpg", "jpeg", "png", "webp"] }] });
-        if (picked.canceled || !picked.filePaths[0]) return { ok: true, canceled: true };
-        const file = picked.filePaths[0];
-        if ((await fs.promises.stat(file)).size > 8 * 1024 * 1024) throw new Error("请选择小于 8 MB 的图片");
-        const source = nativeImage.createFromPath(file);
-        if (source.isEmpty()) throw new Error("无法读取这张图片");
-        const size = source.getSize();
-        const image = source.resize({ width: Math.min(1200, size.width), quality: "best" }).toPNG();
-        const directory = path.join(app.getPath("userData"), "artwork-cache");
-        await fs.promises.mkdir(directory, { recursive: true });
-        const target = path.join(directory, `manual-${crypto.createHash("sha256").update(image).digest("hex")}.png`);
-        await fs.promises.writeFile(target, image); coverUrl = mediaUrl(target);
-      } else if (action === "frame") {
-        const file = String((track as { sourcePath?: string })?.sourcePath || "");
-        if (!videoExtensions.includes(path.extname(file).slice(1).toLowerCase()) || !localMediaAccess?.isAllowed(file)) throw new Error("无法为该文件截取视频封面");
-        coverUrl = (await videoLibraryProbe.probe(file, true)).coverUrl;
-        if (!coverUrl) throw new Error("未能生成封面，请重试或选择本地图片");
-      }
-      if (action === "lock" && !coverUrl) throw new Error("请先设置封面");
-      const updated = { ...track, coverUrl, coverLocked: action !== "unlock" };
-      const result = await libraryService.commitLegacySnapshot({ tracks: tracks.map(item => item.id === id ? updated : item), folders: current.snapshot.folders }, { requestId: crypto.randomUUID(), expectedRevision: current.snapshot.revision });
-      if (result.status !== "committed" && result.status !== "noop") throw new Error("媒体库在操作期间发生变化，请重试");
-      return { ok: true };
-    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
-  });
-  ipcMain.handle("library:load", async () => {
-    const result = await libraryService.getSnapshot();
-    (result.snapshot?.folders || []).forEach(folder => localMediaAccess?.registerRoot(folder));
-    const tracks = hydrateLibraryTracks(result.snapshot?.tracks || []);
-    return {
-      status: result.status,
-      schemaVersion: result.snapshot?.schemaVersion || 2,
-      revision: result.snapshot?.revision || 0,
-      recoveredFromRevision: result.recoveredFromRevision,
-      error: result.error,
-      tracks,
-      folders: result.snapshot?.folders || []
-    };
-  });
-  ipcMain.handle("library:derived-index-load", async (_, revision: unknown) => {
-    if (!Number.isSafeInteger(revision) || Number(revision) < 0) return null;
-    return libraryDerivedIndexCache.load(Number(revision));
-  });
-  ipcMain.handle("library:derived-index-save", async (_, revision: unknown, snapshot: unknown) => {
-    if (!Number.isSafeInteger(revision) || Number(revision) < 0) return { ok: false };
-    return libraryDerivedIndexCache.save(Number(revision), snapshot);
-  });
-  ipcMain.handle("library:save", async (_, payload: unknown) => {
-    const value = parseLegacyMutation(payload);
-    return libraryService.commitLegacySnapshot(
-      { tracks: value.tracks, folders: value.folders },
-      value.meta
-    );
-  });
-  ipcMain.handle("library:import-legacy-state", async (_, payload: unknown) => {
-    const value = parseLegacyMutation(payload);
-    return libraryService.importLegacyState(
-      { tracks: value.tracks, folders: value.folders },
-      value.meta
-    );
-  });
-  ipcMain.handle("library:prepare", async (_, input: unknown) => {
-    try {
-      return await audioCache.use(async () => {
-        const outputPath = await prepareLocalSource(authorisedAudio(input));
-        audioCache.protect("prepared", [outputPath]);
-        return { ok: true, path: outputPath, url: mediaUrl(outputPath) };
-      });
-    } catch (error) { return { ok: false, error: String(error) }; }
   });
   ipcMain.handle("library:waveform", async (event, input: unknown, requestId?: unknown) => {
     try {
@@ -2195,76 +1762,7 @@ app.whenReady().then(async () => {
     mainWindow.webContents.focus();
     return result.response === 0;
   });
-  ipcMain.handle("appearance:background-choose", async () => {
-    if (!mainWindow) return { ok: false, error: "播放器窗口尚未准备完成" };
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: "选择播放器背景图片",
-      properties: ["openFile"],
-      filters: [
-        { name: "图片文件", extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif"] },
-        { name: "所有文件", extensions: ["*"] }
-      ]
-    });
-    mainWindow.focus();
-    mainWindow.webContents.focus();
-    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
-    const sourcePath = path.resolve(result.filePaths[0]);
-    const extension = path.extname(sourcePath).toLowerCase();
-    if (!customBackgroundExtensions.has(extension)) return { ok: false, error: "请选择 PNG、JPG、WebP、BMP 或 GIF 图片" };
-    let temporaryPath = "";
-    try {
-      const stat = await fs.promises.stat(sourcePath);
-      if (!stat.isFile()) return { ok: false, error: "所选项目不是图片文件" };
-      if (stat.size > 64 * 1024 * 1024) return { ok: false, error: "背景图片不能超过 64 MB" };
-      const directory = customBackgroundDirectory();
-      await fs.promises.mkdir(directory, { recursive: true });
-      temporaryPath = path.join(directory, `.incoming-${crypto.randomUUID()}${extension}`);
-      await fs.promises.copyFile(sourcePath, temporaryPath);
-      await clearCustomBackgroundFiles(temporaryPath);
-      const targetPath = path.join(directory, `background-${crypto.randomUUID()}${extension}`);
-      await fs.promises.rename(temporaryPath, targetPath);
-      return { ok: true, path: targetPath, url: mediaUrl(targetPath), name: path.basename(sourcePath) };
-    } catch (error) {
-      if (temporaryPath) await fs.promises.rm(temporaryPath, { force: true }).catch(() => undefined);
-      return { ok: false, error: error instanceof Error ? error.message : "无法保存背景图片" };
-    }
-  });
-  ipcMain.handle("appearance:background-folder", async () => {
-    if (!mainWindow) return {ok:false,error:"播放器尚未准备好"};
-    const result = await dialog.showOpenDialog(mainWindow,{title:"选择背景图片文件夹",properties:["openDirectory"]});
-    if(result.canceled || !result.filePaths[0]) return {ok:false,canceled:true};
-    const folder=result.filePaths[0], directory=customBackgroundDirectory();
-    const copied: {path:string;url:string}[]=[];
-    try {
-      const entries=(await fs.promises.readdir(folder,{withFileTypes:true})).filter(e=>e.isFile() && customBackgroundExtensions.has(path.extname(e.name).toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
-      if(!entries.length) return {ok:false,error:"文件夹中没有支持的图片（不包含子文件夹）"};
-      await fs.promises.mkdir(directory,{recursive:true});
-      const previous=await fs.promises.readdir(directory,{withFileTypes:true});
-      for(const entry of entries) {
-        const source=path.join(folder,entry.name);
-        const stat=await fs.promises.stat(source);
-        if(stat.size>64*1024*1024) continue;
-        const target=path.join(directory,`background-${crypto.randomUUID()}${path.extname(entry.name).toLowerCase()}`);
-        copied.push({path:target,url:mediaUrl(target)});
-        await fs.promises.copyFile(source,target);
-      }
-      if(!copied.length) return {ok:false,error:"图片均超过 64 MB，请选择较小的图片"};
-      // Commit only after every new image has been copied; originals are untouched.
-      await Promise.all(previous.filter(e=>e.isFile()).map(e=>fs.promises.rm(path.join(directory,e.name),{force:true}).catch(()=>undefined)));
-      return {ok:true,images:copied,folder};
-    } catch(error) {
-      await Promise.all(copied.map(item=>fs.promises.rm(item.path,{force:true}).catch(()=>undefined)));
-      return {ok:false,error:error instanceof Error ? error.message : "导入背景文件夹失败"};
-    }
-  });
-  ipcMain.handle("appearance:background-remove", async () => {
-    try {
-      await clearCustomBackgroundFiles();
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "无法删除背景图片" };
-    }
-  });
+  registerAppearanceIpc({ getMainWindow: () => mainWindow });
   ipcMain.on("window:display-language", (event, language: unknown) => {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return;
     if (language !== "zh-CN" && language !== "en-US" && language !== "ja-JP") return;

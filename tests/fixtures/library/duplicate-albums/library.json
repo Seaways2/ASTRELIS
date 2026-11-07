@@ -1,0 +1,27 @@
+{
+  "tracks": [
+    {
+      "id": "album-a",
+      "name": "Opening",
+      "artist": "Artist A",
+      "album": "Greatest Hits",
+      "url": "auralis-media://local/a",
+      "format": "FLAC",
+      "size": 1,
+      "sourcePath": "K:\\Music\\Artist A\\Greatest Hits\\01.flac",
+      "folder": "K:\\Music\\Artist A\\Greatest Hits"
+    },
+    {
+      "id": "album-b",
+      "name": "Opening",
+      "artist": "Artist B",
+      "album": "Greatest Hits",
+      "url": "auralis-media://local/b",
+      "format": "FLAC",
+      "size": 1,
+      "sourcePath": "K:\\Music\\Artist B\\Greatest Hits\\01.flac",
+      "folder": "K:\\Music\\Artist B\\Greatest Hits"
+    }
+  ],
+  "folders": ["K:\\Music"]
+}

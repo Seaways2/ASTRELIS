@@ -1,0 +1,16 @@
+.video-panel { width:min(780px,90vw); max-height:88vh; overflow:auto; padding:24px; border:1px solid color-mix(in srgb,var(--accent) 35%,transparent); border-radius:16px; color:#dce7ec; background:#121d26; box-shadow:0 24px 90px #0009; }
+.video-panel::backdrop { background:#02070ccd; }
+.theme-light .video-panel { color:#20313c; background:#eef5f8; }
+.video-panel header,.video-panel h2,.video-actions,.video-progress,.video-options,.video-volume { display:flex; align-items:center; gap:12px; }
+.video-panel header { justify-content:space-between; } .video-panel h2 { margin:8px 0; font-size:22px; }
+.video-panel button { display:inline-flex; justify-content:center; align-items:center; gap:8px; padding:10px 14px; border:1px solid #7c9aa43b; border-radius:7px; background:#8fb6c111; color:inherit; cursor:pointer; }
+.video-panel button:disabled { opacity:.4; cursor:default; } .video-panel button:hover:not(:disabled) { border-color:var(--accent); }
+.video-panel button svg { width:17px; height:17px; } .video-panel .video-primary { background:var(--accent); color:#102029; }
+.video-panel :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.video-summary { text-align:center; padding:26px 12px; } .video-summary>svg { color:var(--accent); }
+.video-summary h3 { overflow-wrap:anywhere; margin:12px 0; }.video-summary p,.video-help,.video-panel footer { opacity:.7; line-height:1.6; font-size:12px; }
+.video-tag { display:inline-block; border:1px solid #7199a34a; padding:5px 12px; border-radius:20px; font-size:11px; }
+.video-actions { flex-wrap:wrap; justify-content:center; margin-bottom:18px; }.video-direct { display:flex; gap:8px; align-items:center; font-size:13px; }
+.video-progress { margin:22px 0; font-size:12px; font-variant-numeric:tabular-nums; }.video-progress input { flex:1; min-width:60px; }
+.video-options { flex-wrap:wrap; }.video-options label { flex:1; min-width:150px; font-size:12px; }.video-options select { display:block; width:100%; margin-top:6px; color:inherit; background:transparent; border:1px solid #7199a34a; border-radius:6px; padding:8px; }.video-options option { background:#253440; color:#fff; }
+.video-volume { margin:18px 0; font-size:12px; }.video-volume input { flex:1; }.video-panel input { accent-color:var(--accent); }.video-error { color:#ff9595; overflow-wrap:anywhere; }.video-panel footer { border-top:1px solid #7199a333; padding-top:12px; }

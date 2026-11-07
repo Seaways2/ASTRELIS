@@ -1,0 +1,99 @@
+/* Shared material for page surfaces and portals; loaded after layout styles. */
+.app-shell {
+  /* Cached monochrome dither, alpha 1/255. Break up 8-bit colour plateaus
+     after painting the gradients, without a filter or an animation. */
+  --surface-dither: url("../assets/surface-dither.png");
+  --surface-glass-glow: transparent;
+  --surface-glass-fill: rgba(12, 20, 24, .48);
+  --surface-glass-border: rgba(160, 188, 196, .12);
+  --surface-glass-highlight: rgba(215, 235, 240, .025);
+  --surface-glass-blur: 10px;
+  --surface-glass-filter: blur(var(--surface-glass-blur)) saturate(1.08);
+}
+/* The worker composes static light and tint before their single quantization.
+   Keep this canvas at device resolution: post-opacity/blur would restore bands. */
+.ambient-background-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 1;
+  filter: none;
+  mix-blend-mode: normal;
+  image-rendering: pixelated;
+}
+.ambient-background-canvas[hidden] { display: none; }
+.app-shell[data-ambient-ready="true"]:not(.has-custom-background) {
+  background: transparent !important;
+}
+.app-shell[data-ambient-ready="true"]::before,
+.app-shell[data-ambient-ready="true"]::after {
+  display: none;
+}
+/* One continuous backing texture; page-sized overlays would recreate seams.
+   OBS and ECO retain their existing pseudo-element suppression. */
+.app-shell:not(.obs-mode):not(.immersive-mode)::before {
+  z-index: 0;
+  opacity: 1;
+  background: var(--surface-dither) repeat;
+  background-size: 128px 128px;
+}
+.app-shell.theme-light {
+  --surface-glass-fill: rgba(238, 246, 249, .48);
+  --surface-glass-border: rgba(72, 104, 118, .18);
+  --surface-glass-highlight: rgba(255, 255, 255, .16);
+}
+.app-shell.theme-light.has-custom-background {
+  --surface-glass-fill: rgba(238, 246, 249, .48);
+  --surface-glass-border: rgba(72, 104, 118, .16);
+  --surface-glass-highlight: rgba(255, 255, 255, .20);
+  --surface-glass-blur: 14px;
+}
+.app-shell[data-fx-edges="true"] {
+  --surface-glass-highlight: color-mix(in srgb, var(--fx-color-a) calc(var(--fx-strength) * var(--fx-reflection-gain, 1) * 32%), transparent);
+  --surface-glass-glow: color-mix(in srgb, var(--fx-color-a) calc(var(--fx-strength) * var(--fx-reflection-gain, 1) * 24%), transparent);
+}
+.app-shell.low-performance-mode { --surface-glass-blur: 0px; --surface-glass-filter: none; }
+.app-shell:not(.obs-mode):not(.immersive-mode) :is(.panel, .setting-card, .device-card, .theme-card, .settings-list > label, .appearance-controls > label, .appearance-animation-module, .gpu-render-module, .atmosphere-settings, .playlist-table, .library-command, .library-summary > div, .library-stat, .library-search, .library-card, .library-entry, .folder-card, .online-browser, .vst-browser, .vst-chain, .channel-strip-popover) {
+  background:
+    var(--surface-dither) repeat,
+    radial-gradient(ellipse at var(--fx-light-x, 50%) var(--fx-light-y, 30%),
+      var(--surface-glass-highlight) 0%,
+      color-mix(in srgb, var(--surface-glass-highlight) 62%, transparent) 24%,
+      color-mix(in srgb, var(--surface-glass-highlight) 22%, transparent) 48%,
+      color-mix(in srgb, var(--surface-glass-highlight) 4%, transparent) 68%,
+      transparent 86%),
+    var(--surface-glass-fill);
+  border: 1px solid var(--surface-glass-border);
+  box-shadow: inset 0 0 18px var(--surface-glass-glow), 0 0 12px var(--surface-glass-glow);
+  backdrop-filter: var(--surface-glass-filter);
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+}
+/* Floating control panels sit directly over animated visualizers. Give them a
+   denser local sheet so labels and values stay readable without going opaque. */
+.app-shell:not(.obs-mode):not(.immersive-mode) :is(.visual-settings-panel, .queue-drawer, .channel-strip-popover) {
+  --surface-glass-fill: rgba(8, 16, 19, .82);
+  --surface-glass-blur: 16px;
+}
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) :is(.visual-settings-panel, .queue-drawer, .channel-strip-popover) {
+  --surface-glass-fill: rgba(238, 246, 249, .86);
+}
+/* A grouping container is not a second sheet of glass. */
+.app-shell:not(.obs-mode):not(.immersive-mode) .settings-list,
+.app-shell:not(.obs-mode):not(.immersive-mode) :is(.panel, .setting-card, .device-card, .theme-card, .settings-list > label, .appearance-controls > label, .appearance-animation-module, .gpu-render-module, .atmosphere-settings, .playlist-table, .library-command, .library-summary > div, .library-stat, .library-search, .library-card, .library-entry, .folder-card, .online-browser, .vst-browser, .vst-chain, .channel-strip-popover) :is(.panel, .setting-card, .device-card, .theme-card, .settings-list > label, .appearance-controls > label, .appearance-animation-module, .gpu-render-module, .atmosphere-settings, .playlist-table, .library-command, .library-summary > div, .library-stat, .library-search, .library-card, .library-entry, .folder-card, .online-browser, .vst-browser, .vst-chain, .channel-strip-popover) {
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.app-shell:not(.obs-mode):not(.immersive-mode) :is(.theme-card:hover, .theme-card.active, .library-entry:hover) {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+}
+.app-shell:not(.obs-mode):not(.immersive-mode) .playlist-table .table-row {
+  background: transparent;
+  box-shadow: none;
+}
+.app-shell:not(.obs-mode):not(.immersive-mode) .playlist-table .table-row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.app-shell:not(.obs-mode):not(.immersive-mode) .playlist-table .table-row.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }

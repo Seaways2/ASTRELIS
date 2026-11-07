@@ -1,0 +1,50 @@
+export const directOutputMessages = {
+  "zh-CN": {
+    "device.playbackPolicy": "播放策略",
+    "device.hdmiRefresh": "刷新设备",
+    "device.normalPlayback": "普通播放",
+    "device.hdmiDirect": "HDMI 直通",
+    "device.hdmiHint": "直通会绕过 VST、软件音量及淡入淡出，采用 WASAPI 独占。设备不支持源格式时停止，不自动降级。",
+    "device.hdmiFormats": "MP3 / FLAC / WAV / AIFF / APE 等解码后输出 PCM；DTS Core / AC-3 / E-AC-3 输出原编码。暂不支持 TrueHD、DTS-HD 或 DSD 直通。",
+    "device.hdmiVolume": "请使用功放调节音量；软件音量和音效不作用于此输出。",
+    "device.hdmiUnavailable": "请选择已连接的 HDMI / DisplayPort 音频设备",
+    "device.hdmiPreparing": "正在准备直通音频…",
+    "device.hdmiStopped": "直通已停止，未切换到其他输出",
+    "device.hdmiReady": "已启用直通。播放已暂停，请先确认功放音量，再开始播放。",
+    "device.normalReady": "已恢复普通播放策略。",
+    "device.hdmiAwaiting": "等待音源与设备格式协商",
+    "device.outputOptions": "音频输出设置"
+  },
+  "en-US": {
+    "device.playbackPolicy": "Playback policy",
+    "device.hdmiRefresh": "Refresh devices",
+    "device.normalPlayback": "Normal playback",
+    "device.hdmiDirect": "HDMI direct",
+    "device.hdmiHint": "Bypasses VST, software volume and fades using WASAPI exclusive. Unsupported source formats stop playback without fallback.",
+    "device.hdmiFormats": "MP3 / FLAC / WAV / AIFF / APE decode to PCM. DTS Core / AC-3 / E-AC-3 use encoded passthrough. TrueHD, DTS-HD and DSD passthrough are not supported yet.",
+    "device.hdmiVolume": "Adjust volume on the receiver. Software volume and effects do not affect this output.",
+    "device.hdmiUnavailable": "Select a connected HDMI / DisplayPort audio endpoint",
+    "device.hdmiPreparing": "Preparing direct audio…",
+    "device.hdmiStopped": "Direct output stopped; no fallback was used",
+    "device.hdmiReady": "Direct output enabled. Playback paused: check receiver volume before playing.",
+    "device.normalReady": "Normal playback restored.",
+    "device.hdmiAwaiting": "Waiting for source and device format negotiation",
+    "device.outputOptions": "Audio output settings"
+  },
+  "ja-JP": {
+    "device.playbackPolicy": "再生方式",
+    "device.hdmiRefresh": "機器を更新",
+    "device.normalPlayback": "通常再生",
+    "device.hdmiDirect": "HDMI パススルー",
+    "device.hdmiHint": "WASAPI 排他で VST・ソフトウェア音量・フェードをバイパスします。非対応形式では停止し、自動で切り替えません。",
+    "device.hdmiFormats": "MP3 / FLAC / WAV / AIFF / APE は PCM に復号。DTS Core / AC-3 / E-AC-3 は符号化のまま出力。TrueHD・DTS-HD・DSD のパススルーは未対応です。",
+    "device.hdmiVolume": "音量はアンプで調節してください。ソフトウェア音量・音響効果は適用されません。",
+    "device.hdmiUnavailable": "接続済みの HDMI / DisplayPort 音声機器を選択してください",
+    "device.hdmiPreparing": "パススルー音声を準備中…",
+    "device.hdmiStopped": "パススルー停止。別の出力への切り替えは行っていません",
+    "device.hdmiReady": "パススルー有効。再生は一時停止中です。アンプの音量を確認してから再生してください。",
+    "device.normalReady": "通常再生に戻りました。",
+    "device.hdmiAwaiting": "音源と機器の形式確認待ち",
+    "device.outputOptions": "音声出力設定"
+  }
+};

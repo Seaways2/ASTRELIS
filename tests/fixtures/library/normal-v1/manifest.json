@@ -1,0 +1,6 @@
+{
+  "schema": "legacy-v1-implicit",
+  "trackCount": 128,
+  "folders": ["K:\\Music"],
+  "generator": "../fixtureFactory.cjs"
+}

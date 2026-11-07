@@ -1,0 +1,6 @@
+{
+  "root": "Z:\\NAS\\Music",
+  "observedTrackIds": ["one", "two", "three", "four", "five", "six", "seven"],
+  "unreadableDirectories": ["Z:\\NAS\\Music\\Unavailable"],
+  "expectedFutureStatus": "partial"
+}

@@ -1,0 +1,17 @@
+{
+  "tracks": [
+    {
+      "id": "missing-tags",
+      "name": "untagged",
+      "artist": "未知艺术家",
+      "album": "未分类专辑",
+      "genre": "未分类",
+      "url": "auralis-media://local/untagged",
+      "format": "FLAC",
+      "size": 1,
+      "sourcePath": "K:\\Music\\untagged.flac",
+      "folder": "K:\\Music"
+    }
+  ],
+  "folders": ["K:\\Music"]
+}

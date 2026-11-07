@@ -1,0 +1,38 @@
+# JavaScript dependencies and package-manager state
+node_modules/
+.pnpm-store/
+.tools/
+
+# Generated frontend / Electron artifacts
+dist/
+dist-electron/
+release/
+review/
+*.tsbuildinfo
+
+# Generated native build trees and binaries
+native-host/build*/
+native-host/out/
+native-host/tools/**/bin/
+native-host/tools/**/obj/
+
+# Vendored upstream dependency (kept on disk for native builds)
+native-host/third_party/JUCE/
+
+# Bundled runtime binaries are deployment inputs, not source
+ffmpeg/*.exe
+video-engine/*.exe
+video-engine/*.com
+video-engine/*.dll
+video-engine/doc/
+
+# Local diagnostics, caches, and editor state
+logs/
+*.log
+.cache/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+native-window/build/
+release-work/

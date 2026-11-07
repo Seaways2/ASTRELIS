@@ -1,0 +1,41 @@
+const {app,BrowserWindow,dialog,ipcMain}=require('electron');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{execFileSync}=require('node:child_process');
+const root=path.resolve(__dirname,'../..'),profile=process.env.ASTRELIS_VISIBILITY_TEST_PROFILE;
+if(!profile||path.dirname(profile)!==path.join(root,'release-work'))throw Error('Isolated profile required');
+delete process.env.VITE_DEV_SERVER_URL;app.setAppPath(root);app.setPath('userData',profile);app.setPath('sessionData',profile);app.getVersion=()=>require('../../package.json').version;
+const folder=path.join(profile,'Media'),hidden=path.join(folder,'Hidden');fs.mkdirSync(hidden,{recursive:true});
+execFileSync(path.join(root,'ffmpeg/ffmpeg.exe'),['-v','error','-f','lavfi','-i','sine=frequency=200','-t','1',path.join(hidden,'secret.flac')],{windowsHide:true});fs.copyFileSync(path.join(hidden,'secret.flac'),path.join(folder,'public.flac'));
+dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});
+const realHandle=ipcMain.handle.bind(ipcMain);ipcMain.handle=(c,h)=>realHandle(c,c==='vst:scan'?async()=>({modules:[],descriptors:[],directories:[],quarantines:[],session:null}):h);
+let win;const js=s=>win.webContents.executeJavaScript(s,true).catch(e=>{console.error("Expression:",s);throw e;}),wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function until(fn,label){for(let i=0;i<250;i++){if(await fn())return;await wait(100)}throw Error('Timeout '+label)}
+async function input(selector,values){await js(`(()=>{const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;document.querySelectorAll(${JSON.stringify(selector)}).forEach((el,i)=>{set.call(el,${JSON.stringify(values)}[i]);el.dispatchEvent(new Event('input',{bubbles:true}))});})()`)}
+const deadline=setTimeout(()=>app.exit(1),90000);require('../../dist-electron/main.js');
+(async()=>{
+ await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'library');
+ await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'scan button');
+ await js(`document.querySelector('.scan-action').click()`);await until(()=>js(`!document.querySelector('.scan-action').disabled&&Boolean(document.querySelector('.library-folder-entry'))`),'scanned');
+ assert.equal(await js(`document.querySelectorAll('.sidebar nav button').length`),8);
+ await js(`document.querySelector('.library-folder-entry').click()`);await until(()=>js(`Boolean(document.querySelector('.library-folder-entry'))`),'child folder');
+ await wait(600);const before=await js(`window.desktop.library.load()`);assert.equal(before.tracks.length,2);
+ const context=selector=>js(`document.querySelector(${JSON.stringify(selector)}).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:350}))`);
+ const menu=text=>js(`[...document.querySelectorAll('.folder-protection-menu button')].find(b=>b.textContent.includes(${JSON.stringify(text)})).click()`);
+ await context('.library-folder-entry');await menu('隐藏并设密码');await input('.folder-protection-dialog input',['0123','0123']);await js(`document.querySelector('.folder-protection-dialog button[type=submit]').click()`);
+ await until(()=>js(`!document.querySelector('.folder-protection-dialog')&&!document.querySelector('.library-folder-entry')`),'hidden child');
+ const after=await js(`window.desktop.library.load()`);assert.equal(after.revision,before.revision);assert.equal(after.tracks.length,2);
+ assert.equal((await js(`window.desktop.library.openFiles([${JSON.stringify(path.join(hidden,'secret.flac'))}])`)).tracks.length,0);
+ await input('.library-search input',['secret']);await wait(400);assert.equal(await js(`document.querySelectorAll('.library-track-entry').length`),0);
+ await input('.library-search input',['']);
+ fs.copyFileSync(path.join(hidden,'secret.flac'),path.join(hidden,'new-secret.flac'));
+ await js(`document.querySelector('.library-management .icon-action').click()`);await until(()=>js(`!document.querySelector('.scan-action').disabled`),'rescan done');
+ await until(async()=> (await js(`window.desktop.library.load()`)).tracks.length===3,'new indexed');
+ assert.equal(await js(`document.querySelectorAll('.library-folder-entry').length`),0);
+ await wait(1200);const snapshot=await js(`window.desktop.library.load()`);assert.ok(await js(`window.desktop.library.loadDerivedIndex(${snapshot.revision})`),'full derived cache retained');
+ await context('.music-library');await menu('显示隐藏内容');await input('.folder-protection-dialog input',['9999']);await js(`document.querySelector('.folder-protection-dialog button[type=submit]').click()`);await until(()=>js(`document.querySelector('[role=alert]')?.textContent.includes('密码不正确')`),'wrong password');await wait(1100);
+ await input('.folder-protection-dialog input',['0123']);await js(`document.querySelector('.folder-protection-dialog button[type=submit]').click()`);await until(()=>js(`!document.querySelector('.folder-protection-dialog')&&Boolean(document.querySelector('.library-folder-entry'))`),'unlocked');
+ await context('.library-folder-entry');await menu('取消隐藏');await until(async()=>!(await js(`window.desktop.library.visibility({action:'status'})`)).roots.length,'unhidden');
+ assert.equal((await js(`window.desktop.library.load()`)).revision,snapshot.revision);assert.ok(fs.existsSync(path.join(hidden,'secret.flac')));
+ await wait(500);fs.writeFileSync(path.join(profile,'folder-visibility.png'),(await win.webContents.capturePage()).toPNG());
+ console.log('PASS folder context protection, 4-digit password, unchanged canonical records, hidden search, inherited new files, cache retained, unlock and unhide');clearTimeout(deadline);app.exit(0);
+})().catch(async error=>{console.error(error);console.error(await js(`document.querySelector('.music-library')?.innerText`));clearTimeout(deadline);app.exit(1)});

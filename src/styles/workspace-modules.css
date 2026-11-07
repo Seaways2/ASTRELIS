@@ -1,0 +1,374 @@
+/* Shared layout rhythm; surfaces.css remains the single glass material owner.
+   No page transforms/filters: the embedded native browser uses viewport bounds. */
+.app-shell {
+  --module-gap: 20px;
+  --module-padding: 22px;
+  --module-title: 16px;
+  --module-muted: #96a9b2;
+}
+.app-shell.theme-light { --module-muted: #506b77; }
+.app-shell :is(.workspace-section, .settings-section, .appearance-section) {
+  min-width: 0;
+  padding: var(--module-padding);
+  border-radius: var(--radius-panel, 8px);
+}
+.app-shell:not(.obs-mode):not(.immersive-mode) :is(.workspace-section, .settings-section, .appearance-section) {
+  border: 0;
+}
+
+/* The light workspace keeps the same one-pixel outline as its controls. At
+   full opacity this resolves to the standard rgba(48,91,101,.18) border and
+   fades linearly with the window opacity/brightness control. */
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .workspace-page :is(
+  .workspace-section, .settings-section, .appearance-section,
+  .panel, .setting-card, .device-card, .theme-card, .playlist-table,
+  .library-card, .folder-card, .vst-browser, .vst-chain,
+  .netease-results, .netease-user-toolbar, .netease-playlist-toolbar
+) {
+  border: 1px solid color-mix(
+    in srgb,
+    rgb(48 91 101) calc(var(--window-opacity) * 18%),
+    transparent
+  );
+}
+.app-shell:not(.obs-mode):not(.immersive-mode) .meters :is(.panel, .cd-deck) {
+  border: 0;
+}
+.app-shell:not(.obs-mode):not(.immersive-mode) :is(
+  .panel,
+  .setting-card,
+  .device-card,
+  .settings-list > label,
+  .appearance-controls > label,
+  .appearance-animation-module,
+  .gpu-render-module,
+  .atmosphere-settings,
+  .playlist-table,
+  .library-command,
+  .library-summary > div,
+  .library-stat,
+  .library-card,
+  .library-entry,
+  .folder-card,
+  .online-browser,
+  .vst-browser,
+  .vst-chain,
+  .channel-strip-popover
+) {
+  border: 0;
+}
+.app-shell :is(.workspace-section, .settings-section, .appearance-section) > h3,
+.app-shell .workspace-section > header h3 {
+  margin: 0;
+  font-size: var(--module-title);
+  line-height: 1.5;
+  font-weight: 600;
+}
+.app-shell :is(.settings-section, .appearance-section) > h3 { margin-bottom: 16px; }
+.app-shell .workspace-section > header { gap: 16px; flex-wrap: wrap; }
+.app-shell .workspace-section :is(select, input[type="search"], input[type="text"]) {
+  min-width: 0;
+  max-width: 100%;
+}
+.app-shell .workspace-section select { min-height: 40px; font-size: 13px; }
+.app-shell :is(.settings-layout, .appearance-layout, .device-page-grid, .vst-workspace) { gap: var(--module-gap); }
+
+/* One list surface: actions above the rows, consistent empty-state spacing. */
+.playlist-section .page-toolbar { height: auto; min-height: 40px; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 0 0 16px; }
+.playlist-section .playlist-toolbar-actions { flex-wrap: wrap; }
+.app-shell .playlist-section .page-toolbar { background: transparent; box-shadow: none; }
+.app-shell .playlist-section > .playlist-table { border: 0; }
+.playlist-section .page-empty { min-height: 240px; }
+
+/* Library source management and browsing are separate, named groups.
+   Do not change virtual row/card dimensions or scrolling ownership. */
+.app-shell .library-command { grid-template-columns: 36px minmax(0,1fr) auto 40px; gap: 16px; min-height: 96px; }
+.app-shell .library-pulse { width: 36px; height: 36px; border: 0; background: transparent; box-shadow: none; }
+.app-shell .library-pulse::before, .app-shell .library-pulse::after { content: none; }
+.app-shell .library-command h3 { margin: 0 0 6px; font-size: var(--module-title); }
+.app-shell .library-command p { color: var(--module-muted); font-size: 12px; line-height: 1.6; }
+.library-browse { display: grid; gap: 16px; margin-bottom: var(--module-gap); }
+.library-browse .library-controls { margin: 0; grid-template-columns: minmax(0,1fr); gap: 12px; }
+.library-browse .library-search { max-width: none; width: 100%; }
+.library-browse .facet-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 320px; max-width: 100%; }
+.library-browse .facet-tabs button { width: 100%; min-width: 0; padding-inline: 10px; }
+.app-shell .library-browse .library-view-toolbar { margin: 0; padding: 0; background: transparent; border: 0; box-shadow: none; flex-wrap: wrap; }
+.library-browse .category-back { justify-self: start; }
+.library-browse .library-sort-controls { flex-wrap: wrap; }
+.library-browse .library-view-switch { flex-wrap: wrap; }
+
+/* Output choices form one primary group; status/help and browser fallback
+   share the secondary row. Advanced explanations remain available on demand. */
+.device-page-grid { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; padding-bottom: 20px; }
+.device-page-grid .unified-output-config { grid-column: 1 / -1; gap: 20px; }
+.device-page-grid .chromium-device-setting { margin: 4px 0 0; display: grid; gap: 16px 20px; }
+.chromium-device-setting label { font-size: 13px; font-weight: 600; }
+.chromium-device-setting small { display: block; margin-top: 6px; color: var(--module-muted); font-size: 12px; line-height: 1.65; }
+.chromium-device-setting .error-text { grid-column: 1 / -1; }
+.device-page-grid .native-output-overview { grid-column: 1 / -1; gap: 16px; }
+.device-page-grid .unified-output-section { border: 0; padding-top: 0; grid-template-columns: minmax(160px,.65fr) minmax(0,1.35fr); }
+.device-page-grid .native-advanced-settings { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 20px; }
+.device-page-grid .native-advanced-settings > div { grid-column: 1 / -1; }
+.device-page-grid .unified-output-section h3 { font-size: 13px; }
+.native-device-picker { display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 10px; align-items: stretch; min-width: 0; }
+.native-device-picker > select { width: 100%; min-width: 0; }
+.native-device-picker .native-device-refresh { display: grid; place-items: center; width: 42px; min-height: 42px; padding: 0; border: 1px solid color-mix(in srgb, var(--module-muted) 25%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--module-muted); cursor: pointer; }
+.native-device-picker .native-device-refresh:hover:not(:disabled) { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.native-device-picker .native-device-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.native-device-picker .native-device-refresh:disabled { cursor: default; }
+.device-page-grid .native-mode-options button { min-height: 90px; font-size: 13px; }
+.device-page-grid .native-mode-options button > small { color: var(--module-muted); font-size: 12px; }
+.device-page-grid .native-apply-button { min-width: 0; max-width: 100%; white-space: normal; }
+.device-page-grid .native-configuration-fields { display: grid; gap: 20px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.module-details { min-width: 0; color: var(--module-muted); font-size: 12px; line-height: 1.65; }
+.module-details > summary { cursor: pointer; padding: 8px 0; color: inherit; font-size: 13px; }
+.module-details > :not(summary) { margin-top: 14px; }
+.module-details .native-guide-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 28px; }
+@media(max-width:1300px) { .module-details .native-guide-grid { grid-template-columns: minmax(0,1fr); } }
+.module-details .native-guide-grid article { padding: 12px 0; border: 0; background: transparent; }
+.module-details .native-overview-intro { color: var(--module-muted); }
+
+/* Stable flex lists tolerate optional warnings, progress and scan sources.
+   The former fixed grid row count assigned space to the wrong optional child. */
+.app-shell .vst-workspace { height: auto; min-height: 100%; grid-template-rows: auto auto; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; padding-bottom: 20px; }
+.app-shell .vst-workspace :is(.vst-browser,.vst-chain) { display: flex; flex-direction: column; gap: 16px; overflow: visible; }
+.vst-workspace :is(.vst-plugin-list,.vst-rack-list) { flex: 1 0 auto; min-height: 160px; max-height: 480px; overflow-y: auto; }
+.vst-workspace .vst-engine-status { gap: 16px; padding: 16px 22px; }
+.vst-workspace .vst-engine-status > button { width: auto; min-height: 40px; }
+.vst-workspace :is(.vst-engine-status > button,.vst-directory-menu-trigger) { font-size: 12px; }
+.vst-workspace .vst-scan-summary > span small { font-size: 10px; line-height: 1.5; }
+.vst-workspace .vst-engine-status span { font-size: 12px; line-height: 1.6; }
+.vst-workspace .vst-tools button { min-width: 34px; min-height: 34px; }
+.vst-workspace .vst-browser footer { gap: 12px; flex-wrap: wrap; line-height: 1.6; }
+.vst-workspace .vst-browser footer small { color: var(--module-muted); }
+.vst-workspace .vst-warning { font-size: 12px; line-height: 1.65; }
+.vst-workspace .vst-slot { min-width: 0; }
+.vst-workspace .vst-quarantine-list:empty { display: none; }
+
+/* App-owned online navigation uses the same control spacing and typography.
+   Keep the provider content box and its resize observer intact. */
+.app-shell .workspace-online.online-multi { grid-template-rows: 64px minmax(0,1fr); }
+.app-shell .workspace-online .online-provider-tabs { padding: 12px 22px; gap: 8px; background: transparent; border: 0; }
+.app-shell .workspace-online .online-provider-tabs button { min-height: 40px; font: inherit; font-size: 13px; letter-spacing: 0; border: 0; }
+.app-shell .workspace-online .online-provider-tabs button.active { background: color-mix(in srgb,var(--accent) 12%,transparent); }
+.workspace-online .browser-toolbar { padding-inline: 16px; }
+.workspace-online .browser-toolbar input { font-size: 12px; }
+.app-shell .workspace-online .browser-toolbar form { background: transparent; color: var(--module-muted); border: 1px solid var(--surface-glass-border); }
+.app-shell .workspace-online .browser-toolbar input,
+.app-shell.theme-light .workspace-online .browser-toolbar form input { background: transparent; color: inherit; }
+.app-shell .workspace-section :is(button,select,input,summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+@media(max-width:1300px) {
+  .app-shell .vst-workspace { grid-template-columns: minmax(0,1fr); }
+  .vst-workspace .vst-engine-status { grid-column: 1; }
+  .device-page-grid { grid-template-columns: minmax(0,1fr); }
+  .device-page-grid .native-mode-options { grid-template-columns: minmax(0,1fr); }
+  .device-page-grid .native-mode-options button { min-height: 76px; }
+}
+@media(max-width:900px) {
+  .app-shell { --module-padding:16px; --module-gap:16px; }
+  .app-shell .library-command { grid-template-columns: 36px minmax(0,1fr) 40px; }
+  .library-command .scan-action { grid-column: 2; grid-row: 2; justify-self: start; }
+  .library-command .icon-action { grid-column:3; grid-row:2; }
+  .device-page-grid :is(.unified-output-section,.native-advanced-settings) { grid-template-columns:minmax(0,1fr); }
+}
+
+/* Compact library header keeps browsing space available below the controls. */
+.app-shell .library-header { padding: 12px 16px; margin-bottom: 12px; }
+.app-shell .library-header .library-command { min-height: 44px; padding: 0; gap: 12px; margin: 0; }
+.app-shell .library-header .library-command h3 { margin: 0 0 2px; font-size: 14px; }
+.app-shell .library-header .library-command p { margin: 0; }
+.app-shell .library-header .library-telemetry { margin: 10px 0; gap: 8px; }
+.app-shell .library-header .library-stat { padding: 4px 8px; gap: 7px; }
+.app-shell .library-header .library-stat > div { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.app-shell .library-header .library-stat b { font-size: 14px; }
+.app-shell .library-header .library-stat span { margin: 0; font-size: 9px; }
+.app-shell .library-header .library-browse { padding: 10px 0 0; margin: 0; gap: 10px; border-top: 1px solid rgba(126,169,176,.12); }
+.app-shell .library-header .library-controls { grid-template-columns: minmax(180px,1fr) auto; gap: 10px; }
+.app-shell .library-header .library-controls .category-back { grid-column: 1 / -1; }
+.app-shell .library-header .library-view-toolbar { gap: 8px; }
+@media (max-width: 1100px) {
+  .app-shell .library-header .library-controls { grid-template-columns: minmax(0,1fr); }
+  .app-shell .library-header .library-telemetry { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+
+/* Library results stay visually static while the surrounding workspace reacts. */
+.app-shell .music-library :is(.library-entry, .library-card, .folder-card) {
+  --glow-strength: 0;
+  --fx-strength: 0;
+  --fx-reflection-gain: 0;
+  --fx-light-x: 50%;
+  --fx-light-y: 30%;
+  --surface-glass-highlight: transparent;
+  --surface-glass-glow: transparent;
+  --frost-inner-glow: transparent;
+  --frost-outer-glow: transparent;
+}
+.app-shell .music-library :is(.library-entry, .library-card, .folder-card),
+.app-shell .music-library :is(.library-entry, .library-card, .folder-card) * {
+  text-shadow: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+.app-shell .music-library .card-scanline { display: none; }
+
+.library-folder-manager { margin: 10px 0; font-size: 12px; }
+.library-folder-manager summary { cursor: pointer; padding: 8px 0; color: var(--accent); }
+.library-folder-manager > p { color: var(--module-muted); line-height: 1.6; }
+.library-managed-folder { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(126,169,176,.15); }
+.library-managed-folder > span { min-width: 0; overflow-wrap: anywhere; }
+.library-managed-folder > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.library-managed-folder button { min-height: 32px; padding: 5px 12px; flex-shrink: 0; }
+
+.app-shell .library-header .library-command { grid-template-columns: 36px minmax(0,1fr) auto auto 40px; }
+.library-command .folder-manager-action[aria-expanded="true"] { border-color: var(--accent); }
+@media (max-width: 1000px) {
+  .app-shell .library-header .library-command { grid-template-columns: 36px minmax(0,1fr) auto 40px; }
+  .app-shell .library-header .library-command .scan-action { grid-column: 2; grid-row: 2; justify-self: start; }
+  .app-shell .library-header .library-command .folder-manager-action { grid-column: 3; grid-row: 2; }
+  .app-shell .library-header .library-command .icon-action { grid-column: 4; grid-row: 2; }
+}
+
+/* Media library: compact management row, search row, then browsing controls. */
+.app-shell .library-header { position: relative; padding: 10px 12px; margin-bottom: 8px; }
+.app-shell .library-header .library-command { min-height: 36px; gap: 8px; grid-template-columns: 28px minmax(0,1fr) auto auto 34px; }
+.app-shell .library-header .library-command .primary-action { min-height: 32px; height: 32px; padding: 0 10px; grid-column: auto; grid-row: auto; }
+.app-shell .library-header .library-command .icon-action { width: 32px; height: 32px; grid-column: auto; grid-row: auto; }
+.app-shell .library-header .library-command .library-pulse { width: 28px; height: 28px; }
+.app-shell .library-header .library-command h3 { font-size: 12px; }
+.app-shell .library-header .library-command p { font-size: 10px; line-height: 1.2; }
+.library-statistics { margin: 2px 0 4px 36px; color: var(--module-muted); font-size: 11px; }
+.library-statistics summary { cursor: pointer; width: fit-content; }
+.app-shell .library-header .library-browse { padding-top: 6px; gap: 6px; }
+.app-shell .library-header .library-controls { grid-template-columns: minmax(160px,1fr) auto; gap: 8px; }
+.app-shell .library-header .library-search { height: 34px; }
+.app-shell .library-header .facet-tabs button { padding: 6px 10px; min-height: 32px; }
+.app-shell .library-header .library-view-toolbar { display: flex; align-items: center; flex-wrap: wrap; margin: 0; gap: 8px 12px; }
+.app-shell .library-header .library-media-filter { gap: 2px; }
+.app-shell .library-header .library-media-filter button { padding: 5px 9px; font-size: 12px; border-radius: 4px; }
+.app-shell .library-header .library-sort-controls { margin-left: auto; }
+.app-shell .library-header .library-view-switch button { padding: 5px 8px; min-height: 30px; }
+.app-shell .library-header .library-sort-controls select,
+.app-shell .library-header .library-sort-controls button { height: 30px; min-height: 30px; }
+@media (max-width: 1100px) {
+  .app-shell .library-header .library-controls { grid-template-columns: minmax(0,1fr); }
+  .app-shell .library-header .library-command { grid-template-columns: 24px minmax(0,1fr) auto auto 32px; }
+  .app-shell .library-header .library-command .primary-action { font-size: 11px; padding: 0 6px; }
+}
+
+.app-shell .library-header .library-command { min-height: 32px; }
+.app-shell .library-header .library-command h3 { font-size: 12px; font-weight: 500; }
+.app-shell .library-header .library-browse { padding-top: 5px; }
+.app-shell .library-header .facet-tabs button,
+.app-shell .library-header .library-media-filter button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.app-shell .library-header .facet-tabs svg,
+.app-shell .library-header .library-media-filter svg { width: 14px; height: 14px; flex-shrink: 0; }
+.music-library > .folder-breadcrumb { min-height: 28px; padding: 4px 10px; margin: 4px 0; background: transparent; }
+
+/* Equal-width category controls with room for icon and label. */
+.app-shell .library-header .facet-tabs { width: 400px; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.app-shell .library-header .facet-tabs button { width: 100%; min-width: 0; padding: 0 8px; gap: 8px; }
+.app-shell .library-header .facet-tabs button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.app-shell .library-header .library-media-filter button { gap: 7px; padding-inline: 10px; }
+
+/* Wrap groups horizontally instead of stacking every group at narrow widths. */
+.app-shell .library-header .library-view-toolbar { flex-direction:row; justify-content:flex-start; align-items:center; }
+.app-shell .library-header :is(.library-view-switch,.library-media-filter,.library-sort-controls) { flex:0 0 auto; justify-content:flex-start; max-width:100%; }
+.app-shell .library-header .library-view-switch button { flex:0 0 auto; white-space:nowrap; }
+.app-shell .library-header :is(button,select) { white-space:nowrap; }
+.app-shell .library-header .library-controls { min-width:0; }
+.app-shell .library-header .facet-tabs { max-width:100%; overflow-x:auto; }
+.app-shell .media-flow .library-entry-actions button { white-space:nowrap; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+@media (max-width:1180px) {
+  .app-shell .library-header .library-view-toolbar { gap:6px 10px; }
+  .app-shell .library-header .library-sort-controls { margin-left:0; }
+}
+
+/* Library controls: primary search row, browsing row, secondary actions on demand. */
+.app-shell .library-header-simple { overflow: auto; }
+.app-shell .library-header-simple .library-command { display: flex; min-height: 0; gap: 8px; }
+.app-shell .library-header-simple .library-command .library-pulse { display: none; }
+.app-shell .library-header-simple .library-command > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.app-shell .library-header-simple .library-command :is(h3,p) { margin: 0; font-size: 11px; color: var(--module-muted); }
+.app-shell .library-header-simple .library-controls { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 8px; }
+.app-shell .library-header-simple .library-view-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-shell .library-header-simple .facet-tabs { width: auto; flex: 1 1 auto; border: 0; background: transparent; }
+.app-shell .library-header-simple .facet-tabs button { border: 0; border-radius: 0; background: transparent; border-bottom: 2px solid transparent; }
+.app-shell .library-header-simple .facet-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); background: transparent; }
+.app-shell .library-header-simple :is(select,.library-menu-trigger) { min-height: 32px; padding: 6px 10px; border: 1px solid var(--surface-glass-border); border-radius: 5px; background: var(--module-surface, #11212b); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.app-shell .library-header-simple .library-menu { position: relative; margin-left: 0; }
+/* Popovers use the browser top layer, not the cover flow stacking context. */
+.app-shell .library-header-simple .library-menu-popup { position: fixed; inset: auto; margin: 0; padding: 8px; box-sizing: border-box; width: max-content; min-width: 210px; max-width: calc(100vw - 16px); overflow: auto; background: #11212b; color: var(--text, #dce7ed); border: 1px solid #7398ab66; border-radius: 8px; box-shadow: 0 8px 24px #0006; }
+.app-shell .library-header-simple .library-menu-popup:popover-open { display: grid; gap: 6px; }
+.app-shell .library-header-simple .library-menu-popup button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; height: 36px; min-height: 36px; margin: 0; padding: 0 10px; box-sizing: border-box; border: 1px solid #7398ab55; border-radius: 5px; background: #7ca9ba12; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.app-shell .library-header-simple .library-menu-popup button:disabled { opacity: .45; cursor: default; }
+.app-shell .library-header-simple .library-menu-popup svg { width: 15px; height: 15px; flex-shrink: 0; }
+.app-shell .library-header-simple .library-menu-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; margin: 0; }
+.app-shell .library-header-simple .library-menu-trigger svg { width: 14px; height: 14px; }
+.app-shell .library-header-simple :is(.library-media-filter,.library-view-select) { height: 34px; }
+.library-folder-dialog { padding: 20px; width: min(640px,calc(100vw - 32px)); max-height: calc(100vh - 32px); box-sizing: border-box; border: 1px solid #7398ab88; border-radius: 12px; background: #11212b; color: #dce7ed; overflow: hidden; }
+.library-folder-dialog[open] { display: flex; flex-direction: column; gap: 16px; }
+.library-folder-dialog::backdrop { background: #0007; }
+.library-folder-dialog > header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 12px; }
+.library-folder-dialog-body { overflow: auto; min-height: 0; }
+.library-folder-dialog .library-folder-manager { margin: 0; }
+.library-folder-dialog .library-folder-manager > p { margin: 0 0 12px; }
+.library-folder-dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 6px 12px; border: 1px solid #7398ab55; border-radius: 5px; background: #7ca9ba12; color: inherit; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.library-folder-dialog button:disabled { opacity: .45; cursor: default; }
+.library-folder-dialog svg { width: 16px; height: 16px; flex-shrink: 0; }
+.library-folder-dialog .library-managed-folder { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 0; }
+.library-folder-dialog .library-managed-folder > span { flex: 1; min-width: 100px; overflow-wrap: anywhere; }
+.library-folder-dialog .library-managed-folder > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.library-folder-dialog .library-folder-manager > button { margin-top: 12px; }
+.app-shell.theme-light .library-folder-dialog,
+.app-shell.theme-light .library-header-simple .library-menu-popup { background: #eff5f8; color: #23404c; }
+.app-shell .library-header-simple .library-sort-controls { display: block; }
+.app-shell .library-film-match .film-api-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 16px; }
+.artwork-navigation { display: flex; justify-content: flex-start; }
+@media(max-width:900px) {
+ .app-shell .library-header-simple .facet-tabs { flex-basis: 100%; width: 100%; }
+ .app-shell .library-header-simple .library-view-select { flex: 1; min-width: 0; }
+}
+
+.app-shell .library-artwork-dialog > header { align-items: center; gap: 12px; margin-bottom: 16px; }
+.app-shell .library-artwork-dialog :is(.match-dialog-actions,.artwork-navigation,.film-api-toolbar) button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; min-height: 36px; box-sizing: border-box; margin: 0; padding: 0 12px; font: inherit; font-size: 13px; }
+.app-shell .library-artwork-dialog .match-dialog-actions { display: flex; align-items: center; gap: 8px; }
+.app-shell .library-artwork-dialog .match-dialog-actions button:has(> svg:only-child) { width: 36px; padding: 0; }
+.app-shell .library-artwork-dialog .film-search-row { gap: 8px; }
+
+/* One theme-aware control palette for library menus and media dialogs. */
+.app-shell { --library-control-fill: color-mix(in srgb,var(--accent) 8%,transparent); --library-control-border: color-mix(in srgb,var(--accent) 38%,transparent); --library-control-hover: color-mix(in srgb,var(--accent) 18%,transparent); }
+.app-shell :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.batch-match-dialog,.music-match-dialog) button,
+.app-shell .library-header-simple :is(.library-menu-trigger,.library-scan-cancel) {
+ color: var(--accent); background: var(--library-control-fill); border: 1px solid var(--library-control-border); box-shadow: none;
+}
+.app-shell :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.batch-match-dialog,.music-match-dialog) button:not(:disabled):hover,
+.app-shell .library-header-simple :is(.library-menu-trigger,.library-scan-cancel):not(:disabled):hover { background: var(--library-control-hover); border-color: var(--accent); }
+.app-shell :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.batch-match-dialog,.music-match-dialog) button:disabled,
+.app-shell .library-header-simple .library-scan-cancel:disabled { color: var(--accent); background: var(--library-control-fill); opacity: .45; cursor: default; }
+.app-shell .library-scan-progress:has(.library-scan-cancel) { grid-template-columns: 36px minmax(0,1fr) auto auto; gap: 10px; }
+.app-shell .library-scan-cancel { min-height: 34px; padding: 6px 12px; border-radius: 5px; font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
+@media(max-width:900px) {
+ .app-shell .library-scan-progress:has(.library-scan-cancel) { grid-template-columns: minmax(0,1fr) auto auto; padding: 8px; gap: 8px; }
+ .app-shell .library-scan-progress:has(.library-scan-cancel) .scan-radar { display: none; }
+}
+
+/* Floating library surfaces share the dense glass used by the other player menus. */
+.app-shell { --library-floating-fill: var(--menu-surface); --library-floating-text: var(--menu-text); }
+.app-shell.theme-light { --library-floating-fill: var(--menu-surface); --library-floating-text: var(--menu-text); }
+.app-shell:is(.theme-light,:not(.theme-light)) :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.batch-match-dialog,.music-match-dialog) {
+ background: var(--surface-dither) repeat, var(--library-floating-fill); color: var(--library-floating-text); border-color: var(--surface-glass-border); backdrop-filter: var(--surface-glass-filter); -webkit-backdrop-filter: var(--surface-glass-filter);
+}
+.app-shell .library-header-simple :is(.library-media-filter,.library-view-select) { padding: 0; border: 0; background: transparent; }
+.app-shell .library-header-simple :is(.library-media-filter,.library-view-select) > .library-menu-trigger { width: 100%; }
+.app-shell .library-header-simple .library-menu-popup button[role="option"] { justify-content: space-between; }
+.app-shell .library-header-simple .library-menu-popup :is(button[aria-selected="true"],button[aria-pressed="true"]) { background: var(--library-control-hover); border-color: var(--accent); }
+.app-shell .library-header-simple .library-menu-trigger:focus-visible,
+.app-shell .library-menu-popup button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.app-shell .library-artwork-dialog .artwork-navigation { margin-bottom: 16px; }
+.app-shell .library-artwork-dialog > strong { display: block; margin-bottom: 12px; }
+
+/* Dialog headings use an icon slot rather than the text baseline. */
+.app-shell .library-artwork-dialog > header > b { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 1.4; }
+.app-shell .library-artwork-dialog > header > b > svg { display: block; flex: 0 0 18px; width: 18px; height: 18px; color: var(--accent); }
+.app-shell .library-artwork-dialog > header > button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; padding: 0; }

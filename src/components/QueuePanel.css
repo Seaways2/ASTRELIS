@@ -1,0 +1,13 @@
+/* Title, tabs and optional playback summary keep their natural height. */
+.queue-drawer.media-queue-drawer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.media-queue-drawer > .queue-title { flex: 0 0 48px; min-height: 48px; }
+.media-queue-drawer > .queue-type-tabs { flex: 0 0 auto; padding: 8px 10px; }
+.media-queue-drawer .queue-type-tabs button { min-height: 34px; padding: 6px 10px; }
+.media-queue-drawer > .video-sidebar-current { flex: 0 0 auto; min-height: 64px; }
+.media-queue-drawer > .queue-list { flex: 1 1 auto; min-height: 0; }
+.media-queue-drawer .queue-row > div { min-width: 0; }

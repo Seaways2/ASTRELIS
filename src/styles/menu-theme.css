@@ -1,0 +1,186 @@
+/* Shared tokens also cover native option popups and nested/portalled menus. */
+.app-shell { color-scheme: dark; --menu-surface: rgba(8,16,19,.94); --menu-solid: #081013; --menu-text: #dce7ed; --menu-muted: #aebec7; --menu-field: rgba(0,0,0,.18); --menu-accent-ink: var(--accent); }
+.app-shell.theme-light { color-scheme: light; --menu-surface: rgba(226,237,242,.96); --menu-solid: #e2edf2; --menu-text: #000; --menu-muted: #333; --menu-field: rgba(255,255,255,.46); --menu-accent-ink: #000; --library-control-border: rgba(35,55,60,.24); --library-control-fill: rgba(255,255,255,.22); --library-control-hover: color-mix(in srgb,var(--accent) 10%,rgba(255,255,255,.28)); }
+.app-shell select { color-scheme: inherit; }
+.app-shell select :is(option,optgroup),
+.app-shell.theme-light select :is(option,optgroup),
+.app-shell.theme-light .system-setting-control option { color: var(--menu-text); background: var(--menu-solid); }
+.app-shell :is(.folder-protection-menu,.folder-protection-dialog,.vst-directory-menu .vst-directory-list,.channel-plugin-results,.channel-native-output-guide) {
+ background: var(--surface-dither) repeat,var(--menu-surface); color: var(--menu-text); border-color: var(--surface-glass-border); backdrop-filter: var(--surface-glass-filter);
+}
+.app-shell :is(.library-artwork-dialog,.library-api-settings,.folder-protection-dialog) :is(input:not([type=checkbox]):not([type=radio]),select),
+.app-shell .library-header-simple .library-menu-popup select { color: var(--menu-text); background: var(--menu-field); border-color: var(--library-control-border); }
+.app-shell :is(.film-preview,.batch-job,.batch-candidates > label) { background: var(--menu-field); color: var(--menu-text); }
+.app-shell :is(.film-results small,.film-credits,.batch-job-title small,.batch-saved-toggle) { color: var(--menu-muted); }
+.app-shell .library-artwork-dialog img:not(.tmdb-logo) { background: var(--menu-field); }
+.app-shell :is(.folder-protection-menu,.folder-protection-dialog) button { color: var(--accent); background: var(--library-control-fill); border-color: var(--library-control-border); }
+.app-shell :is(.folder-protection-menu,.folder-protection-dialog) button:not(:disabled):hover,
+.app-shell :is(.vst-directory-list,.channel-plugin-results) button:not(:disabled):hover { background: var(--library-control-hover); color: var(--accent); }
+.app-shell :is(.film-results button[aria-pressed=true],.batch-candidates > label.chosen) { background: var(--library-control-hover); border-color: var(--accent); }
+.app-shell.theme-light .channel-strip-popover.light :is(.channel-plugin-results,.channel-native-output-guide) { background: var(--menu-surface); color: var(--menu-text); }
+
+.app-shell .library-artwork-dialog > header { color: var(--menu-text); }
+.app-shell .library-artwork-dialog p:not([role="status"]) { color: var(--menu-muted); }
+
+/* Override legacy light-mode black text within themed media dialogs. */
+.app-shell.theme-light .library-artwork-dialog :is(b,strong,span,label,input,select) { color: var(--menu-text) !important; }
+.app-shell.theme-light .library-artwork-dialog p:not([role="status"]) { color: var(--menu-muted) !important; }
+.app-shell.theme-light .library-artwork-dialog :is(button,[role="status"]) { color: var(--menu-accent-ink) !important; }
+
+/* One section-heading rhythm across settings, devices and plugin tools. */
+.app-shell h3.section-heading { display: flex; align-items: center; gap: 10px; min-width: 0; line-height: 1.5; }
+.app-shell h3.section-heading > svg { display: block; width: 18px; height: 18px; flex: 0 0 18px; color: var(--accent); }
+.app-shell h3.section-heading > span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Empty folders should share the pale cover treatment of tracks in light mode. */
+.app-shell.theme-light .music-library .library-folder-entry .cover-tile.covers-0 {
+  background: #e4f0f5; color: color-mix(in srgb,var(--accent) 48%,#426e83);
+}
+.app-shell.theme-light .music-library .library-folder-badge {
+  background:rgba(226,237,242,.93); color:var(--menu-accent-ink);
+  border-color:color-mix(in srgb,var(--accent) 28%,#9bb3bf);
+}
+.app-shell.theme-light .music-library .library-view-mosaic .library-folder-control .library-folder-badge {
+  color: #d8f4fb; background: transparent; border: 0;
+}
+
+/* The page is the actual virtual-list scroller. Show its native, draggable
+   thumb for grid/list views, with a palette matching the active theme. */
+.app-shell .page-content:has(.music-library .library-grid) {
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in srgb,var(--accent) 42%,var(--menu-muted)) color-mix(in srgb,var(--menu-surface) 72%,transparent);
+}
+.app-shell .page-content:has(.music-library .library-grid)::-webkit-scrollbar { display:block; width:12px; height:12px; }
+.app-shell .page-content:has(.music-library .library-grid)::-webkit-scrollbar-track { background:color-mix(in srgb,var(--menu-surface) 72%,transparent); border-radius:8px; }
+.app-shell .page-content:has(.music-library .library-grid)::-webkit-scrollbar-thumb { background:color-mix(in srgb,var(--accent) 42%,var(--menu-muted)); border:3px solid transparent; background-clip:padding-box; border-radius:8px; }
+.app-shell .page-content:has(.music-library .library-grid)::-webkit-scrollbar-thumb:hover { background-color:var(--menu-accent-ink); }
+
+/* Match overlays, popovers and background-task controls to the same palette. */
+.app-shell .match-task-dock { background:var(--menu-surface); color:var(--menu-text); border-color:var(--library-control-border); backdrop-filter:var(--surface-glass-filter); }
+.app-shell .match-task-dock :is(span,small) { color:var(--menu-muted); }
+.app-shell .match-task-dock button,
+.app-shell .library-header-simple .library-menu-popup button { color:var(--menu-accent-ink); background:var(--library-control-fill); border-color:var(--library-control-border); }
+.app-shell.theme-light .match-task-dock :is(strong,span,small) { color:var(--menu-text) !important; }
+.app-shell.theme-light .match-task-dock :is(span,small) { color:var(--menu-muted) !important; }
+.app-shell.theme-light .match-task-dock button,
+.app-shell.theme-light .library-header-simple .library-menu-popup button,
+.app-shell.theme-light .library-folder-dialog button { color:var(--menu-accent-ink) !important; }
+.app-shell.theme-light .library-artwork-dialog :is(progress,small) { color:var(--menu-accent-ink); accent-color:var(--menu-accent-ink); }
+.app-shell.theme-light :is(.folder-protection-menu,.folder-protection-dialog,.vst-directory-list,.channel-plugin-results,.channel-native-output-guide) {
+  color:var(--menu-text); background-color:var(--menu-surface);
+}
+.app-shell.theme-light :is(.folder-protection-menu,.folder-protection-dialog,.vst-directory-list,.channel-plugin-results,.channel-native-output-guide) :is(p,small,span,label) {
+  color:var(--menu-muted) !important;
+}
+.app-shell.theme-light :is(.folder-protection-menu,.folder-protection-dialog,.vst-directory-list,.channel-plugin-results,.channel-native-output-guide) button {
+  color:var(--menu-accent-ink) !important;
+}
+.app-shell.theme-light .library-flow-layout > .library-tools-toggle,
+.app-shell.theme-light .library-flow-layout > .library-header {
+  background:var(--menu-surface); color:var(--menu-text); border-color:var(--library-control-border);
+}
+
+/* Light menus use the same neutral ink and UI font as the main workspace.
+   Reserve the theme accent for selected states and keyboard focus. */
+.app-shell.theme-light :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.match-task-dock) {
+  color:var(--menu-text); font-family:Inter,"Segoe UI",sans-serif;
+}
+.app-shell.theme-light :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.match-task-dock) :is(button,input,select,textarea) {
+  font-family:inherit; color:var(--menu-text) !important;
+}
+.app-shell.theme-light .library-artwork-dialog :is(b,strong,span,label,input,select),
+.app-shell.theme-light .library-artwork-dialog :is(button,[role="status"]),
+.app-shell.theme-light .match-task-dock :is(strong,span,small),
+.app-shell.theme-light .match-task-dock button,
+.app-shell.theme-light .library-header-simple .library-menu-popup :is(button,span),
+.app-shell.theme-light .library-folder-dialog button { color:var(--menu-text) !important; }
+.app-shell.theme-light .library-artwork-dialog :is(p,small),
+.app-shell.theme-light .match-task-dock :is(span,small) { color:var(--menu-muted) !important; }
+.app-shell.theme-light :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings) button,
+.app-shell.theme-light .match-task-dock button { border-color:var(--library-control-border); background:var(--library-control-fill); }
+.app-shell.theme-light :is(.library-header-simple .library-menu-popup,.library-folder-dialog,.library-artwork-dialog,.library-api-settings,.match-task-dock) button:disabled {
+  opacity:.62; color:#333 !important;
+}
+.app-shell.theme-light :is(.library-artwork-dialog,.library-api-settings,.library-header-simple .library-menu-popup) :is(input:not([type=checkbox]):not([type=radio]),select) {
+  border-color:var(--library-control-border); background:var(--menu-field); color:var(--menu-text) !important;
+}
+.app-shell.theme-light .library-header-simple .library-menu-popup button[aria-pressed="true"],
+.app-shell.theme-light .library-header-simple .library-menu-popup button[aria-selected="true"] {
+  border-color:color-mix(in srgb,var(--accent) 55%,#566); background:var(--library-control-hover);
+}
+.app-shell.theme-light .library-artwork-dialog :is(progress,small) { color:var(--menu-text); accent-color:var(--accent); }
+
+/* The fullscreen library follows the active light palette across every view. */
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen {
+  color-scheme: light;
+  --library-control-fill: rgba(247, 251, 252, .96);
+  --library-control-border: rgba(57, 93, 104, .28);
+  --library-control-hover: color-mix(in srgb, var(--accent) 12%, #eef5f7);
+  --menu-surface: rgba(247, 251, 252, .98);
+  --menu-solid: #f4f9fa;
+  --menu-text: #1b3339;
+  --menu-muted: #526e75;
+  --menu-field: rgba(255, 255, 255, .86);
+  color: #1b3339;
+  background: radial-gradient(ellipse at 50% 0%, #f9fcfd, #e6f0f3 72%);
+}
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-entry:not(.library-track-entry):not(.library-folder-entry),
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen :is(.library-view-cards, .library-view-large, .library-view-details) .library-entry,
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .media-flow .media-flow-item .library-entry {
+  background: #f4f9fa;
+  border-color: rgba(57, 93, 104, .2);
+}
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-view-toolbar :is(
+  .library-preview-breadcrumb button,
+  .facet-tabs button,
+  .library-menu-trigger,
+  .library-mosaic-preview-toggle,
+  .library-preview-zoom
+),
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-view-toolbar :is(
+  .library-preview-breadcrumb button,
+  .facet-tabs button,
+  .library-menu-trigger,
+  .library-mosaic-preview-toggle
+) span,
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-preview-breadcrumb > span {
+  color: #1b3339 !important;
+}
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-view-toolbar .facet-tabs button.active,
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-view-toolbar .facet-tabs button.active span {
+  color: color-mix(in srgb, var(--accent) 62%, #163b47) !important;
+}
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-preview-zoom output { color: #315d6c; }
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-menu-popup {
+  color-scheme: light; color: #1b3339; background: #f4f9fa;
+  border-color: rgba(57, 93, 104, .28);
+}
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-menu-popup button {
+  color: #1b3339 !important;
+  background: #fff;
+  border-color: rgba(57, 93, 104, .24);
+}
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-menu-popup button span { color: inherit !important; }
+.app-shell.theme-light .music-library.library-mosaic-fullscreen:fullscreen .library-menu-popup button:is(:hover, [aria-pressed="true"], [aria-selected="true"]) {
+  border-color: var(--accent); background: var(--library-control-hover);
+}
+
+/* An empty video is a light workspace panel until a picture is playing. */
+.app-shell.theme-light .video-empty-mode {
+  color: #1b3339;
+  background: linear-gradient(145deg, #f5fafb, #e5f0f3);
+}
+.app-shell.theme-light .video-empty-mode > svg { color: color-mix(in srgb, var(--accent) 75%, #315d6c); }
+.app-shell.theme-light .video-empty-mode h2 { color: #1b3339 !important; }
+.app-shell.theme-light .video-empty-mode p { color: #526e75 !important; }
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .center-stage .video-empty-mode button {
+  box-sizing: border-box; min-width: 132px; height: 46px; padding: 0 16px;
+  color: #1b3339 !important; background: #fff !important;
+  border: 1px solid rgba(48, 91, 101, .3) !important;
+  border-radius: 6px; font-size: 13px; letter-spacing: 0;
+}
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .center-stage .video-empty-mode button:hover {
+  background: color-mix(in srgb, var(--accent) 10%, #fff) !important;
+  border-color: color-mix(in srgb, var(--accent) 50%, rgba(48, 91, 101, .3)) !important;
+}
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .center-stage .video-empty-mode button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

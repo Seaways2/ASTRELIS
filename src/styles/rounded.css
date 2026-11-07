@@ -1,0 +1,153 @@
+/* Shared corner geometry. Material and continuous window surfaces stay in
+   surfaces.css; rounding a content card must not create a new pane or seam. */
+.app-shell {
+  --radius-panel: 8px;
+  --radius-control: 6px;
+}
+
+/* Content surfaces and app-owned menus, including portals inside .app-shell.
+   Do not clip every panel: the optical deck and floating controls need overflow. */
+.app-shell :is(
+  .panel,
+  .appearance-section,
+  .settings-section,
+  .setting-card,
+  .device-card,
+  .theme-card,
+  .settings-list > label,
+  .appearance-controls > label,
+  .appearance-animation-module,
+  .gpu-render-module,
+  .atmosphere-settings,
+  .atmosphere-groups fieldset,
+  .visual-module,
+  .visual-settings-panel,
+  .transport-status-card,
+  .floating-settings,
+  .playlist-table,
+  .library-command,
+  .library-summary > div,
+  .library-stat,
+  .library-card,
+  .library-entry,
+  .folder-card,
+  .library-empty,
+  .library-view-toolbar,
+  .library-scan-progress,
+  .online-browser,
+  .vst-browser,
+  .vst-chain,
+  .vst-engine-status,
+  .vst-scan-summary,
+  .vst-slot,
+  .vst-plugin-list > button,
+  .vst-quarantine-list > div,
+  .native-output-vst-guide,
+  .native-overview-status,
+  .native-guide-grid article,
+  .native-mode-options button,
+  .netease-qr-panel,
+  .netease-login-qr,
+  .channel-strip-popover,
+  .channel-plugin-results,
+  .vst-directory-list,
+  .library-queue-notice,
+  .error-toast
+) {
+  border-radius: var(--radius-panel);
+}
+
+/* Only rectangular controls are listed. Disc artwork, transport buttons,
+   meters, colour dots and slider geometry keep their circular shapes. */
+.app-shell :is(
+  .sidebar nav button,
+  .import-button,
+  .titlebar-vst-mode,
+  .window-actions button,
+  .meter-toggle,
+  .mode-tabs button,
+  .visual-tune-toggle,
+  .visual-settings-title button,
+  .visual-reset,
+  .immersive-actions button,
+  .theme-swatch,
+  .page-icon,
+  .primary-action,
+  .clear-playlist,
+  .page-empty button,
+  .playlist-row-actions button,
+  .queue-title button,
+  .queue-row,
+  .queue-row button,
+  .icon-action,
+  .library-search,
+  .library-view-switch button,
+  .library-sort-controls button,
+  .category-back,
+  .folder-breadcrumb button,
+  .bulk-queue-action,
+  .queue-track-action,
+  .library-open-action,
+  .library-empty button,
+  .device-select,
+  .native-signal-flow > span,
+  .browser-nav button,
+  .browser-toolbar form,
+  .online-provider-tabs button,
+  .loopback-status,
+  .netease-search,
+  .netease-search button,
+  .netease-login-entry > button,
+  .netease-user-toolbar > button,
+  .netease-home-button,
+  .netease-selection-actions button,
+  .vst-search,
+  .vst-tools button,
+  .vst-engine-status > button,
+  .vst-slot > button,
+  .vst-directory-menu-trigger,
+  .vst-directory,
+  .vst-directory > button,
+  .vst-quarantine-list button,
+  .vst-scan-actions button,
+  .channel-strip-popover > header button,
+  .channel-plugin-search,
+  .channel-plugin-results > button,
+  .channel-rack-slot,
+  .channel-rack-slot > button,
+  .channel-native-output-guide,
+  .channel-open-rack,
+  .channel-insert,
+  .channel-mute,
+  .channel-vst-mode,
+  .channel-scan-control,
+  .error-toast button,
+  .waveform-preview,
+  select
+) {
+  border-radius: var(--radius-control);
+}
+
+/* Adjacent cells form one table/segmented control, not individual cards.
+   Clip only these self-contained frames so row fills follow the outer corner. */
+.app-shell :is(.playlist-table, .facet-tabs) {
+  overflow: clip;
+}
+.app-shell .facet-tabs {
+  border-radius: var(--radius-control);
+}
+.app-shell .facet-tabs > button:first-child {
+  border-start-start-radius: inherit;
+  border-end-start-radius: inherit;
+}
+.app-shell .facet-tabs > button:last-child {
+  border-start-end-radius: inherit;
+  border-end-end-radius: inherit;
+}
+
+/* Media frames already clip their children; avoid square image corners
+   over a rounded card without changing circular CD or avatar images. */
+.app-shell :is(.library-entry-media, .library-art, .transport-art,
+  .theme-card > .custom-background-thumbnail, .netease-cover) {
+  border-radius: var(--radius-control);
+}

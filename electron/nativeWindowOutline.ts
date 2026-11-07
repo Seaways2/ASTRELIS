@@ -8,7 +8,11 @@ type OutlineModule = {
 };
 let outline: OutlineModule | undefined;
 
-/** Clip the HWND itself, including DWM's backing, in physical pixels. */
+/**
+ * Let DWM own the window contour: rounded while floating, square while the
+ * window fills the screen. Electron emulates maximize for transparent
+ * frameless windows, so DWM cannot detect that state itself.
+ */
 export function applyNativeWindowOutline(window: BrowserWindow): void {
   if (!outline) {
     const file = app.isPackaged
@@ -16,9 +20,8 @@ export function applyNativeWindowOutline(window: BrowserWindow): void {
       : path.join(__dirname, "../native-window/build/Release/window_outline.node");
     outline = require(file) as OutlineModule;
   }
-  // Rounded native regions expose a corner of the DWM Mica/Acrylic backing on
-  // some Windows compositors. Keep the HWND rectangular in every window state.
-  if (!outline.apply(window.getNativeWindowHandle(), true)) {
+  const fillsScreen = window.isMaximized() || window.isFullScreen();
+  if (!outline.apply(window.getNativeWindowHandle(), fillsScreen)) {
     throw new Error("Windows rejected the native window region");
   }
 }

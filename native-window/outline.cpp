@@ -34,25 +34,19 @@ static napi_value apply(napi_env env, napi_callback_info info) {
  size_t count=2; napi_value args[2]; napi_get_cb_info(env,info,&count,args,nullptr,nullptr);
  bool square=false; HWND hwnd=nullptr;
  if(count!=2 || !readOwnedWindow(env,args[0],hwnd) || napi_get_value_bool(env,args[1],&square)!=napi_ok) {napi_throw_type_error(env,nullptr,"Expected owned HWND Buffer and square boolean");return nullptr;}
- // Keep DWM square. Rounded system backdrops can extend past the renderer and
- // show a dark corner on transparent frameless windows.
- const DWM_WINDOW_CORNER_PREFERENCE cornerPreference = DWMWCP_DONOTROUND;
- DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPreference, sizeof(cornerPreference));
- RECT rect{}; bool ok=false;
- if(GetWindowRect(hwnd,&rect)) {
-  const int w=rect.right-rect.left,h=rect.bottom-rect.top;
-  const int diameter=MulDiv(24,GetDpiForWindow(hwnd),96);
-  if(square) {
-   // A rectangular SetWindowRgn is redundant and can make DWM drop the
-   // system backdrop while a frameless window is being maximized. Clearing
-   // the custom region preserves the rectangular window and lets DWM own the
-   // Acrylic/Mica surface.
-   ok=SetWindowRgn(hwnd,nullptr,TRUE)!=0;
-  } else {
-   HRGN region=CreateRoundRectRgn(0,0,w+1,h+1,diameter,diameter);
-   if(region) {ok=SetWindowRgn(hwnd,region,TRUE)!=0;if(!ok)DeleteObject(region);}
-  }
- }
+ // DWM is the single owner of the window contour. Windows 11 clips the whole
+ // composed window, including the Accent Acrylic backdrop, with an
+ // anti-aliased rounded corner. The renderer must stay square (CSS radius 0
+ // under native glass); a second CSS arc leaves a crescent of the dark accent
+ // tint between the two curves. Emulated maximize/fullscreen pass square=true
+ // because DWM cannot see Electron's transparent-window maximize.
+ // A custom SetWindowRgn is never used: it is aliased and can make DWM drop
+ // the system backdrop while the frameless window is maximized.
+ const DWM_WINDOW_CORNER_PREFERENCE cornerPreference = square ? DWMWCP_DONOTROUND : DWMWCP_ROUND;
+ const HRESULT cornerResult = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPreference, sizeof(cornerPreference));
+ const bool regionCleared = SetWindowRgn(hwnd, nullptr, TRUE) != 0;
+ // Before Windows 11 the corner attribute is unsupported; the window stays square.
+ const bool ok = regionCleared && (square || SUCCEEDED(cornerResult) || cornerResult == E_INVALIDARG);
  napi_value result; napi_get_boolean(env,ok,&result); return result;
 }
 

@@ -460,6 +460,16 @@ function createWindow() {
   mainWindow.webContents.on("did-start-loading", () => windowResize.end());
   mainWindow.webContents.on("render-process-gone", () => windowResize.end());
   refreshWindowOutline();
+  // DWM rounds the floating window; a screen-filling window must be square.
+  const syncWindowOutline = () => {
+    try { refreshWindowOutline(); }
+    catch (error) { writeLog("WINDOW", `Window outline update failed: ${error instanceof Error ? error.message : String(error)}`); }
+  };
+  mainWindow.on("maximize", syncWindowOutline);
+  mainWindow.on("unmaximize", syncWindowOutline);
+  mainWindow.on("enter-full-screen", syncWindowOutline);
+  mainWindow.on("leave-full-screen", syncWindowOutline);
+  mainWindow.on("restore", syncWindowOutline);
 
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   const productionUrl = pathToFileURL(path.join(__dirname, "../dist/index.html")).toString();

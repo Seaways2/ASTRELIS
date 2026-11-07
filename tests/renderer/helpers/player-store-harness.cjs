@@ -29,12 +29,19 @@ function loadPlayerStore({ desktop, parseBlob = async () => ({ common: {} }), in
   Function("exports", ts.transpileModule(fs.readFileSync(path.join(root,"src/utils/folderVisibility.ts"),"utf8"), {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(visibilityUtils.exports);
   Function("exports","require","window",ts.transpileModule(fs.readFileSync(path.join(root,"src/stores/folderVisibilityStore.ts"),"utf8"), {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(visibility.exports, name => name === "../utils/folderVisibility" ? visibilityUtils.exports : require(name), {desktop});
   visibility.exports.applyVisibility({});
+  // The thumbnail refresh helper dispatches a DOM event; record the calls instead.
+  const thumbnailRefreshes = [];
+  const thumbnailRefresh = {
+    LIBRARY_THUMBNAILS_REFRESH_EVENT: "astrelis:library-thumbnails-refresh",
+    refreshLibraryThumbnails: sources => thumbnailRefreshes.push(sources)
+  };
   const requireModule = name => name === "./folderVisibilityStore" ? visibility.exports : name === "../utils/videoTrack" ? helper.exports : name === "music-metadata" ? { parseBlob }
     : name.includes("libraryCoverMerge") ? { mergeScannedLibrary: tracks => tracks, sanitizeLibraryFolders: folders => folders }
+    : name === "../utils/libraryThumbnailRefresh" ? thumbnailRefresh
     : require(name);
   Function("exports", "module", "require", "localStorage", "window", "URL", javascript)(
     module.exports, module, requireModule, localStorage, { desktop, clearTimeout() {}, setTimeout(fn) { savedCallback = fn; return 1; }, addEventListener(name, fn) { events[name] = fn; } }, URL);
-  return { store: module.exports.usePlayerStore, persisted, revoked, flush: () => savedCallback(), events };
+  return { store: module.exports.usePlayerStore, persisted, revoked, flush: () => savedCallback(), events, thumbnailRefreshes };
 }
 const makeTrack = id => ({
   id, name: id, artist: "Artist", album: "Album", format: "APE", size: 100,

@@ -191,7 +191,8 @@ test("music library offers persistent flow, card and details views with sorting"
   assert.match(library, /stored === "list"/);
   assert.match(library, /auralis\.library\.sort/);
   assert.match(library, /auralis\.library\.sortAscending/);
-  assert.match(library, /viewModel\.trackPage\(pageOffset, pageRemaining\)/);
+  assert.match(library, /viewModel\.trackPage\(pageOffset, remaining\)/);
+  assert.match(library, /entriesAt\(pageOffset, pageRemaining\)/);
   assert.match(library, /useVirtualLibraryGrid\(totalListItems/);
   assert.match(styles, /\.library-virtual-row/);
   assert.match(library, /library-detail-head/);
@@ -377,7 +378,7 @@ test("category search cannot expose an unrelated artist for bulk queue insertion
 
   const library = read("src/components/MusicLibrary.tsx");
   const queryService = read("src/library/LibraryQueryService.ts");
-  assert.match(library, /viewModel\.categoryPage\(pageOffset, pageRemaining\)/);
+  assert.match(library, /viewModel\.categoryPage\(pageOffset, remaining\)/);
   assert.match(queryService, /group\.searchText = normalize\(\[group\.name, \.\.\.group\.artists\]\.join\(" "\)\)/,
     "album search text may include its artists when the derived index is built");
   assert.match(queryService, /this\.artistGroups\.values\(\)\) group\.searchText = normalize\(group\.name\)/,

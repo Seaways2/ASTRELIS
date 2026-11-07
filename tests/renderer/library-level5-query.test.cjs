@@ -160,8 +160,9 @@ test("MusicLibrary delegates query, grouping and selection semantics to its view
   assert.match(component, /useDeferredValue\(query\)/,
     "large-library search must not block urgent input rendering");
   assert.match(component, /viewModel\.selectionSnapshot\(ids\)/);
-  assert.match(component, /viewModel\.categoryPage\(pageOffset, pageRemaining\)/);
-  assert.match(component, /viewModel\.trackPage\(pageOffset, pageRemaining\)/);
+  assert.match(component, /viewModel\.categoryPage\(pageOffset, remaining\)/);
+  assert.match(component, /viewModel\.trackPage\(pageOffset, remaining\)/);
+  assert.match(component, /entriesAt\(pageOffset, pageRemaining\)/);
   assert.match(component, /useVirtualLibraryGrid\(totalListItems/);
   assert.match(virtualHook, /startRow[\s\S]*endRow[\s\S]*overscan/);
   assert.doesNotMatch(component, /IntersectionObserver|visibleCount|LIBRARY_PAGE_SIZE/);

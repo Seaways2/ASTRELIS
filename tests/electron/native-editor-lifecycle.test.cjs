@@ -1,8 +1,8 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'../..');
 test('cold editor gets a bounded startup budget without relaxing playback deadlines',()=>{
- const src=fs.readFileSync(path.join(root,'electron/main.ts'),'utf8');
- const fn=src.slice(src.indexOf('function nativeCommandTimeoutMs'),src.indexOf('\nasync function sendPlaybackCommand')).replace(': unknown','');
+ const src=fs.readFileSync(path.join(root,'electron/nativePlaybackEngine.ts'),'utf8');
+ const fn=src.slice(src.indexOf('function nativeCommandTimeoutMs'),src.indexOf('\nexport async function sendPlaybackCommand')).replace(': unknown','');
  const timeout=Function(fn+';return nativeCommandTimeoutMs')();
  assert.equal(timeout('editor'),30000);assert.equal(timeout('status'),5000);assert.equal(timeout('rack'),12000);
 });

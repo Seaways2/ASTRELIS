@@ -12,6 +12,7 @@ const mainProcessModules = [
   "electron/mediaUrls.ts",
   "electron/mediaProtocols.ts",
   "electron/pluginScanService.ts",
+  "electron/nativePlaybackEngine.ts",
   "electron/ipc/appearanceIpc.ts",
   "electron/ipc/audioCacheIpc.ts",
   "electron/ipc/libraryIpc.ts",

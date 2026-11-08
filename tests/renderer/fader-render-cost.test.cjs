@@ -56,3 +56,13 @@ test("overview thumbnails draw a thinner population without starving any tile", 
   // The canvas size comes from ResizeObserver, not a forced layout every frame.
   assert.match(canvas, /if \(now - lastSizeCheck >= CANVAS_SIZE_RECHECK_MS\) \{\s*lastSizeCheck = now;\s*syncCanvasSize\(\);/);
 });
+
+test("particle populations stop growing above the default bar count", () => {
+  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  assert.match(canvas, /export const PARTICLE_EFFECT_UNIT_CAP = 90;/);
+  assert.match(canvas, /const particleUnits = Math\.min\(settings\.barCount, PARTICLE_EFFECT_UNIT_CAP\);/);
+  // Particle counts never scale with the raw bar setting...
+  assert.doesNotMatch(canvas, /settings\.barCount \*/);
+  // ...while the spectrum still draws every requested bar.
+  assert.match(canvas, /const bars = Math\.max\(12, Math\.min\(settings\.barCount, data\.length\)\);/);
+});

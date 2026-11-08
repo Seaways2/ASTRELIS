@@ -42,7 +42,7 @@ test("Black Hole Pulse refracts the custom wallpaper through concentric lens rin
 });
 
 test("Black Hole Pulse reuses effect count and size with an ECO cap", () => {
-  assert.match(source, /coreMoteCount[\s\S]*settings\.barCount \* \.8[\s\S]*settings\.barCount \* 1\.4/);
+  assert.match(source, /coreMoteCount[\s\S]*particleUnits \* \.8[\s\S]*particleUnits \* 1\.4/);
   assert.match(source, /pulseOrbitCount = settings\.lowPerformance \? 4 : 6/);
   assert.match(source, /pulseEffectScale = \.72 \+ settings\.lineWidth \* \.19/);
 });

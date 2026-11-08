@@ -24,6 +24,8 @@ interface VisualizerCanvasProps {
 // full particle population in each of six tiles saturated the GPU process's
 // Canvas2D rasterizer (measured ~19 FPS for the whole window while playing).
 export const THUMBNAIL_PARTICLE_DENSITY = .4;
+// Bar count above which particle effects stop growing (the default bar count).
+export const PARTICLE_EFFECT_UNIT_CAP = 90;
 // The thinner population is enough on its own: a shared per-frame draw budget
 // was tried and removed, because the tiles registered last in rAF order were
 // always starved (24 FPS with uneven 41-55 ms gaps in the particle tiles).
@@ -69,7 +71,11 @@ export function VisualizerCanvas({
     const accentBlue = Number.isFinite(parsedAccent) ? parsedAccent & 255 : 225;
     const galaxyAccent = (alpha: number) => `rgba(${accentRed},${accentGreen},${accentBlue},${alpha})`;
     const starsPerEffectUnit = settings.lowPerformance ? 4 : 8;
-    const starCount = Math.max(96, Math.round(settings.barCount * starsPerEffectUnit));
+    // Particle populations follow the bar setting only up to the default. The
+    // spectrum may use up to 160 bars, but at that setting the starfield,
+    // galaxy and black hole drew ~78% more particles and visibly stuttered.
+    const particleUnits = Math.min(settings.barCount, PARTICLE_EFFECT_UNIT_CAP);
+    const starCount = Math.max(96, Math.round(particleUnits * starsPerEffectUnit));
     const starEffectSize = .5 + settings.lineWidth / 3;
     // Thumbnails keep the same distributions with a thinner population.
     const thinned = (count: number) => thumbnail ? Math.max(24, Math.round(count * THUMBNAIL_PARTICLE_DENSITY)) : count;
@@ -86,8 +92,8 @@ export function VisualizerCanvas({
       frequency: Math.floor(Math.random() * 96)
     }));
     const coreMoteCount = settings.lowPerformance
-      ? Math.max(36, Math.round(settings.barCount * .8))
-      : Math.max(64, Math.round(settings.barCount * 1.4));
+      ? Math.max(36, Math.round(particleUnits * .8))
+      : Math.max(64, Math.round(particleUnits * 1.4));
     const coreMotes = Array.from({ length: thinned(coreMoteCount) }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .5 + Math.random() * .62,
@@ -98,9 +104,9 @@ export function VisualizerCanvas({
       response: .25 + Math.random() * .75
     }));
     const galaxyDustPerEffectUnit = settings.lowPerformance ? 8 : 24;
-    const galaxyDustCount = Math.max(192, Math.round(settings.barCount * galaxyDustPerEffectUnit));
+    const galaxyDustCount = Math.max(192, Math.round(particleUnits * galaxyDustPerEffectUnit));
     const galaxyLiveStarsPerEffectUnit = settings.lowPerformance ? 3 : 6;
-    const galaxyLiveStarCount = Math.max(120, Math.round(settings.barCount * galaxyLiveStarsPerEffectUnit));
+    const galaxyLiveStarCount = Math.max(120, Math.round(particleUnits * galaxyLiveStarsPerEffectUnit));
     const galaxyLiveStars = Array.from({ length: thinned(galaxyLiveStarCount) }, (_, index) => {
       const radius = .06 + Math.pow(Math.random(), .72) * .92;
       const layer = radius < .36 ? 0 : radius < .68 ? 1 : 2;
@@ -123,8 +129,8 @@ export function VisualizerCanvas({
       };
     });
     const galaxyOrbitMoteCount = settings.lowPerformance
-      ? Math.max(42, Math.round(settings.barCount * .9))
-      : Math.max(84, Math.round(settings.barCount * 1.7));
+      ? Math.max(42, Math.round(particleUnits * .9))
+      : Math.max(84, Math.round(particleUnits * 1.7));
     const galaxyOrbitMotes = Array.from({ length: thinned(galaxyOrbitMoteCount) }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .68 + Math.pow(Math.random(), .72) * .52,
@@ -136,8 +142,8 @@ export function VisualizerCanvas({
       frequency: Math.floor(Math.random() * 112)
     }));
     const galaxyInnerOrbitMoteCount = settings.lowPerformance
-      ? Math.max(32, Math.round(settings.barCount * .65))
-      : Math.max(64, Math.round(settings.barCount * 1.2));
+      ? Math.max(32, Math.round(particleUnits * .65))
+      : Math.max(64, Math.round(particleUnits * 1.2));
     const galaxyInnerOrbitMotes = Array.from({ length: thinned(galaxyInnerOrbitMoteCount) }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .12 + Math.pow(Math.random(), .8) * .58,

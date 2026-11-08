@@ -9,7 +9,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 test("Starfield Motion maps the shared effect controls to star count and size", () => {
   const canvas = read("src/visualizers/VisualizerCanvas.tsx");
   assert.match(canvas, /starsPerEffectUnit = settings\.lowPerformance \? 4 : 8/);
-  assert.match(canvas, /starCount = Math\.max\(96, Math\.round\(settings\.barCount \* starsPerEffectUnit\)\)/);
+  assert.match(canvas, /starCount = Math\.max\(96, Math\.round\(particleUnits \* starsPerEffectUnit\)\)/);
   assert.match(canvas, /starEffectSize = \.5 \+ settings\.lineWidth \/ 3/);
   assert.match(canvas, /starfieldEffectSize = starEffectSize \* \.6/);
   assert.ok((canvas.match(/starfieldEffectSize/g) || []).length >= 5,

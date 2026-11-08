@@ -192,6 +192,8 @@ test("selected native glass stays enabled through maximize and restore", () => {
   const context = vm.createContext({
     syncWindowFit() {},
     fitWindowBounds: require("../../dist-electron/windowFit").fitWindowBounds,
+    fillsDisplay: require("../../dist-electron/windowFit").fillsDisplay,
+    restorableNormalBounds: require("../../dist-electron/windowFit").restorableNormalBounds,
     windowResize: { end() {} },
     currentWindowGlass: "none", process: { platform: "win32" },
     mainWindow: { isMaximized: () => maximized, setBackgroundMaterial: value => applied.push(value) },
@@ -234,6 +236,8 @@ function windowHarness(t, preferences = {}) {
   const context = vm.createContext({
     syncWindowFit() {},
     fitWindowBounds: require("../../dist-electron/windowFit").fitWindowBounds,
+    fillsDisplay: require("../../dist-electron/windowFit").fillsDisplay,
+    restorableNormalBounds: require("../../dist-electron/windowFit").restorableNormalBounds,
     windowResize: { end() {} },
     fs, path, pathToFileURL, __dirname: path.resolve(__dirname, "../../dist-electron"),
     process: { env: {}, platform: "win32" }, desktopPreferences: { get: () => ({ ok: true, preferences: preferencesState }) },
@@ -343,6 +347,8 @@ test("compact mode keeps its forced top state while preferences change and resto
   const context = vm.createContext({
     syncWindowFit() {},
     fitWindowBounds: require("../../dist-electron/windowFit").fitWindowBounds,
+    fillsDisplay: require("../../dist-electron/windowFit").fillsDisplay,
+    restorableNormalBounds: require("../../dist-electron/windowFit").restorableNormalBounds,
     windowResize: { end() {} },
     path, app: { getPath: () => directory }, DesktopMediaKeys, DesktopPreferenceService,
     globalShortcut: { register: () => true, unregister() {} }, mainWindow: window,
@@ -375,4 +381,28 @@ test("transparent native caption SC_MAXIMIZE toggles exactly once and excludes o
   command(0xF032); assert.equal(h.window.isMaximized(), false);
   h.context.compactActive = true;
   command(0xF032); assert.equal(h.window.isMaximized(), false);
+});
+
+test("restore after fullscreen-while-maximized returns to the last floating bounds", t => {
+  // Electron emulates maximize for this transparent window: it is "maximized" while its
+  // bounds equal the work area, and fullscreen overwrites the remembered restore rectangle.
+  const h = windowHarness(t), w = h.window, hook = w.windowMessageHook;
+  const work = { x: 0, y: 0, width: 2200, height: 1400 }, floating = { x: 100, y: 90, width: 1300, height: 850 };
+  const same = (a, b) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  let restore = { ...floating };
+  w.isMaximized = () => same(w.bounds, work);
+  w.maximize = () => { restore = { ...w.bounds }; w.bounds = { ...work }; w.emit("resize"); };
+  w.unmaximize = () => { w.bounds = { ...restore }; };
+  w.getNormalBounds = () => w.isMaximized() ? restore : w.bounds;
+  w.setBounds = bounds => { w.bounds = { ...bounds }; w.emit("resize"); };
+  w.bounds = { ...floating }; w.emit("resize");
+  w.maximize();
+  restore = { ...work }; // what leaving HTML fullscreen leaves behind
+  const doubleClick = () => { const buffer = Buffer.alloc(8); buffer.writeUInt32LE(0xF032); hook.callback(buffer); h.quit(); };
+  doubleClick();
+  assert.deepEqual(w.bounds, floating);
+  assert.equal(w.isMaximized(), false);
+  // The saved state no longer records the work area as the normal size.
+  doubleClick(); h.flush();
+  assert.deepEqual(JSON.parse(fs.readFileSync(h.stateFile, "utf8")), { ...floating, maximized: true });
 });

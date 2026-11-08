@@ -22,3 +22,17 @@ test('readability floor survives tiny windows and restores system-relative 100% 
  const restored=fitWindowBounds({...small,width:preferred.width,height:preferred.height},{x:0,y:0,width:1920,height:1040});
  assert.equal(restored.width,1500);assert.equal(restored.height,940);
 });
+
+test("restorable normal bounds never return a screen-filling rectangle", () => {
+  const { restorableNormalBounds, fillsDisplay } = require("../../dist-electron/windowFit");
+  const display = { bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1032 } };
+  const floating = { x: 200, y: 150, width: 900, height: 600 };
+  assert.equal(fillsDisplay(display.workArea, display), true);
+  assert.equal(fillsDisplay(display.bounds, display), true);
+  assert.deepEqual(restorableNormalBounds(floating, display), floating);
+  assert.deepEqual(restorableNormalBounds(display.workArea, display, floating), floating);
+  assert.deepEqual(restorableNormalBounds(display.bounds, display, floating), floating);
+  const fallback = restorableNormalBounds(display.workArea, display, display.workArea);
+  assert.equal(fillsDisplay(fallback, display), false);
+  assert.deepEqual(fallback, { x: 240, y: 129, width: 1440, height: 774 });
+});

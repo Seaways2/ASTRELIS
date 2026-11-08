@@ -11,3 +11,30 @@ export function fittedUiZoom(width:number,height:number,specialMode=false) {
   if(specialMode || !Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0)return 1;
   return Math.max(.8,Math.min(1,width/1120,height/720));
 }
+
+export type DisplayAreas = { bounds?: FitBounds; workArea: FitBounds };
+const sameBounds = (a: FitBounds, b: FitBounds) =>
+  a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
+/**
+ * Electron emulates maximize and fullscreen for a transparent thickFrame:false
+ * window by resizing it to the work area or the display. Such bounds are never
+ * a usable "restore" size.
+ */
+export function fillsDisplay(bounds: FitBounds, display: DisplayAreas) {
+  return sameBounds(bounds, display.workArea) || Boolean(display.bounds && sameBounds(bounds, display.bounds));
+}
+
+/**
+ * The bounds the window should return to when it stops filling the screen.
+ * Entering fullscreen overwrites Electron's emulated restore rectangle with the
+ * maximized bounds, so after leaving fullscreen `getNormalBounds()` reports the
+ * work area and unmaximize() changes nothing. Prefer the last floating bounds
+ * the app saw, then a centred default.
+ */
+export function restorableNormalBounds(reported: FitBounds, display: DisplayAreas, remembered?: FitBounds): FitBounds {
+  if (!fillsDisplay(reported, display)) return reported;
+  if (remembered && !fillsDisplay(remembered, display)) return fitWindowBounds(remembered, display.workArea);
+  const work = display.workArea, width = Math.round(work.width * .75), height = Math.round(work.height * .75);
+  return fitWindowBounds({ x: work.x + Math.round((work.width - width) / 2), y: work.y + Math.round((work.height - height) / 2), width, height }, work);
+}

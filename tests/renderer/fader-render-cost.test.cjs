@@ -37,7 +37,7 @@ test("volume persistence is debounced and flushed on pagehide", () => {
 
 test("overview thumbnails draw a thinner population without starving any tile", () => {
   const overview = read("src/visualizers/VisualizerOverview.tsx");
-  assert.match(overview, /<VisualizerCanvas [^>]*\bthumbnail \/>/);
+  assert.match(overview, /<VisualizerCanvas [^>]*\bthumbnail\b[^>]*\/>/);
   const canvas = read("src/visualizers/VisualizerCanvas.tsx");
   assert.match(canvas, /const particleCount = thinned\(starCount\);/);
   // A shared draw budget always skipped the tiles registered last in rAF order.

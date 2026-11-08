@@ -34,7 +34,10 @@ export class AuthorizedFileStore {
 
   /** Replaces the list with the grants that survived validation. */
   reset(files: string[]) {
-    const next = [...new Set(files)].slice(-this.limit);
+    // Windows paths are case-insensitive; keep the newest spelling, like record().
+    const byKey = new Map<string, string>();
+    for (const file of files) { const key = file.toLocaleLowerCase(); byKey.delete(key); byKey.set(key, file); }
+    const next = [...byKey.values()].slice(-this.limit);
     const changed = next.length !== this.files.length || next.some((file, index) => file !== this.files[index]);
     this.files = next;
     if (changed) this.scheduleSave();

@@ -16,6 +16,8 @@ interface VisualizerCanvasProps {
   backgroundOpacity?: number;
   /** Small overview tile: draws a thinner particle population. */
   thumbnail?: boolean;
+  /** 0..1 offset of this canvas's frame schedule within one frame interval. */
+  framePhase?: number;
 }
 
 // Overview thumbnails cover a small fraction of a full visualizer. Drawing the
@@ -40,7 +42,8 @@ export function VisualizerCanvas({
   backgroundUrl,
   backgroundBrightness = 1,
   backgroundOpacity = 1,
-  thumbnail = false
+  thumbnail = false,
+  framePhase = 0
 }: VisualizerCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -321,6 +324,9 @@ export function VisualizerCanvas({
     const draw = (now = performance.now()) => {
       const targetFps = !playbackActive ? 15 : settings.lowPerformance ? 30 : 60;
       const frameInterval = 1000 / targetFps;
+      // (Re)start the schedule at this canvas's phase so sibling tiles that
+      // mount or resume together do not all draw in the same frame.
+      if (nextDue === 0 || now - nextDue > frameInterval) nextDue = now + framePhase * frameInterval;
       if (!frameIsDue(now, nextDue)) {
         raf = requestAnimationFrame(draw);
         return;
@@ -1718,7 +1724,8 @@ export function VisualizerCanvas({
     playbackActive,
     visible,
     onFps,
-    thumbnail
+    thumbnail,
+    framePhase
   ]);
   return <canvas ref={ref} className="visualizer-canvas" />;
 }

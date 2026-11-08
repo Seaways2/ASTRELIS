@@ -17,8 +17,9 @@ export function VisualizerOverview({ accent, onSelect, settings, glowStrength = 
   // Overview thumbnails use 30 FPS; a focused visualizer remains full-rate.
   const overviewSettings = settings.lowPerformance ? settings : { ...settings, lowPerformance: true };
   return <div className="visual-overview">
-    {modules.map((module) => <button type="button" className="visual-module" key={module.mode} aria-label={t(module.key)} onClick={() => onSelect(module.mode)}>
-      <VisualizerCanvas mode={module.mode} accent={accent} settings={overviewSettings} glowStrength={glowStrength} playbackActive={playbackActive} visible={visible} thumbnail />
+    {modules.map((module, index) => <button type="button" className="visual-module" key={module.mode} aria-label={t(module.key)} onClick={() => onSelect(module.mode)}>
+      {/* Staggered phases spread the six 30 FPS tiles over the frames between draws. */}
+      <VisualizerCanvas mode={module.mode} accent={accent} settings={overviewSettings} glowStrength={glowStrength} playbackActive={playbackActive} visible={visible} thumbnail framePhase={index / modules.length} />
     </button>)}
   </div>;
 }

@@ -35,22 +35,34 @@ test("explicit file grants survive a restart through the store", () => withTempD
   assert.equal(restartedPolicy.hasExplicitGrant(outside), true);
 }));
 
-test("restore drops files that no longer exist", () => withTempDirectory(base => {
+test("a missing file is not granted but its persisted grant survives (unplugged drive)", () => withTempDirectory(base => {
   const storePath = path.join(base, "authorized-files-v1.json");
   const kept = path.join(base, "kept.mp3");
-  const removed = path.join(base, "removed.mp3");
+  const offline = path.join(base, "offline.mp3");
   fs.writeFileSync(kept, "audio");
-  fs.writeFileSync(storePath, JSON.stringify({ version: 1, files: [kept, removed] }));
+  fs.writeFileSync(storePath, JSON.stringify({ version: 1, files: [kept, offline] }));
 
   const policy = new LocalMediaAccessPolicy();
   const store = new AuthorizedFileStore(storePath);
   const persisted = store.load();
   persisted.forEach(file => policy.authorizeFile(file));
-  store.reset(persisted.filter(file => policy.hasExplicitGrant(file)));
+  store.reset(persisted);
   store.flush();
+  assert.equal(policy.isAllowed(offline), false);
+  assert.deepEqual(new AuthorizedFileStore(storePath).load(), [kept, offline]);
 
-  assert.equal(policy.isAllowed(removed), false);
-  assert.deepEqual(JSON.parse(fs.readFileSync(storePath, "utf8")).files, [kept]);
+  // The drive comes back: the next launch grants it again.
+  fs.writeFileSync(offline, "audio");
+  const relaunched = new LocalMediaAccessPolicy();
+  new AuthorizedFileStore(storePath).load().forEach(file => relaunched.authorizeFile(file));
+  assert.equal(relaunched.isAllowed(offline), true);
+}));
+
+test("reset dedupes Windows paths case-insensitively, keeping the newest spelling", () => withTempDirectory(base => {
+  const storePath = path.join(base, "authorized-files-v1.json");
+  const store = new AuthorizedFileStore(storePath);
+  store.reset([path.join(base, "A.mp3"), path.join(base, "b.mp3"), path.join(base, "a.mp3")]);
+  assert.deepEqual(store.list(), [path.join(base, "b.mp3"), path.join(base, "a.mp3")]);
 }));
 
 test("only new external grants are reported; library files and missing files are not", () => withTempDirectory(base => {
@@ -106,8 +118,16 @@ test("open-files skips paths without a grant instead of failing the whole batch"
   const handler = source.slice(source.indexOf('ipcMain.handle("library:open-files"'), source.indexOf('return { tracks, errors: errors.slice(0, 20), unauthorized };'));
   assert.ok(handler.length > 0);
   assert.doesNotMatch(handler, /未授权的外部音频路径/);
-  assert.match(handler, /let unauthorized = visiblePaths\.filter\(sourcePath => !localMediaAccess\?\.isAllowed\(sourcePath\)\);/);
-  // Library folders are registered from the snapshot first (startup race with library:load).
-  assert.match(handler, /libraryService\.getSnapshot\(\)[\s\S]*registerRoot\(folder\)[\s\S]*unauthorized = unauthorized\.filter/);
+  // Waits for startup root registration instead of reloading the snapshot per call.
+  assert.match(handler, /await libraryRootsReady;\s*const unauthorized = visiblePaths\.filter\(sourcePath => !localMediaAccess\?\.isAllowed\(sourcePath\)\);/);
+  assert.doesNotMatch(handler, /getSnapshot/);
   assert.match(handler, /externalAudioPaths\(requestedPaths\)/);
+});
+
+test("main registers persisted library folders at startup, before the window opens", () => {
+  const main = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../electron/main.ts"), "utf8");
+  assert.match(main, /const libraryRootsReady: Promise<void> = libraryService\.getSnapshot\(\)\s*\.then\(result => \{ \(result\.snapshot\?\.folders \|\| \[\]\)\.forEach\(folder => localMediaAccess\?\.registerRoot\(folder\)\); \}\)/);
+  const startup = main.slice(main.indexOf("const libraryRootsReady"));
+  assert.ok(startup.indexOf("await Promise.race([libraryRootsReady") < startup.indexOf("\n  createWindow();"));
+  assert.match(main, /authorisedAudio, prepareLocalSource, writeLog, libraryRootsReady/);
 });

@@ -15,6 +15,7 @@ import {
 } from "../library/LibraryQueryService";
 
 type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
+const savedDerivedIndexes = new WeakSet<object>();
 
 export interface LibraryViewModelInput {
   tracks: Track[];
@@ -38,8 +39,13 @@ export function useLibraryViewModel(input: LibraryViewModelInput) {
   // Reused across page visits while the store's track array is unchanged.
   const canonicalIndex = useMemo(() => reusableLibraryIndex(input.tracks, input.cache, input.revision), [input.tracks, input.cache, input.revision]);
   useEffect(() => {
-    if (input.cacheWritable === false || !input.tracks.length || canonicalIndex.usedDerivedCache || !window.desktop?.library.saveDerivedIndex) return;
-    const save = () => { void window.desktop?.library.saveDerivedIndex(input.revision, canonicalIndex.exportSnapshot()); };
+    if (input.cacheWritable === false || !input.tracks.length || canonicalIndex.usedDerivedCache || savedDerivedIndexes.has(canonicalIndex)
+      || !window.desktop?.library.saveDerivedIndex) return;
+    const save = () => {
+      // The index is reused across page visits; export and write it only once.
+      savedDerivedIndexes.add(canonicalIndex);
+      void window.desktop?.library.saveDerivedIndex(input.revision, canonicalIndex.exportSnapshot());
+    };
     const handle = window.requestIdleCallback(save, { timeout: 5000 });
     return () => window.cancelIdleCallback(handle);
   }, [canonicalIndex, input.revision, input.tracks.length, input.cacheWritable]);

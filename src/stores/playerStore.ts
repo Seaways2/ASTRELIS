@@ -372,7 +372,11 @@ const persistVolume = (volume: number) => {
   if (volumePersistTimer !== undefined) clearTimeout(volumePersistTimer);
   volumePersistTimer = setTimeout(flushPersistedVolume, VOLUME_PERSIST_DELAY_MS);
 };
-if (typeof window !== "undefined") window.addEventListener?.("pagehide", flushPersistedVolume);
+if (typeof window !== "undefined") {
+  // beforeunload also runs when Electron closes the window for quit.
+  window.addEventListener?.("beforeunload", flushPersistedVolume);
+  window.addEventListener?.("pagehide", flushPersistedVolume);
+}
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   tracks: [],

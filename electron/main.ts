@@ -708,7 +708,9 @@ app.whenReady().then(async () => {
   const restorableGrants = authorizedFiles.load().filter(file =>
     AUDIO_EXTENSIONS.has(path.extname(file).toLowerCase()) || videoExtensions.includes(path.extname(file).slice(1).toLowerCase()));
   restorableGrants.forEach(file => grantedMediaPolicy.authorizeFile(file));
-  authorizedFiles.reset(restorableGrants.filter(file => grantedMediaPolicy.hasExplicitGrant(file)));
+  // Keep grants for files that are missing right now (e.g. a USB drive that
+  // is not plugged in yet); authorizeFile re-validates them on each launch.
+  authorizedFiles.reset(restorableGrants);
   grantedMediaPolicy.onFileAuthorized = file => authorizedFiles?.record(file);
   pcmDiagnostics = new PcmDiagnostics(message => writeLog("AUDIO", message), currentOnlineWindowState);
   pcmDiagnostics.start();
@@ -768,6 +770,13 @@ app.whenReady().then(async () => {
     undefined,
     libraryMigrator
   );
+  // Register the persisted library folders at startup. Until now they were
+  // registered only by the renderer's library:load, so anything that ran
+  // earlier (queue restore, media protocol, waveform) saw library files as
+  // unauthorised.
+  const libraryRootsReady: Promise<void> = libraryService.getSnapshot()
+    .then(result => { (result.snapshot?.folders || []).forEach(folder => localMediaAccess?.registerRoot(folder)); })
+    .catch(error => writeLog("LIBRARY", `Startup root registration failed: ${error instanceof Error ? error.message : String(error)}`));
   const videoLibraryProbe = new VideoLibraryProbe(findFfmpeg(), path.join(app.getPath("userData"), "artwork-cache"), mediaUrl);
   const libraryScanner = new LibraryScanner({
     videoExtensions: new Set(videoExtensions.map(ext => "." + ext)),
@@ -1292,7 +1301,7 @@ app.whenReady().then(async () => {
   registerLibraryIpc({
     getMainWindow: () => mainWindow, localMediaAccess, folderVisibility, libraryService, libraryScanner,
     libraryDerivedIndexCache, videoLibraryProbe, audioCache, importMusicMetadata, trustedCacheRequest,
-    authorisedAudio, prepareLocalSource, writeLog
+    authorisedAudio, prepareLocalSource, writeLog, libraryRootsReady
   });
   registerMediaMetadataIpc({
     libraryService, videoLibraryProbe, trustedCacheRequest, mediaUrl, writeLog,
@@ -1770,6 +1779,8 @@ app.whenReady().then(async () => {
     }
   });
   ipcMain.handle("browser:fade", async () => ({ ok: false, error: "YouTube Direct 不支持应用淡入淡出" }));
+  // Normally finished by now; never hold the window back on a slow disk.
+  await Promise.race([libraryRootsReady, new Promise(resolve => setTimeout(resolve, 1500))]);
   createWindow();
   void createTray();
   setWindowGlass("mica");

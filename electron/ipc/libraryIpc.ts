@@ -31,12 +31,14 @@ export interface LibraryIpcDeps {
   authorisedAudio(input: unknown): string;
   prepareLocalSource(source: string): Promise<string>;
   writeLog(level: string, message: string): void;
+  /** Settles once the persisted library folders are registered as roots. */
+  libraryRootsReady: Promise<void>;
 }
 
 /** Media library scanning, persistence, file actions and artwork. */
 export function registerLibraryIpc({
   getMainWindow, localMediaAccess, folderVisibility, libraryService, libraryScanner, libraryDerivedIndexCache,
-  videoLibraryProbe, audioCache, importMusicMetadata, trustedCacheRequest, authorisedAudio, prepareLocalSource, writeLog
+  videoLibraryProbe, audioCache, importMusicMetadata, trustedCacheRequest, authorisedAudio, prepareLocalSource, writeLog, libraryRootsReady
 }: LibraryIpcDeps) {
   ipcMain.on("library:authorize-dropped-file", (event, input: unknown) => {
     if (event.sender !== getMainWindow()?.webContents) return;
@@ -169,15 +171,12 @@ export function registerLibraryIpc({
     // Paths without a grant (e.g. queue entries saved before grants were
     // persisted) are skipped and reported, so one stale entry no longer
     // fails the whole batch. Nothing about them is read or returned.
-    let unauthorized = visiblePaths.filter(sourcePath => !localMediaAccess?.isAllowed(sourcePath));
-    if (unauthorized.length) {
-      // Queue restore can run before the renderer's library:load registered
-      // the library folders; register them from the persisted snapshot first.
-      const current = await libraryService.getSnapshot();
-      (current.snapshot?.folders || []).forEach(folder => localMediaAccess?.registerRoot(folder));
-      unauthorized = unauthorized.filter(sourcePath => !localMediaAccess?.isAllowed(sourcePath));
-    }
-    const requestedPaths = unauthorized.length ? visiblePaths.filter(sourcePath => !unauthorized.includes(sourcePath)) : visiblePaths;
+    // Queue restore can arrive before startup finished registering the
+    // library folders (slow disk); wait for that instead of rejecting them.
+    await libraryRootsReady;
+    const unauthorized = visiblePaths.filter(sourcePath => !localMediaAccess?.isAllowed(sourcePath));
+    const rejected = new Set(unauthorized);
+    const requestedPaths = visiblePaths.filter(sourcePath => !rejected.has(sourcePath));
     if (unauthorized.length) writeLog("LIBRARY", `open-files skipped ${unauthorized.length} path(s) without an access grant`);
     const sourcePaths = externalAudioPaths(requestedPaths);
     const metadataModule = await importMusicMetadata();

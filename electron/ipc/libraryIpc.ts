@@ -165,9 +165,20 @@ export function registerLibraryIpc({
     return { ok: true };
   });
   ipcMain.handle("library:open-files", async (_, input: unknown) => {
-    const requestedPaths = parsePathList(input, "audio paths").filter(file => !folderVisibility.blocked(file));
-    if (requestedPaths.some(sourcePath => !localMediaAccess?.isAllowed(sourcePath)))
-      throw new Error("LIBRARY_INVALID_SCHEMA: 未授权的外部音频路径");
+    const visiblePaths = parsePathList(input, "audio paths").filter(file => !folderVisibility.blocked(file));
+    // Paths without a grant (e.g. queue entries saved before grants were
+    // persisted) are skipped and reported, so one stale entry no longer
+    // fails the whole batch. Nothing about them is read or returned.
+    let unauthorized = visiblePaths.filter(sourcePath => !localMediaAccess?.isAllowed(sourcePath));
+    if (unauthorized.length) {
+      // Queue restore can run before the renderer's library:load registered
+      // the library folders; register them from the persisted snapshot first.
+      const current = await libraryService.getSnapshot();
+      (current.snapshot?.folders || []).forEach(folder => localMediaAccess?.registerRoot(folder));
+      unauthorized = unauthorized.filter(sourcePath => !localMediaAccess?.isAllowed(sourcePath));
+    }
+    const requestedPaths = unauthorized.length ? visiblePaths.filter(sourcePath => !unauthorized.includes(sourcePath)) : visiblePaths;
+    if (unauthorized.length) writeLog("LIBRARY", `open-files skipped ${unauthorized.length} path(s) without an access grant`);
     const sourcePaths = externalAudioPaths(requestedPaths);
     const metadataModule = await importMusicMetadata();
     const errors: string[] = [];
@@ -205,7 +216,7 @@ export function registerLibraryIpc({
         url: mediaUrl(sourcePath), folder: path.dirname(sourcePath)
       };
     }));
-    return { tracks, errors: errors.slice(0, 20) };
+    return { tracks, errors: errors.slice(0, 20), unauthorized };
   });
   ipcMain.handle("library:file-action", async (event, id: unknown, action: unknown) => {
     if (!trustedCacheRequest(event) || typeof id !== "string" || !["remove", "reveal"].includes(String(action))) return {ok:false,error:"INVALID_FILE_ACTION"};

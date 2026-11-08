@@ -36,6 +36,16 @@ test('restart on video retains the inactive music selection and progress',async(
  restored.getState().switchQueue('music');assert.equal(restored.getState().tracks[restored.getState().currentIndex].id,'m2');assert.equal(restored.getState().currentTime,40);
 });
 
+test('restore keeps entries the main process skipped instead of shrinking the queue',async()=>{
+ const h=loadPlayerStore({desktop});h.store.getState().addQueueTracks(incoming);h.flush();
+ const stale='C:/m2.flac';
+ const partial={library:{...desktop.library,openFiles:async paths=>({tracks:incoming.filter(t=>paths.includes(t.sourcePath)&&t.sourcePath!==stale),errors:[],unauthorized:[stale]})}};
+ const restored=loadPlayerStore({desktop:partial,initialStorage:[...h.persisted]}).store;
+ await restored.getState().restoreQueues();
+ assert.deepEqual(restored.getState().tracks.map(t=>t.id),['m1','m2']);
+ assert.deepEqual(restored.getState().inactiveTracks.map(t=>t.id),['v1','v2']);
+});
+
 test('browsing and editing video queue does not pause music; double click switches playback',async()=>{
  const {store}=loadPlayerStore({desktop});const s=()=>store.getState();s().addQueueTracks(incoming);
  await s().playTrack(0);s().setTiming(25,200);const generation=s().localPlayRequest;

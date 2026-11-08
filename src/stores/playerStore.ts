@@ -424,6 +424,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const files = saved.tracks.filter((track: Track) => typeof track?.sourcePath === "string" && !isFolderLocked(track.sourcePath));
       const result = files.length ? await window.desktop.library.openFiles(files.map((track: Track) => track.sourcePath!)) : { tracks: [] };
       if (get().tracks.length || get().inactiveTracks.length) return;
+      // Entries the main process skipped (no access grant, missing file) keep
+      // their saved form: restoring must never shrink the persisted queue.
       const restored = files.flatMap((track: Track) => {
         const fresh = (result.tracks as Track[]).find(item => item.sourcePath === track.sourcePath);
         return fresh ? [{ ...fresh, id: track.id }] : [track];

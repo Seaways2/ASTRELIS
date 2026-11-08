@@ -100,3 +100,14 @@ test("the store keeps the most recent grants up to its limit and tolerates damag
   fs.writeFileSync(storePath, JSON.stringify({ version: 1, files: ["relative.mp3", 7, path.join(base, "ok.mp3")] }));
   assert.deepEqual(new AuthorizedFileStore(storePath).load(), [path.join(base, "ok.mp3")]);
 }));
+
+test("open-files skips paths without a grant instead of failing the whole batch", () => {
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../electron/ipc/libraryIpc.ts"), "utf8");
+  const handler = source.slice(source.indexOf('ipcMain.handle("library:open-files"'), source.indexOf('return { tracks, errors: errors.slice(0, 20), unauthorized };'));
+  assert.ok(handler.length > 0);
+  assert.doesNotMatch(handler, /未授权的外部音频路径/);
+  assert.match(handler, /let unauthorized = visiblePaths\.filter\(sourcePath => !localMediaAccess\?\.isAllowed\(sourcePath\)\);/);
+  // Library folders are registered from the snapshot first (startup race with library:load).
+  assert.match(handler, /libraryService\.getSnapshot\(\)[\s\S]*registerRoot\(folder\)[\s\S]*unauthorized = unauthorized\.filter/);
+  assert.match(handler, /externalAudioPaths\(requestedPaths\)/);
+});

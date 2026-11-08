@@ -1,10 +1,11 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
-const app = fs.readFileSync(path.join(root, "src/App.tsx"), "utf8");
+const app = readAppSource();
 const canvas = fs.readFileSync(path.join(root, "src/visualizers/VisualizerCanvas.tsx"), "utf8");
 
 test("Decay Speed uses the requested direct 0.05 to 1.0 range", () => {

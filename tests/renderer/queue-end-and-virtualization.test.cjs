@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -29,7 +30,7 @@ test("natural completion distinguishes repeat off, all and one at the queue boun
 });
 
 test("the actual App ended handler stops instead of playing the first track with repeat off", () => {
-  const app = fs.readFileSync(path.join(root, "src/App.tsx"), "utf8");
+  const app = readAppSource();
   const handlerBody = app.match(/const handleLocalEnded = useCallback\(([\s\S]+?), \[\]\);/)[1];
   for (const repeat of ["off", "all"]) {
     const calls = [];
@@ -63,7 +64,7 @@ test("virtual queue stays valid after deleting rows at the bottom or clearing it
 });
 
 function endedHandler(store) {
-  const app = fs.readFileSync(path.join(root, "src/App.tsx"), "utf8");
+  const app = readAppSource();
   const body = app.match(/const handleLocalEnded = useCallback\(([\s\S]+?), \[\]\);/)[1];
   const javascript = ts.transpileModule("const handler = " + body + ";", {}).outputText;
   return Function("usePlayerStore", "nextQueueIndexAfterEnd", "localPlaybackEndLatch", "completedLocalPlaybackToken", "isVideoTrack",
@@ -102,7 +103,7 @@ for (const interruption of ["none", "pause", "track", "pending-track", "route"])
     const commands = [], errors = [];
     const route = { current: "route:B" };
     const latch = new PlaybackEndLatch();
-    const app = fs.readFileSync(path.join(root, "src/App.tsx"), "utf8");
+    const app = readAppSource();
     const body = app.match(/const handleLocalEnded = useCallback\(([\s\S]+?), \[\]\);/)[1];
     const javascript = ts.transpileModule("const handler = " + body + ";", {}).outputText;
     const handler = Function("usePlayerStore", "nextQueueIndexAfterEnd", "localPlaybackEndLatch", "completedLocalPlaybackToken",

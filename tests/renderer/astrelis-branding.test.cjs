@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -8,7 +9,7 @@ const { readMainProcessSource } = require("../helpers/mainProcessSource.cjs");
 const read = relative => relative === "electron/main.ts" ? readMainProcessSource() : fs.readFileSync(path.join(root, relative), "utf8");
 
 test("the titlebar uses the approved combined theme-colored ASTRELIS lockup", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const styles = read("src/styles/global.css");
   assert.doesNotMatch(app, /function AstrelisEmblem\(\)/);
   assert.doesNotMatch(app, /function AstrelisWordmark\(\)/);

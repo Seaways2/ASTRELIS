@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -30,7 +31,7 @@ test("Black Hole Pulse adds shockwaves and gravitational lensing", () => {
 });
 
 test("Black Hole Pulse refracts the custom wallpaper through concentric lens rings", () => {
-  const app = fs.readFileSync(path.join(root, "src/App.tsx"), "utf8");
+  const app = readAppSource();
   assert.match(app, /backgroundUrl=\{customBackgroundActive \? state\.uiSettings\.customBackgroundUrl : undefined\}/);
   assert.match(source, /lensBackground = backgroundUrl \? new Image\(\) : undefined/);
   assert.match(source, /lensRingCount = settings\.lowPerformance \? 10 : 18/);

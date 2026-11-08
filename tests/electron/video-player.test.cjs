@@ -1,3 +1,4 @@
+const { readAppSource } = require("../renderer/helpers/appSource.cjs");
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
@@ -19,7 +20,7 @@ test('video formats stay available in the renderer and file picker',()=>{
   const ts=require('typescript'),root=path.resolve(__dirname,'../..'),renderer={};
   const source=fs.readFileSync(path.join(root,'src/utils/videoTrack.ts'),'utf8');
   Function('exports',ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText)(renderer);
-  const app=fs.readFileSync(path.join(root,'src/App.tsx'),'utf8');
+  const app=readAppSource();
   const accept=app.match(/type="file" multiple accept="([^"]+)"/)?.[1].split(',')||[];
   for(const ext of videoExtensions){
     assert.equal(renderer.isVideoFile('film.'+ext.toUpperCase()),true,ext);

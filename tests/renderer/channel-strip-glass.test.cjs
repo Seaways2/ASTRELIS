@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -5,7 +6,7 @@ const fs = require("node:fs");
 const read = (path) => fs.readFileSync(path, "utf8");
 
 test("Channel Strip portal receives the same surface inputs as in-page panels", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const channel = read("src/components/ChannelStripPopover.tsx");
 
   assert.match(app, /windowOpacity=\{lowPerformanceMode \? 1 : state\.uiSettings\.windowOpacity\}/);

@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -26,7 +27,7 @@ test('HDMI preserves the source file and does not apply ordinary PCM preparation
   await store.getState().playTrack(0);assert.equal(prepared,1);
 });
 test('online routes stay Web Direct for every local preference; HDMI always bypasses VST',()=>{
-  const app=fs.readFileSync(path.resolve(__dirname,'../../src/App.tsx'),'utf8');
+  const app=readAppSource();
   const expression=name=>app.match(new RegExp('const '+name+' = (.*);'))[1];
   const evaluate=Function('state','current','onlineDirectSource','nativeReadable','vstControlRequested',
     `const videoActive=false,videoRackEnabled=false,videoDirect=false,isVideoTrack=()=>false;const hdmiDirect=${expression('hdmiDirect')}; return {native:${expression('nativePlayback')},vst:${expression('vstControlActive')}};`);

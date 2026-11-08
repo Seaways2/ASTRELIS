@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -7,18 +8,28 @@ const root = path.resolve(__dirname, "../..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 
 test("the App shell does not re-render for volume changes", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.doesNotMatch(app, /usePlayerStore\(\)/, "a bare store subscription re-renders the whole window on every fader move");
   assert.match(app, /usePlayerStore\(useShallow\(selectShellState\)\)/);
-  assert.match(app, /const \{ volume, \.\.\.shell \} = store;/);
+  assert.match(app, /const \{ volume, currentTime, \.\.\.shell \} = store;/);
   assert.doesNotMatch(app, /state\.volume/);
+});
+
+test("the App shell does not re-render for playback ticks", () => {
+  const app = readAppSource();
+  // currentTime changes several times per second while playing.
+  assert.doesNotMatch(app, /state\.currentTime/);
+  assert.match(app, /<WithDisplayTime online=\{onlineSession\}>\{displayTime => <>\s*<time>\{formatTime\(displayTime\)\}<\/time>/);
+  assert.match(app, /currentTime=\{displayTime\} duration=\{displayDuration\}/);
+  // The shell only needs to know whether playback has left zero.
+  assert.match(app, /const hasPlaybackProgress = usePlayerStore\(store => \(onlineSession \? store\.onlineMedia\?\.currentTime \?\? 0 : store\.currentTime\) > \.05\);/);
   // Volume consumers subscribe on their own.
   assert.match(app, /<WithStoreVolume>\{\(volume, muted\) => <ChannelStripPopover/);
   assert.match(app, /usePlayerStore\.subscribe\(\(next, previous\) => \{\s*if \(next\.volume !== previous\.volume/);
 });
 
 test("native volume commands are coalesced to the newest value", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.match(app, /function createLatestNativeVolumeSender\(\)/);
   assert.match(app, /if \(nativePlayback\) sendNativeVolume\(muted \? 0 : volume\);/);
 });

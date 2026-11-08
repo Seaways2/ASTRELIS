@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -9,7 +10,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 
 test("other output selection updates Web Audio and YouTube together", () => {
   const engine = read("src/audio/AudioEngine.ts");
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.match(engine, /enumerateDevices\(\)/);
   assert.match(engine, /setSinkId/);
   assert.match(app, /audioEngine\.setOutput\(id\)/);
@@ -23,7 +24,7 @@ test("Web fallback maps the logical default output to Chromium's default sink", 
 });
 
 test("stable online routes cannot enter Native capture while local guards remain", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.doesNotMatch(app, /onlineRecoveryPending|neteaseRecoveryPending|onlineNativeGeneration/);
   assert.doesNotMatch(app, /neteaseCaptureDesired|type: "online-start"|type: "stream-start"/);
   assert.match(app, /localBackendGeneration/);
@@ -31,7 +32,7 @@ test("stable online routes cannot enter Native capture while local guards remain
 });
 
 test("stable renderer does not subscribe to or start the experimental online Native path", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const store = read("src/stores/playerStore.ts");
   const dictionary = read("src/i18n/index.ts");
 
@@ -44,7 +45,7 @@ test("stable renderer does not subscribe to or start the experimental online Nat
 });
 
 test("a stale Native status reply cannot reclaim visualization after a backend handoff", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.match(app, /let nativeStatusCancelled = false/);
   assert.match(app, /cancelled: nativeStatusCancelled, ready: localNativeReady.current/);
   assert.match(app, /return \(\) => \{\s*nativeStatusCancelled = true;\s*window\.clearInterval\(timer\)/);
@@ -63,7 +64,7 @@ test("device page separates requested Native intent from actual state", () => {
 });
 
 test("Native playback never inherits the Web fallback output selection", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const page = read("src/components/WorkspacePage.tsx");
   assert.match(app, /selectedOutputLabelRef/,
     "the chosen endpoint label must survive a temporary enumerateDevices gap");
@@ -92,7 +93,7 @@ test("built-in audio path is dry except for Fade", () => {
 
 test("manual local track changes fade out before replacing the source", () => {
   const engine = read("src/audio/AudioEngine.ts");
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.match(engine, /async pause\(\)[\s\S]*linearRampToValueAtTime\(0[\s\S]*await new Promise<void>/,
     "Web fallback pause must be awaitable through the configured fade-out");
   assert.match(app, /const switchingTrack = Boolean/);
@@ -105,7 +106,7 @@ test("manual local track changes fade out before replacing the source", () => {
 });
 
 test("VST processing switch does not disable the Native output route", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const vstStore = read("src/stores/vstRackStore.ts");
   assert.match(app, /uiSettings\.nativeOutputEnabled && nativeReadable/);
   assert.match(vstStore, /type: "rack", plugins: \[\]/);
@@ -213,7 +214,7 @@ test("folders, categories and tracks share the same structure in every library v
 
 test("VST entry points require Native output and share one non-automatic guide guard", () => {
   const store = read("src/stores/playerStore.ts");
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const channel = read("src/components/ChannelStripPopover.tsx");
   const page = read("src/components/WorkspacePage.tsx");
   const styles = read("src/styles/global.css");
@@ -248,7 +249,7 @@ test("VST entry points require Native output and share one non-automatic guide g
 });
 
 test("startup silently restores the unified Web Audio and YouTube output", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.match(app, /browser\.setOutput/);
   assert.match(app, /selectDevice\(deviceId, \{ silent: true \}\)/,
     "automatic startup restoration must not surface a transient routing toast");
@@ -291,7 +292,7 @@ test("a completed track can advance the playlist only once per playback generati
   assert.equal(nativeStatusCompletesTrack({ position: 200, duration: 200 }, "track-b:8", true), true,
     "older matching hosts remain compatible after the backend-ready barrier");
 
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   assert.match(app, /handleLocalEnded/);
   assert.match(app, /expectedToken !== token/);
   assert.match(app, /latestTrack\.id.*latest\.localPlayRequest/);
@@ -388,7 +389,7 @@ test("category search cannot expose an unrelated artist for bulk queue insertion
 });
 
 test("VST status cannot report ON while Native output is disabled", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const styles = read("src/styles/global.css");
   assert.match(app, /vstControlNativeRequired = Boolean\(!onlineDirectSource && vstControlRequested && !state\.uiSettings\.nativeOutputEnabled\)/);
   assert.match(app, /!videoActive && !hdmiDirect && !onlineDirectSource && vstControlRequested && state\.uiSettings\.nativeOutputEnabled/);
@@ -399,7 +400,7 @@ test("VST status cannot report ON while Native output is disabled", () => {
 });
 
 test("YouTube and NetEase always use unfaded Web Direct without changing the local Native preference", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const page = read("src/components/WorkspacePage.tsx");
   assert.match(app, /const onlineDirectSource = onlinePlaybackSession \|\| neteaseOnlineSource/);
   assert.match(app, /hdmiDirect = state\.uiSettings\.hdmiDirectEnabled && !onlineDirectSource/);

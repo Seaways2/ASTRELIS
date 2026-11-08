@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -9,7 +10,7 @@ const read = relative => relative === "electron/main.ts" ? readMainProcessSource
 
 test("online visualization has no system or desktop loopback path", () => {
   const engine = read("src/audio/AudioEngine.ts");
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const main = read("electron/main.ts");
   assert.doesNotMatch(engine, /getDisplayMedia|loopbackStream|startLoopback|useLoopbackAnalysis/);
   assert.doesNotMatch(app, /startLoopback|useLoopbackAnalysis|analysisMode === "loopback"/);

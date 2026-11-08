@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -28,7 +29,7 @@ test('prefetch selects only the deterministic next local file and respects queue
   assert.equal(prefetchTarget([tracks[0],{id:'online',format:'NETEASE',sourcePath:'remote'}],0,true,false,false,'all'),undefined);
 });
 test('hidden status retains transport polling without FFT; hidden canvas stops its animation loop',()=>{
-  const app=fs.readFileSync(path.join(root,'src/App.tsx'),'utf8');
+  const app=readAppSource();
   assert.match(app,/type: "status", analysis: analysisNeeded/);
   assert.match(app,/analysisNeeded \? 50 : 500/);
   assert.match(app,/enabled: analysisNeeded/);

@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -17,7 +18,7 @@ test("Galaxy Spiral replaces the waveform renderer without changing its persiste
 });
 
 test("Radial Spectrum and Galaxy Spiral exchange positions in both mode lists", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const overview = read("src/visualizers/VisualizerOverview.tsx");
   assert.match(app, /\{ id: "radial", key: "mode\.radial" \}, \{ id: "waveform", key: "mode\.waveform" \}/);
   assert.match(overview, /\{ mode: "radial", key: "mode\.radial" \},\s*\{ mode: "waveform", key: "mode\.waveform" \}/);

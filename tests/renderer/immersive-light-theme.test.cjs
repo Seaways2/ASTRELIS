@@ -1,9 +1,10 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const app = fs.readFileSync(path.resolve(__dirname, "../../src/App.tsx"), "utf8");
+const app = readAppSource();
 const globalStyles = fs.readFileSync(path.resolve(__dirname, "../../src/styles/global.css"), "utf8");
 const moduleStyles = fs.readFileSync(path.resolve(__dirname, "../../src/styles/workspace-modules.css"), "utf8");
 

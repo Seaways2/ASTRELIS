@@ -28,6 +28,11 @@ import { VolumeLevelIcon } from "./components/VolumeLevelIcon";
 import { usePlayerStore } from "./stores/playerStore";
 import { useShallow } from "zustand/react/shallow";
 import { WithStoreVolume } from "./components/WithStoreVolume";
+import { formatTime, isAudioFileDrag, modes, nav, selectShellState, visualTransitionTimings, waitForAudioTransition } from "./app/appShell";
+import { WithDisplayTime } from "./app/WithDisplayTime";
+import { useImmersiveMode } from "./app/useImmersiveMode";
+import { useVolumeRouting } from "./app/useVolumeRouting";
+import { useWindowPresence } from "./app/useWindowPresence";
 import { toNativeRackPayload, useVstRackStore } from "./stores/vstRackStore";
 import type { OutputDevice, VisualizerMode } from "./types/audio";
 import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
@@ -43,85 +48,10 @@ import {
   type GpuVisualQuality
 } from "./visualizers/gpuVisualRuntime";
 
-const nav = [
-  [Music2, "nowPlaying", "nav.nowPlaying"], [ListMusic, "playlist", "nav.playlist"], [Library, "library", "nav.library"], [Globe2, "online", "nav.online"],
-  [Blocks, "plugins", "nav.plugins"], [MonitorSpeaker, "devices", "nav.devices"], [Palette, "appearance", "nav.appearance"], [Settings, "settings", "nav.settings"]
-] as const;
-const modes: { id: VisualizerMode; key: "mode.overview" | "mode.spectrum" | "mode.mirror" | "mode.waveform" | "mode.radial" | "mode.particles" | "mode.pulse" }[] = [
-  { id: "overview", key: "mode.overview" },
-  { id: "spectrum", key: "mode.spectrum" }, { id: "mirror", key: "mode.mirror" },
-  { id: "radial", key: "mode.radial" }, { id: "waveform", key: "mode.waveform" },
-  { id: "particles", key: "mode.particles" }, { id: "pulse", key: "mode.pulse" }
-];
-const visualTransitionTimings = {
-  dissolve: { out: 180, in: 280 },
-  fade: { out: 140, in: 220 },
-  zoom: { out: 180, in: 300 },
-  slide: { out: 180, in: 300 },
-  scan: { out: 220, in: 340 }
-} as const;
-const formatTime = (seconds: number) => Number.isFinite(seconds) ? `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}` : "00:00";
-const isAudioFileDrag = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types).includes("Files");
-const waitForAudioTransition = (durationMs: number) => new Promise<void>(resolve => window.setTimeout(resolve, durationMs));
-type PlayerStoreState = ReturnType<typeof usePlayerStore.getState>;
-// The shell subscribes to everything except `volume`, which changes on every
-// fader pointermove. Volume consumers use WithStoreVolume or store.subscribe.
-const selectShellState = (store: PlayerStoreState) => {
-  const { volume, ...shell } = store;
-  void volume;
-  return shell;
-};
-// Sends only the newest volume to the native host; at most one in flight.
-function createLatestNativeVolumeSender() {
-  let inFlight = false;
-  let pending: number | undefined;
-  const pump = async () => {
-    if (inFlight || pending === undefined) return;
-    inFlight = true;
-    const value = pending;
-    pending = undefined;
-    try { await window.desktop?.nativeAudio.command({ type: "volume", value }); }
-    catch { /* The next value or the next load re-applies the volume. */ }
-    finally { inFlight = false; void pump(); }
-  };
-  return (value: number) => { pending = value; void pump(); };
-}
 export default function App() {
   const state = usePlayerStore(useShallow(selectShellState));
-  const lastAudibleVolume = useRef((() => {
-    const { volume } = usePlayerStore.getState();
-    return volume > .001 ? volume : .72;
-  })());
-  useEffect(() => usePlayerStore.subscribe(store => {
-    if (!store.muted && store.volume > .001) lastAudibleVolume.current = store.volume;
-  }), []);
-  const sendNativeVolume = useMemo(createLatestNativeVolumeSender, []);
+  const { pageVisible, windowBackgrounded, maximized, clickThrough, setClickThrough, systemLight } = useWindowPresence();
   const [videoState, setVideoState] = useState<VideoState>();
-  const videoVolumeSync = useRef<{ timer?: number; lastSentAt: number; inFlight: boolean; pending: boolean; value: number }>({
-    lastSentAt: Number.NEGATIVE_INFINITY, inFlight: false, pending: false, value: 0
-  });
-  const flushVideoVolumeSync = useRef<() => void>(() => {});
-  flushVideoVolumeSync.current = () => {
-    const sync = videoVolumeSync.current;
-    if (sync.inFlight || !sync.pending) return;
-    const wait = 80 - (performance.now() - sync.lastSentAt);
-    if (wait > 0) {
-      if (sync.timer === undefined) sync.timer = window.setTimeout(() => {
-        sync.timer = undefined;
-        flushVideoVolumeSync.current();
-      }, wait);
-      return;
-    }
-    sync.pending = false;
-    sync.inFlight = true;
-    sync.lastSentAt = performance.now();
-    void Promise.resolve(window.desktop?.video.control("volume", sync.value))
-      .catch(() => undefined)
-      .finally(() => {
-        sync.inFlight = false;
-        if (sync.pending) flushVideoVolumeSync.current();
-      });
-  };
   const [videoPreparing, setVideoPreparing] = useState("");
   const [videoWindowBusy, setVideoWindowBusy] = useState(false);
   const [videoDirect, setVideoDirect] = useState(false);
@@ -135,7 +65,6 @@ export default function App() {
   const { t, tm, resolvedLanguage } = useI18n();
   const gpuCapabilities = useMemo(probeGpuVisualCapabilities, []);
   const [vstNotice, setVstNotice] = useState("");
-  const [systemLight, setSystemLight] = useState(() => window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false);
   const lightTheme = state.uiSettings.colorMode === "light" || (state.uiSettings.colorMode === "system" && systemLight);
   const lowPerformanceMode = state.uiSettings.lowPerformanceMode;
   const motionEnabled = state.uiSettings.animations && !lowPerformanceMode;
@@ -182,13 +111,15 @@ export default function App() {
   const displayArtist = onlineSession ? (state.onlineMedia!.artist || "YouTube Music") : current?.artist ? tm(current.artist) : undefined;
   const displayAlbum = onlineSession ? state.onlineMedia!.album : current?.album;
   const displayCover = onlineSession ? state.onlineMedia!.artwork : current?.coverUrl;
-  const displayTime = onlineSession ? state.onlineMedia!.currentTime : state.currentTime;
+  // Only whether playback has moved off zero matters here; the position itself
+  // is rendered by WithDisplayTime so ticks do not re-render the shell.
+  const hasPlaybackProgress = usePlayerStore(store => (onlineSession ? store.onlineMedia?.currentTime ?? 0 : store.currentTime) > .05);
   const backendDuration = Number.isFinite(state.duration) && state.duration > 0 ? state.duration : 0;
   const metadataDuration = Number.isFinite(current?.duration) && (current?.duration || 0) > 0 ? current!.duration! : 0;
   const displayDuration = onlineSession ? state.onlineMedia!.duration : backendDuration || metadataDuration;
   const playbackActive = state.playing || onlinePlaying;
   const controlPlaying = onlineSession ? onlinePlaying : state.playing;
-  const playbackState = playbackActive ? "playing" : (current || onlineSession) && displayTime > .05 ? "paused" : "stopped";
+  const playbackState = playbackActive ? "playing" : (current || onlineSession) && hasPlaybackProgress ? "paused" : "stopped";
   const fileRef = useRef<HTMLInputElement>(null);
   const previousLocalPlaying = useRef(state.playing);
   const previousOnlinePlaying = useRef(Boolean(state.onlineMedia?.playing));
@@ -214,15 +145,16 @@ export default function App() {
   const selectedOutputLabelRef = useRef(localStorage.getItem("auralis.output.label") || "");
   const outputFallbackTimerRef = useRef<number | undefined>(undefined);
   const [dragging, setDragging] = useState(false);
-  const [maximized, setMaximized] = useState(false);
+  const dragDepth = useRef(0);
+  const lastDragEvent = useRef(0);
+  const {
+    immersiveMode, setImmersiveMode, immersiveControlsVisible, setImmersiveControlsVisible,
+    immersiveSensorHovered, exitImmersiveMode, cancelImmersiveHide, scheduleImmersiveHide
+  } = useImmersiveMode({ clickThrough, onEnter: () => { dragDepth.current = 0; setDragging(false); } });
   const [visualSettingsOpen, setVisualSettingsOpen] = useState(false);
-  const [pageVisible, setPageVisible] = useState(!document.hidden);
-  const [windowBackgrounded, setWindowBackgrounded] = useState(false);
   const visualsVisible = pageVisible && !windowBackgrounded && !videoActive;
   const [channelStripOpen, setChannelStripOpen] = useState(false);
   const atmosphere = useAtmosphereStore(store => store.settings);
-  const [immersiveMode, setImmersiveMode] = useState(false);
-  const [immersiveControlsVisible, setImmersiveControlsVisible] = useState(true);
   const [visualStopped, setVisualStopped] = useState(false);
   const [visualSwitchPhase, setVisualSwitchPhase] = useState<"idle" | "out" | "in">("idle");
   const visualSwitchTimer = useRef<number | undefined>(undefined);
@@ -238,7 +170,6 @@ export default function App() {
   const pageSwitchPhaseRef = useRef<"idle" | "out" | "in">("idle");
   const pageSwitchTimer = useRef<number | undefined>(undefined);
   const pageSwitchGeneration = useRef(0);
-  const [clickThrough, setClickThrough] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
   useEffect(() => {
     if (!videoActive || renderedPage !== "nowPlaying" || compactMode) setVideoVolumeOpen(false);
@@ -250,11 +181,7 @@ export default function App() {
   );
   const nativeVstEnabled = useVstRackStore(store => store.nativeEnabled);
   const videoRackItems = useVstRackStore(store => store.videoRack);
-  const immersiveHideTimer = useRef(0);
-  const immersiveSensorHovered = useRef(false);
   const playbackBackend = useRef<{ trackId?: string; native: boolean; playbackToken?: string; format?: string }>({ native: false });
-  const dragDepth = useRef(0);
-  const lastDragEvent = useRef(0);
   const gpuEffectsRequested = state.uiSettings.gpuAccelerationEnabled
     && !lowPerformanceMode
     && !state.obsMode;
@@ -377,6 +304,10 @@ export default function App() {
   const onlineDirectSource = onlinePlaybackSession || neteaseOnlineSource;
   const hdmiDirect = state.uiSettings.hdmiDirectEnabled && !onlineDirectSource;
   const nativePlayback = !isVideoTrack(current) && Boolean((hdmiDirect && current) || (state.uiSettings.nativeOutputEnabled && nativeReadable && !onlineDirectSource));
+  const lastAudibleVolume = useVolumeRouting({
+    nativePlayback, onlineSession,
+    videoFollowsVolume: Boolean(videoActive && videoState?.ready && !videoState.standalone && !videoDirect)
+  });
   useEffect(() => {
     void window.desktop?.cache?.protect([current?.nativePath, current?.sourcePath].filter((file): file is string => !!file));
   }, [current?.nativePath, current?.sourcePath]);
@@ -503,36 +434,6 @@ export default function App() {
     return dispose;
   }, []);
   useEffect(() => {
-    window.desktop?.setImmersive(immersiveMode);
-    if (immersiveMode) {
-      dragDepth.current = 0;
-      setDragging(false);
-    }
-    return () => window.desktop?.setImmersive(false);
-  }, [immersiveMode]);
-  const exitImmersiveMode = useCallback(() => {
-    const current = usePlayerStore.getState();
-    if (current.obsMode) current.setObsMode(false);
-    setImmersiveMode(false);
-  }, []);
-  const cancelImmersiveHide = useCallback(() => {
-    window.clearTimeout(immersiveHideTimer.current);
-    immersiveHideTimer.current = 0;
-  }, []);
-  const scheduleImmersiveHide = useCallback(() => {
-    cancelImmersiveHide();
-    if (!immersiveMode || !clickThrough || immersiveSensorHovered.current) return;
-    immersiveHideTimer.current = window.setTimeout(() => {
-      if (!immersiveSensorHovered.current) setImmersiveControlsVisible(false);
-    }, 3000);
-  }, [cancelImmersiveHide, immersiveMode, clickThrough]);
-  useEffect(() => {
-    cancelImmersiveHide();
-    setImmersiveControlsVisible(true);
-    if (immersiveMode && clickThrough) scheduleImmersiveHide();
-    return cancelImmersiveHide;
-  }, [immersiveMode, clickThrough, cancelImmersiveHide, scheduleImmersiveHide]);
-  useEffect(() => {
     if (state.visualizer === "waterfall" || state.visualizer === "levels") state.setVisualizer("overview");
   }, [state.visualizer]);
   useEffect(() => {
@@ -621,7 +522,7 @@ export default function App() {
 
   const previousLocal = () => {
     if (!state.tracks.length) return;
-    if (state.currentTime > 3) {
+    if (usePlayerStore.getState().currentTime > 3) {
       if (nativePlayback) void window.desktop?.nativeAudio.command({ type: "seek", position: 0 });
       else audioEngine.seek(0);
       return;
@@ -637,9 +538,10 @@ export default function App() {
       localNativeReady.current = false;
       playbackExclusion.current.cancel();
       const token = `${current.id}:${state.localPlayRequest}`;
+      const positionAtSwitch = usePlayerStore.getState().currentTime;
       videoTransition.current = videoTransition.current.catch(() => undefined).then(async () => {
         if (backendGeneration !== localBackendGeneration.current) return;
-        const resumePosition = videoState?.playbackToken === token ? videoState.position : state.currentTime || videoBookmarks.current.get(current.id) || 0;
+        const resumePosition = videoState?.playbackToken === token ? videoState.position : positionAtSwitch || videoBookmarks.current.get(current.id) || 0;
         await window.desktop?.video.control("close");
         await audioEngine.pause();
         audioEngine.stopNativePcmCapture(); audioEngine.resetAnalysis();
@@ -678,7 +580,7 @@ export default function App() {
       && completedLocalPlaybackToken.current === previousBackend.playbackToken
     );
     if (previousTrackCompleted) completedLocalPlaybackToken.current = "";
-    const resumePosition = state.currentTime;
+    const resumePosition = usePlayerStore.getState().currentTime;
     // Online tracks are deliberately hard-switched in stable mode.  Preserve
     // the configured transition only when both sides of the handoff are local.
     const onlineTransition = current.format === "NETEASE" || previousBackend.format === "NETEASE";
@@ -852,30 +754,6 @@ export default function App() {
     }
     if (next.ended) handleLocalEnded(token);
   }), [handleLocalEnded]);
-  useEffect(() => {
-    const sync = videoVolumeSync.current;
-    if (!(videoActive && videoState?.ready && !videoState.standalone && !videoDirect)) {
-      if (sync.timer !== undefined) window.clearTimeout(sync.timer);
-      sync.timer = undefined;
-      sync.pending = false;
-      return;
-    }
-    const push = (volume: number, muted: boolean) => {
-      sync.value = muted ? 0 : volume * 100;
-      sync.pending = true;
-      flushVideoVolumeSync.current();
-    };
-    const live = usePlayerStore.getState();
-    push(live.volume, live.muted);
-    // Follow volume through the store directly; the shell does not re-render for it.
-    return usePlayerStore.subscribe((next, previous) => {
-      if (next.volume !== previous.volume || next.muted !== previous.muted) push(next.volume, next.muted);
-    });
-  }, [videoActive, videoState?.ready, videoState?.standalone, videoDirect]);
-  useEffect(() => () => {
-    const timer = videoVolumeSync.current.timer;
-    if (timer !== undefined) window.clearTimeout(timer);
-  }, []);
   const detachVideo = useCallback(async () => {
     if (videoWindowBusy) return;
     setVideoWindowBusy(true);
@@ -883,18 +761,6 @@ export default function App() {
     finally { setVideoWindowBusy(false); }
   }, [videoWindowBusy, resolvedLanguage, t]);
 
-  useEffect(() => {
-    const apply = (volume: number, muted: boolean) => {
-      audioEngine.setVolume(volume, muted);
-      if (onlineSession) window.desktop?.browser.setVolume(volume, muted);
-      if (nativePlayback) sendNativeVolume(muted ? 0 : volume);
-    };
-    const live = usePlayerStore.getState();
-    apply(live.volume, live.muted);
-    return usePlayerStore.subscribe((next, previous) => {
-      if (next.volume !== previous.volume || next.muted !== previous.muted) apply(next.volume, next.muted);
-    });
-  }, [nativePlayback, onlineSession, sendNativeVolume]);
   useEffect(() => {
     if (!videoActive && (state.playing || onlinePlaying)) {
       audioEngine.resumeAnalysis();
@@ -1096,15 +962,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleWindowModeKeyDown);
     return () => window.removeEventListener("keydown", handleWindowModeKeyDown);
-  }, [state.obsMode, immersiveMode, exitImmersiveMode, detachVideo]);
-  useEffect(() => {
-    const updateVisibility = () => setPageVisible(!document.hidden);
-    document.addEventListener("visibilitychange", updateVisibility);
-    return () => document.removeEventListener("visibilitychange", updateVisibility);
-  }, []);
-  useEffect(() => window.desktop?.onPresentationState(state => {
-    setWindowBackgrounded(state.minimized || state.trayConcealed);
-  }), []);
+  }, [state.obsMode, immersiveMode, setImmersiveMode, exitImmersiveMode, detachVideo]);
   useEffect(() => {
     void useVstRackStore.getState().setPerformanceSuspended(lowPerformanceMode);
   }, [lowPerformanceMode]);
@@ -1115,13 +973,6 @@ export default function App() {
       state.obsMode || lowPerformanceMode || customBackgroundActive ? "none" : state.uiSettings.glassMaterial
     );
   }, [state.obsMode, lowPerformanceMode, customBackgroundActive, state.uiSettings.glassMaterial]);
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: light)");
-    const update = () => setSystemLight(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
   useEffect(() => {
     window.desktop?.setColorTheme(state.uiSettings.colorMode);
     document.documentElement.style.colorScheme = lightTheme ? "light" : "dark";
@@ -1138,8 +989,6 @@ export default function App() {
     latest.setOnlineMedia(media);
   }), [stopLocalSourceForOnline]);
   useEffect(() => window.desktop?.browser.onPlayIntent(() => onlinePlayIntentHandler.current()), []);
-  useEffect(() => window.desktop?.onClickThrough(setClickThrough), []);
-  useEffect(() => window.desktop?.onMaximized(setMaximized), []);
   useEffect(() => window.desktop?.onMediaKey((action) => mediaKeyHandler.current(action)), []);
   useEffect(() => {
     const clearDragState = () => {
@@ -1309,7 +1158,7 @@ export default function App() {
         volume={volume} muted={muted} restoreVolume={lastAudibleVolume.current} plugins={videoRackItems}
         onVolume={state.setVolume} onMuted={state.setMuted} />}</WithStoreVolume>
     : undefined,
-    [videoSidebarMode, videoDirect, videoState?.rackAudio, videoRackItems, state.setVolume, state.setMuted]);
+    [videoSidebarMode, videoDirect, videoState?.rackAudio, videoRackItems, state.setVolume, state.setMuted, lastAudibleVolume]);
   const toggleVideoQueue = () => { setVideoVolumeOpen(false); setVisualSettingsOpen(false); setQueueOpen(open => !open); };
   const toggleVideoVolume = () => { setQueueOpen(false); setVisualSettingsOpen(false); setVideoVolumeOpen(open => !open); };
 
@@ -1572,8 +1421,10 @@ export default function App() {
           </>}
         </div>
         <div className="transport-progress">
+          <WithDisplayTime online={onlineSession}>{displayTime => <>
           <time>{formatTime(displayTime)}</time>
           <div className="timeline transport-timeline"><WaveformTimeline videoHandle={videoActive && !onlineSession} url={onlineSession || videoActive ? undefined : current?.url} sourcePath={onlineSession || videoActive ? undefined : current?.sourcePath || current?.nativePath} liveKey={onlineSession ? state.onlineMedia?.trackId || undefined : undefined} readOnly={onlineSession} livePlaying={onlinePlaying} currentTime={displayTime} duration={displayDuration} accent={state.accent} lowPerformance={lowPerformanceMode} onSeek={seek} /></div>
+          </>}</WithDisplayTime>
           <time>{onlineSession && displayDuration <= 0 ? "--:--" : formatTime(displayDuration)}</time>
           {videoSidebarMode || videoActive ? null : (compactMode && !hdmiDirect) ? <WithStoreVolume>{(volume, muted) => <label className="compact-volume" title={`${t("channel.mainVolume")} ${muted ? 0 : Math.round(volume * 100)}%`}>
             <button type="button" disabled={videoActive && videoDirect} aria-label={t(muted ? "common.unmute" : "common.mute")} onClick={() => state.setMuted(!muted)}>

@@ -1,3 +1,4 @@
+const { readAppSource } = require("./helpers/appSource.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -26,7 +27,7 @@ test("capability probing respects Chromium safety decisions", () => {
 });
 
 test("Canvas 2D owns every scene while GPU FX stays in the compositor", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const canvas = read("src/visualizers/VisualizerCanvas.tsx");
   const styles = read("src/styles/global.css");
   const overview = read("src/visualizers/VisualizerOverview.tsx");
@@ -50,7 +51,7 @@ test("Canvas 2D owns every scene while GPU FX stays in the compositor", () => {
 
 
 test("GPU controls merge the capability-aware switch and fixed quality selector", () => {
-  const app = read("src/App.tsx");
+  const app = readAppSource();
   const workspace = read("src/components/WorkspacePage.tsx");
   const locale = read("src/i18n/index.ts");
   assert.match(workspace,/gpu-render-module/);

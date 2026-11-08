@@ -102,7 +102,19 @@ export interface LibraryDerivedIndexSnapshot {
   stats: { totalBytes: number; hiRes: number; artistCount: number; albumCount: number };
 }
 
-const normalize = (value?: string) => String(value || "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+// Folder paths, artists, albums and formats repeat across thousands of tracks,
+// and NFKC + regex + lowercase was the top cost of opening the library.
+const NORMALIZE_CACHE_LIMIT = 200_000;
+const normalizeCache = new Map<string, string>();
+const normalize = (value?: string) => {
+  const raw = String(value || "");
+  const cached = normalizeCache.get(raw);
+  if (cached !== undefined) return cached;
+  const result = raw.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  if (normalizeCache.size >= NORMALIZE_CACHE_LIMIT) normalizeCache.clear();
+  normalizeCache.set(raw, result);
+  return result;
+};
 const mediaIdOf = (track: Track) => track.mediaId || track.id;
 const artistIdsOf = (track: Track) => track.tags?.artists.map(artist => artist.artistId)
   || (track.artist ? [`legacy-artist:${normalize(track.artist)}`] : []);
@@ -487,6 +499,31 @@ export class LibraryIndex {
   categoryGroups(facet: LibraryCategoryFacet, search: string, sortScope: LibraryQueryScope, locale: string) {
     return this.categoryPage(facet, search, sortScope, locale, 0, Number.MAX_SAFE_INTEGER).items;
   }
+}
+
+// Track arrays from the store are immutable snapshots: a new scan or edit
+// produces a new array. An index built for one array therefore stays valid
+// for as long as that array is the input, so re-opening the library page can
+// reuse it instead of rebuilding (previously ~0.7 s on every visit).
+const canonicalIndexes = new WeakMap<Track[], { cache: LibraryDerivedIndexSnapshot | null; revision: number; index: LibraryIndex }>();
+const hiddenIndexes = new WeakMap<LibraryIndex, { key: string; index: LibraryIndex }>();
+
+export function reusableLibraryIndex(tracks: Track[], cache: LibraryDerivedIndexSnapshot | null, revision: number) {
+  const reused = canonicalIndexes.get(tracks);
+  if (reused && reused.cache === cache && reused.revision === revision) return reused.index;
+  const index = new LibraryIndex(tracks, cache, revision);
+  canonicalIndexes.set(tracks, { cache, revision, index });
+  return index;
+}
+
+/** Index without tracks under protected folders, reused per canonical index and folder set. */
+export function reusableHiddenFolderIndex(canonical: LibraryIndex, hiddenFolders: string[], isHidden: (track: Track) => boolean) {
+  const key = hiddenFolders.join("\u0000");
+  const reused = hiddenIndexes.get(canonical);
+  if (reused && reused.key === key) return reused.index;
+  const index = new LibraryIndex(canonical.tracks.filter(track => !isHidden(track)), null, canonical.libraryRevision);
+  hiddenIndexes.set(canonical, { key, index });
+  return index;
 }
 
 export const trackMediaId = mediaIdOf;

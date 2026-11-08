@@ -20,6 +20,18 @@ type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
 type LibraryView = "flow" | "cards" | "details" | "mosaic";
 type LibrarySort = "title" | "artist" | "album" | "format" | "size";
 
+// Keep the same array per (store snapshot, media filter) so the library index
+// built for it can be reused when the page is opened again.
+const filteredTrackArrays = new WeakMap<Track[], Map<string, Track[]>>();
+const tracksForMediaFilter = (tracks: Track[], mediaFilter: string) => {
+  if (mediaFilter === "all") return tracks;
+  let byFilter = filteredTrackArrays.get(tracks);
+  if (!byFilter) filteredTrackArrays.set(tracks, byFilter = new Map());
+  let filtered = byFilter.get(mediaFilter);
+  if (!filtered) byFilter.set(mediaFilter, filtered = tracks.filter(track => (mediaFilter === "video") === isVideoTrack(track)));
+  return filtered;
+};
+
 // Browse memory belongs to this renderer session, never to persisted settings.
 const librarySession = {
   mediaFilter: "all", flowIndex: 0, query: "", facet: "文件夹" as Facet,
@@ -111,7 +123,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const noticeHost = document.querySelector<HTMLElement>(".app-shell");
   const [mediaFilter, setMediaFilter] = useState(() => librarySession.mediaFilter);
   const [flowSelection, setFlowSelection] = useState({ key: "", index: 0 });
-  const filteredTracks = useMemo(() => state.libraryTracks.filter(track => mediaFilter === "all" || (mediaFilter === "video") === isVideoTrack(track)), [state.libraryTracks, mediaFilter]);
+  const filteredTracks = useMemo(() => tracksForMediaFilter(state.libraryTracks, mediaFilter), [state.libraryTracks, mediaFilter]);
   const videoCoverSources = useMemo(() => new Set(state.libraryTracks.filter(isVideoTrack).map(track => track.coverUrl).filter((source): source is string => typeof source === "string")), [state.libraryTracks]);
   const [query, setQuery] = useState(() => librarySession.query);
   const [removingFolder, setRemovingFolder] = useState<string | null>(null);

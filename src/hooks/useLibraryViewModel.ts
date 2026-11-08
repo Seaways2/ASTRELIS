@@ -3,7 +3,8 @@ import { useEffect, useMemo } from "react";
 import { favoriteTrackKey } from "../stores/playerStore";
 import type { Track } from "../types/audio";
 import {
-  LibraryIndex,
+  reusableHiddenFolderIndex,
+  reusableLibraryIndex,
   type LibraryDerivedIndexSnapshot,
   trackAlbumId,
   trackArtistIds,
@@ -34,14 +35,17 @@ export interface LibraryViewModelInput {
 }
 
 export function useLibraryViewModel(input: LibraryViewModelInput) {
-  const canonicalIndex = useMemo(() => new LibraryIndex(input.tracks, input.cache, input.revision), [input.tracks, input.cache, input.revision]);
+  // Reused across page visits while the store's track array is unchanged.
+  const canonicalIndex = useMemo(() => reusableLibraryIndex(input.tracks, input.cache, input.revision), [input.tracks, input.cache, input.revision]);
   useEffect(() => {
     if (input.cacheWritable === false || !input.tracks.length || canonicalIndex.usedDerivedCache || !window.desktop?.library.saveDerivedIndex) return;
     const save = () => { void window.desktop?.library.saveDerivedIndex(input.revision, canonicalIndex.exportSnapshot()); };
     const handle = window.requestIdleCallback(save, { timeout: 5000 });
     return () => window.cancelIdleCallback(handle);
   }, [canonicalIndex, input.revision, input.tracks.length, input.cacheWritable]);
-  const index = useMemo(() => input.hiddenFolders?.length ? new LibraryIndex(input.tracks.filter(track => !hiddenByFolders(track.sourcePath, input.hiddenFolders!)), null, input.revision) : canonicalIndex, [canonicalIndex, input.tracks, input.hiddenFolders, input.revision]);
+  const index = useMemo(() => input.hiddenFolders?.length
+    ? reusableHiddenFolderIndex(canonicalIndex, input.hiddenFolders, track => hiddenByFolders(track.sourcePath, input.hiddenFolders!))
+    : canonicalIndex, [canonicalIndex, input.hiddenFolders]);
   const roots = useMemo(() => input.hiddenFolders?.length ? input.roots.filter(root => !hiddenByFolders(root, input.hiddenFolders!)) : input.roots, [input.roots, input.hiddenFolders]);
   const favoriteMediaIds = useMemo(() => {
     const favoriteKeys = new Set(input.favorites);

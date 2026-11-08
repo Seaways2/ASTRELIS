@@ -7,6 +7,12 @@ declare global {
     mediaKeysEnabled: boolean;
     closeBehavior: "tray" | "quit";
   }
+  interface SavedQueueSnapshot {
+    kind: "music" | "video";
+    tracks: Array<{ id: string; sourcePath?: string } & Record<string, unknown>>;
+    selection: Record<string, string>;
+    bookmarks: Record<string, number>;
+  }
   interface DesktopPreferencesResult {
     ok: boolean;
     preferences: DesktopPreferences;
@@ -63,6 +69,11 @@ declare global {
         inspect(): Promise<{ ok: boolean; error?: string; path?: string; bytes?: number; decodedBytes?: number; directBytes?: number; protectedBytes?: number; busy?: boolean }>;
         clear(): Promise<{ ok: boolean; error?: string; removedBytes?: number; skippedBytes?: number; failedFiles?: number }>;
         protect(files: string[]): Promise<void>;
+      };
+      /** Main-owned queue persistence with atomic writes and rotating backups. */
+      queue?: {
+        load(): Promise<SavedQueueSnapshot | null>;
+        save(queues: SavedQueueSnapshot): void;
       };
       library: {
         visibility(request: Record<string, unknown>): Promise<{ok:boolean;configured?:boolean;unlocked?:boolean;roots?:string[];broken?:boolean;error?:string}>;

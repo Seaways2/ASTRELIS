@@ -46,6 +46,39 @@ test('restore keeps entries the main process skipped instead of shrinking the qu
  assert.deepEqual(restored.getState().inactiveTracks.map(t=>t.id),['v1','v2']);
 });
 
+test('queues are saved to the main-owned store and restored from it before localStorage',async()=>{
+ const saved=[];let stored=null;
+ const withQueue={library:desktop.library,queue:{load:async()=>stored,save:snapshot=>{saved.push(snapshot);stored=snapshot;}}};
+ const h=loadPlayerStore({desktop:withQueue});h.store.getState().addQueueTracks(incoming);h.flush();
+ assert.equal(saved.length,1);assert.equal(h.persisted.has('astrelis.queues.v1'),false,'localStorage is no longer written');
+ // A stale localStorage copy must not win over the main store.
+ const stale=JSON.stringify({kind:'music',tracks:[music('old')],selection:{},bookmarks:{}});
+ const restored=loadPlayerStore({desktop:withQueue,initialStorage:[['astrelis.queues.v1',stale]]}).store;
+ await restored.getState().restoreQueues();
+ assert.deepEqual(restored.getState().tracks.map(t=>t.id),['m1','m2']);
+});
+
+test('a localStorage queue migrates into the main store on first restore',async()=>{
+ const saved=[];
+ const withQueue={library:desktop.library,queue:{load:async()=>null,save:snapshot=>saved.push(snapshot)}};
+ const legacy=JSON.stringify({kind:'music',tracks:[music('m1'),video('v1')],selection:{music:'m1'},bookmarks:{m1:30}});
+ const h=loadPlayerStore({desktop:withQueue,initialStorage:[['astrelis.queues.v1',legacy]]});
+ await h.store.getState().restoreQueues();h.flush();
+ assert.deepEqual(saved.at(-1).tracks.map(t=>t.id),['m1','v1']);assert.equal(saved.at(-1).bookmarks.m1,30);
+});
+
+test('closing before the saved queue is restored never saves an empty queue',async()=>{
+ const saved=[];let release;
+ const withQueue={library:desktop.library,queue:{load:()=>new Promise(resolve=>{release=resolve;}),save:snapshot=>saved.push(snapshot)}};
+ const h=loadPlayerStore({desktop:withQueue});
+ const restoring=h.store.getState().restoreQueues();
+ h.events.beforeunload();
+ assert.equal(saved.length,0);
+ release(null);await restoring;
+ h.events.beforeunload();
+ assert.equal(saved.length,1,'after restore an empty queue is a real state and is saved');
+});
+
 test('browsing and editing video queue does not pause music; double click switches playback',async()=>{
  const {store}=loadPlayerStore({desktop});const s=()=>store.getState();s().addQueueTracks(incoming);
  await s().playTrack(0);s().setTiming(25,200);const generation=s().localPlayRequest;

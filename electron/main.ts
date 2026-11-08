@@ -47,6 +47,8 @@ import { registerVstPluginIpc } from "./ipc/vstPluginIpc";
 import { registerAudioCacheIpc } from "./ipc/audioCacheIpc";
 import { registerLibraryIpc } from "./ipc/libraryIpc";
 import { registerAppearanceIpc, customBackgroundDirectory } from "./ipc/appearanceIpc";
+import { registerQueueIpc } from "./ipc/queueIpc";
+import { QueueStore } from "./queue/QueueStore";
 import { registerMediaProtocols } from "./mediaProtocols";
 import {
   assertNativeHostCompatibility,
@@ -74,6 +76,7 @@ protocol.registerSchemesAsPrivileged([
 
 let localMediaAccess: LocalMediaAccessPolicy | undefined;
 let authorizedFiles: AuthorizedFileStore | undefined;
+let queueStore: QueueStore | undefined;
 
 // The source-test build must not share Chromium caches or the single-instance
 // lock with an installed production build that may still be running in tray.
@@ -1567,6 +1570,8 @@ app.whenReady().then(async () => {
     return result.response === 0;
   });
   registerAppearanceIpc({ getMainWindow: () => mainWindow });
+  queueStore = new QueueStore(app.getPath("userData"));
+  registerQueueIpc({ getMainWindow: () => mainWindow, queueStore, writeLog });
   ipcMain.on("window:display-language", (event, language: unknown) => {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return;
     if (language !== "zh-CN" && language !== "en-US" && language !== "ja-JP") return;
@@ -1813,6 +1818,7 @@ app.on("before-quit", event => {
 });
 app.on("will-quit", () => {
   authorizedFiles?.flush();
+  queueStore?.flush();
   videoPlayer?.dispose();
   localWaveformService?.cancel();
   globalShortcut.unregisterAll();

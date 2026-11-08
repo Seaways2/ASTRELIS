@@ -63,8 +63,12 @@ contextBridge.exposeInMainWorld("desktop", {
     clear: () => ipcRenderer.invoke("cache:clear"),
     protect: (files: string[]) => ipcRenderer.invoke("cache:protect", files)
   },
+  queue: {
+    load: () => ipcRenderer.invoke("queue:load"),
+    save: (queues: unknown) => ipcRenderer.send("queue:save", queues)
+  },
   library: {
-    visibility: (request: Record<string, unknown>) => ipcRenderer.invoke("library:visibility", request),
+    visibility:(request: Record<string, unknown>) => ipcRenderer.invoke("library:visibility", request),
     musicbrainz: (request: Record<string, unknown>) => ipcRenderer.invoke("library:musicbrainz", request),
     tmdb: (request: Record<string, unknown>) => ipcRenderer.invoke("library:tmdb", request),
     fileAction: (id: string, action: "remove" | "reveal") => ipcRenderer.invoke("library:file-action", id, action),

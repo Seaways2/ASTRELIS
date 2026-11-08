@@ -354,6 +354,9 @@ const cancelPendingPlay = () => {
   pendingPlayTrackId = "";
 };
 
+const QUEUE_STORAGE_KEY = "astrelis.queues.v1";
+let queuesRestored = false;
+
 // A fader drag changes the volume on every pointermove; persist only the value
 // it settles on instead of writing localStorage synchronously each time.
 const VOLUME_PERSIST_DELAY_MS = 250;
@@ -420,9 +423,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return { tracks, inactiveTracks: merge(state.inactiveTracks, inactive), currentIndex: state.currentIndex < 0 && tracks.length ? 0 : state.currentIndex };
   }),
   restoreQueues: async () => {
-    if (get().tracks.length || get().inactiveTracks.length || !window.desktop) return;
+    if (get().tracks.length || get().inactiveTracks.length || !window.desktop) { queuesRestored = true; return; }
     try {
-      const saved = JSON.parse(localStorage.getItem("astrelis.queues.v1") || "null");
+      // Main-owned store first; localStorage is the pre-migration location
+      // (the first save after restoring moves it into the main store).
+      const saved = (await window.desktop.queue?.load().catch(() => null)) ?? JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) || "null");
       if (!saved || !Array.isArray(saved.tracks)) return;
       await loadFolderVisibility();
       const files = saved.tracks.filter((track: Track) => typeof track?.sourcePath === "string" && !isFolderLocked(track.sourcePath));
@@ -442,6 +447,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ tracks, inactiveTracks, queueKind: kind, viewedQueueKind: kind, queueSelection: saved.selection || {}, queueBookmarks,
         currentIndex, currentTime: queueBookmarks[tracks[currentIndex]?.id] || 0 });
     } catch { /* Keep the saved queues intact if a source is unavailable. */ }
+    finally { queuesRestored = true; }
   },
   libraryTracks: [],
   libraryDerivedIndexCache: null,
@@ -822,12 +828,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 let queueSaveTimer = 0;
 const saveQueues = () => {
   const state = usePlayerStore.getState(), current = state.tracks[state.currentIndex];
-  try { localStorage.setItem("astrelis.queues.v1", JSON.stringify({
+  const tracks = [...state.tracks, ...state.inactiveTracks].filter(track => track.sourcePath);
+  // Until the saved queue has been restored, an empty queue is only "not
+  // loaded yet"; saving it (e.g. closing during startup) would replace it.
+  if (!queuesRestored && !tracks.length) return;
+  const snapshot: SavedQueueSnapshot = {
     kind: state.queueKind,
-    tracks: [...state.tracks, ...state.inactiveTracks].filter(track => track.sourcePath),
+    tracks: tracks as SavedQueueSnapshot["tracks"],
     selection: { ...state.queueSelection, ...(current ? { [state.queueKind]: current.id } : {}) },
     bookmarks: { ...state.queueBookmarks, ...(current ? { [current.id]: state.duration > 0 && state.currentTime >= state.duration - .5 ? 0 : state.currentTime } : {}) }
-  })); } catch { /* Storage failure must not interrupt playback. */ }
+  };
+  try {
+    if (window.desktop?.queue) window.desktop.queue.save(snapshot);
+    else localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch { /* Storage failure must not interrupt playback. */ }
 };
 usePlayerStore.subscribe((state, previous) => {
   if (state.tracks !== previous.tracks || state.inactiveTracks !== previous.inactiveTracks || state.queueKind !== previous.queueKind) {

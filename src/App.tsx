@@ -26,6 +26,8 @@ import { AmbientBackground } from "./components/AmbientBackground";
 import { ChannelStripPopover } from "./components/ChannelStripPopover";
 import { VolumeLevelIcon } from "./components/VolumeLevelIcon";
 import { usePlayerStore } from "./stores/playerStore";
+import { useShallow } from "zustand/react/shallow";
+import { WithStoreVolume } from "./components/WithStoreVolume";
 import { toNativeRackPayload, useVstRackStore } from "./stores/vstRackStore";
 import type { OutputDevice, VisualizerMode } from "./types/audio";
 import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
@@ -61,12 +63,39 @@ const visualTransitionTimings = {
 const formatTime = (seconds: number) => Number.isFinite(seconds) ? `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}` : "00:00";
 const isAudioFileDrag = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types).includes("Files");
 const waitForAudioTransition = (durationMs: number) => new Promise<void>(resolve => window.setTimeout(resolve, durationMs));
+type PlayerStoreState = ReturnType<typeof usePlayerStore.getState>;
+// The shell subscribes to everything except `volume`, which changes on every
+// fader pointermove. Volume consumers use WithStoreVolume or store.subscribe.
+const selectShellState = (store: PlayerStoreState) => {
+  const { volume, ...shell } = store;
+  void volume;
+  return shell;
+};
+// Sends only the newest volume to the native host; at most one in flight.
+function createLatestNativeVolumeSender() {
+  let inFlight = false;
+  let pending: number | undefined;
+  const pump = async () => {
+    if (inFlight || pending === undefined) return;
+    inFlight = true;
+    const value = pending;
+    pending = undefined;
+    try { await window.desktop?.nativeAudio.command({ type: "volume", value }); }
+    catch { /* The next value or the next load re-applies the volume. */ }
+    finally { inFlight = false; void pump(); }
+  };
+  return (value: number) => { pending = value; void pump(); };
+}
 export default function App() {
-  const state = usePlayerStore();
-  const lastAudibleVolume = useRef(state.volume > .001 ? state.volume : .72);
-  useEffect(() => {
-    if (!state.muted && state.volume > .001) lastAudibleVolume.current = state.volume;
-  }, [state.volume, state.muted]);
+  const state = usePlayerStore(useShallow(selectShellState));
+  const lastAudibleVolume = useRef((() => {
+    const { volume } = usePlayerStore.getState();
+    return volume > .001 ? volume : .72;
+  })());
+  useEffect(() => usePlayerStore.subscribe(store => {
+    if (!store.muted && store.volume > .001) lastAudibleVolume.current = store.volume;
+  }), []);
+  const sendNativeVolume = useMemo(createLatestNativeVolumeSender, []);
   const [videoState, setVideoState] = useState<VideoState>();
   const videoVolumeSync = useRef<{ timer?: number; lastSentAt: number; inFlight: boolean; pending: boolean; value: number }>({
     lastSentAt: Number.NEGATIVE_INFINITY, inFlight: false, pending: false, value: 0
@@ -708,7 +737,10 @@ export default function App() {
           if (!loaded?.ok) { setDeviceError(loaded?.error || "原生引擎无法加载音频"); state.setPlaying(false); return; }
           if (resumePosition > 0) await window.desktop?.nativeAudio.command({ type: "seek", position: resumePosition });
           if (backendSuperseded()) return;
-          await window.desktop?.nativeAudio.command({ type: "volume", value: state.muted ? 0 : state.volume });
+          {
+            const live = usePlayerStore.getState();
+            await window.desktop?.nativeAudio.command({ type: "volume", value: live.muted ? 0 : live.volume });
+          }
           if (backendSuperseded()) return;
           localNativeReady.current = true;
           if (usePlayerStore.getState().playing) await playExclusive(true, routeSessionId);
@@ -828,10 +860,18 @@ export default function App() {
       sync.pending = false;
       return;
     }
-    sync.value = state.muted ? 0 : state.volume * 100;
-    sync.pending = true;
-    flushVideoVolumeSync.current();
-  }, [videoActive, videoState?.ready, videoState?.standalone, videoDirect, state.volume, state.muted]);
+    const push = (volume: number, muted: boolean) => {
+      sync.value = muted ? 0 : volume * 100;
+      sync.pending = true;
+      flushVideoVolumeSync.current();
+    };
+    const live = usePlayerStore.getState();
+    push(live.volume, live.muted);
+    // Follow volume through the store directly; the shell does not re-render for it.
+    return usePlayerStore.subscribe((next, previous) => {
+      if (next.volume !== previous.volume || next.muted !== previous.muted) push(next.volume, next.muted);
+    });
+  }, [videoActive, videoState?.ready, videoState?.standalone, videoDirect]);
   useEffect(() => () => {
     const timer = videoVolumeSync.current.timer;
     if (timer !== undefined) window.clearTimeout(timer);
@@ -844,11 +884,17 @@ export default function App() {
   }, [videoWindowBusy, resolvedLanguage, t]);
 
   useEffect(() => {
-    audioEngine.setVolume(state.volume, state.muted);
-    if (onlineSession) window.desktop?.browser.setVolume(state.volume, state.muted);
-    if (nativePlayback) void window.desktop?.nativeAudio.command({ type: "volume", value: state.muted ? 0 : state.volume });
-
-  }, [state.volume, state.muted, nativePlayback, onlineSession]);
+    const apply = (volume: number, muted: boolean) => {
+      audioEngine.setVolume(volume, muted);
+      if (onlineSession) window.desktop?.browser.setVolume(volume, muted);
+      if (nativePlayback) sendNativeVolume(muted ? 0 : volume);
+    };
+    const live = usePlayerStore.getState();
+    apply(live.volume, live.muted);
+    return usePlayerStore.subscribe((next, previous) => {
+      if (next.volume !== previous.volume || next.muted !== previous.muted) apply(next.volume, next.muted);
+    });
+  }, [nativePlayback, onlineSession, sendNativeVolume]);
   useEffect(() => {
     if (!videoActive && (state.playing || onlinePlaying)) {
       audioEngine.resumeAnalysis();
@@ -1259,11 +1305,11 @@ export default function App() {
   );
   const videoSidebarMode = (videoActive || videoLanding) && renderedPage === "nowPlaying" && !compactMode;
   const videoSidebarControls = useMemo(() => videoSidebarMode
-    ? <VideoChannelStrip direct={videoDirect} rackAudio={Boolean(videoState?.rackAudio)}
-        volume={state.volume} muted={state.muted} restoreVolume={lastAudibleVolume.current} plugins={videoRackItems}
-        onVolume={state.setVolume} onMuted={state.setMuted} />
+    ? <WithStoreVolume>{(volume, muted) => <VideoChannelStrip direct={videoDirect} rackAudio={Boolean(videoState?.rackAudio)}
+        volume={volume} muted={muted} restoreVolume={lastAudibleVolume.current} plugins={videoRackItems}
+        onVolume={state.setVolume} onMuted={state.setMuted} />}</WithStoreVolume>
     : undefined,
-    [videoSidebarMode, videoDirect, videoState?.rackAudio, state.volume, state.muted, lastAudibleVolume.current, videoRackItems, state.setVolume, state.setMuted]);
+    [videoSidebarMode, videoDirect, videoState?.rackAudio, videoRackItems, state.setVolume, state.setMuted]);
   const toggleVideoQueue = () => { setVideoVolumeOpen(false); setVisualSettingsOpen(false); setQueueOpen(open => !open); };
   const toggleVideoVolume = () => { setQueueOpen(false); setVisualSettingsOpen(false); setVideoVolumeOpen(open => !open); };
 
@@ -1529,23 +1575,23 @@ export default function App() {
           <time>{formatTime(displayTime)}</time>
           <div className="timeline transport-timeline"><WaveformTimeline videoHandle={videoActive && !onlineSession} url={onlineSession || videoActive ? undefined : current?.url} sourcePath={onlineSession || videoActive ? undefined : current?.sourcePath || current?.nativePath} liveKey={onlineSession ? state.onlineMedia?.trackId || undefined : undefined} readOnly={onlineSession} livePlaying={onlinePlaying} currentTime={displayTime} duration={displayDuration} accent={state.accent} lowPerformance={lowPerformanceMode} onSeek={seek} /></div>
           <time>{onlineSession && displayDuration <= 0 ? "--:--" : formatTime(displayDuration)}</time>
-          {videoSidebarMode || videoActive ? null : (compactMode && !hdmiDirect) ? <label className="compact-volume" title={`${t("channel.mainVolume")} ${state.muted ? 0 : Math.round(state.volume * 100)}%`}>
-            <button type="button" disabled={videoActive && videoDirect} aria-label={t(state.muted ? "common.unmute" : "common.mute")} onClick={() => state.setMuted(!state.muted)}>
-              <VolumeLevelIcon volume={state.volume} muted={state.muted} />
+          {videoSidebarMode || videoActive ? null : (compactMode && !hdmiDirect) ? <WithStoreVolume>{(volume, muted) => <label className="compact-volume" title={`${t("channel.mainVolume")} ${muted ? 0 : Math.round(volume * 100)}%`}>
+            <button type="button" disabled={videoActive && videoDirect} aria-label={t(muted ? "common.unmute" : "common.mute")} onClick={() => state.setMuted(!muted)}>
+              <VolumeLevelIcon volume={volume} muted={muted} />
             </button>
-            <input disabled={videoActive && videoDirect} aria-label={t("channel.mainVolume")} type="range" min="0" max="1" step="0.01" value={state.muted ? 0 : state.volume} onChange={event => {
-              const volume = Number(event.target.value);
-              state.setVolume(volume);
-              state.setMuted(volume <= .001);
+            <input disabled={videoActive && videoDirect} aria-label={t("channel.mainVolume")} type="range" min="0" max="1" step="0.01" value={muted ? 0 : volume} onChange={event => {
+              const nextVolume = Number(event.target.value);
+              state.setVolume(nextVolume);
+              state.setMuted(nextVolume <= .001);
             }} />
-          </label> : <ChannelStripPopover
+          </label>}</WithStoreVolume> : <WithStoreVolume>{(volume, muted) => <ChannelStripPopover
             onOpenChange={setChannelStripOpen}
             direct={videoActive ? videoDirect : hdmiDirect}
             directLabel={directOutputLabel}
             onOpenOutput={() => state.setActivePage("devices")}
             visible={pageVisible && !windowBackgrounded}
-            volume={state.volume}
-            muted={state.muted}
+            volume={volume}
+            muted={muted}
             restoreVolume={lastAudibleVolume.current}
             accent={state.accent}
             glowStrength={effectiveGlowStrength}
@@ -1577,7 +1623,7 @@ export default function App() {
               }
               state.requestNativeOutputForVst();
             }}
-          />}
+          />}</WithStoreVolume>}
         </div>
       </div>
       <div className="transport-actions">
@@ -1586,7 +1632,7 @@ export default function App() {
           <span className="playback-queue-status"><span>PLAYBACK</span><b>{state.playing ? "RUNNING" : "STANDBY"}</b></span>
           <div className="video-transport-buttons">
             <button type="button" className={`video-queue-trigger ${queueOpen ? "active" : ""}`} title={`${t("nav.playlist")} · ${state.tracks.length}`} aria-label={`${t("nav.playlist")} · ${state.tracks.length}`} aria-expanded={queueOpen} onClick={toggleVideoQueue}><ListMusic /><span>{t("video.sidebar.list")}</span></button>
-            <button type="button" className={`video-volume-trigger ${videoVolumeOpen ? "active" : ""}`} title={`${t("video.sidebar.volume")} · ${state.muted ? 0 : amplitudeToFaderPercent(state.volume)}%`} aria-label={t("video.sidebar.volume")} aria-expanded={videoVolumeOpen} onClick={toggleVideoVolume}><VolumeLevelIcon volume={state.volume} muted={state.muted} /><span>{t("video.sidebar.volume")}</span></button>
+            <WithStoreVolume>{(volume, muted) => <button type="button" className={`video-volume-trigger ${videoVolumeOpen ? "active" : ""}`} title={`${t("video.sidebar.volume")} · ${muted ? 0 : amplitudeToFaderPercent(volume)}%`} aria-label={t("video.sidebar.volume")} aria-expanded={videoVolumeOpen} onClick={toggleVideoVolume}><VolumeLevelIcon volume={volume} muted={muted} /><span>{t("video.sidebar.volume")}</span></button>}</WithStoreVolume>
           </div>
         </div> : <button className={`transport-status-card playback-queue-button ${playbackActive ? "active" : "idle"}`} title={t("queue.title")} aria-label={`${t("queue.title")} · ${state.tracks.length}`} aria-expanded={queueOpen} onClick={() => { if (!queueOpen) setVisualSettingsOpen(false); setQueueOpen(!queueOpen); }}>
           <i aria-hidden="true" />

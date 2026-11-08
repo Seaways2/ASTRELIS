@@ -18,7 +18,7 @@ export function VisualizerOverview({ accent, onSelect, settings, glowStrength = 
   const overviewSettings = settings.lowPerformance ? settings : { ...settings, lowPerformance: true };
   return <div className="visual-overview">
     {modules.map((module) => <button type="button" className="visual-module" key={module.mode} aria-label={t(module.key)} onClick={() => onSelect(module.mode)}>
-      <VisualizerCanvas mode={module.mode} accent={accent} settings={overviewSettings} glowStrength={glowStrength} playbackActive={playbackActive} visible={visible} />
+      <VisualizerCanvas mode={module.mode} accent={accent} settings={overviewSettings} glowStrength={glowStrength} playbackActive={playbackActive} visible={visible} thumbnail />
     </button>)}
   </div>;
 }

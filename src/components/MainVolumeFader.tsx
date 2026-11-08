@@ -31,8 +31,16 @@ export function MainVolumeFader({ volume, muted, restoreVolume, disabled = false
     if (value <= .001) onMuted(true);
     else if (muted) onMuted(false);
   };
+  // Read the track geometry once per gesture. Reading it on every pointermove
+  // forced a synchronous style/layout pass right after each volume re-render.
+  const dragBounds = useRef<{ bottom: number; height: number } | null>(null);
   const setFromPointer = (event: PointerEvent<HTMLDivElement>, phase: "start" | "move" | "end") => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+    if (phase === "start" || !dragBounds.current) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      dragBounds.current = { bottom: rect.bottom, height: Math.max(1, rect.height) };
+    }
+    const bounds = dragBounds.current;
+    if (phase === "end") dragBounds.current = null;
     const target = clamp((bounds.bottom - event.clientY) / bounds.height);
     const current = drag.current ?? { position: amplitudeToFaderPosition(effective), detent: null };
     const next = advanceFaderDrag(current, target, phase !== "move");
@@ -72,7 +80,7 @@ export function MainVolumeFader({ volume, muted, restoreVolume, disabled = false
       setFromPointer(event, "end");
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     }}
-    onPointerCancel={() => { drag.current = null; }}
+    onPointerCancel={() => { drag.current = null; dragBounds.current = null; }}
   >
     <div className="channel-fader-fill" style={{ height: `${position * 100}%` }} />
     <div className="channel-fader-ticks" aria-hidden="true">

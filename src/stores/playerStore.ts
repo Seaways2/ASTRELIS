@@ -354,6 +354,26 @@ const cancelPendingPlay = () => {
   pendingPlayTrackId = "";
 };
 
+// A fader drag changes the volume on every pointermove; persist only the value
+// it settles on instead of writing localStorage synchronously each time.
+const VOLUME_PERSIST_DELAY_MS = 250;
+let pendingPersistedVolume: number | undefined;
+let volumePersistTimer: ReturnType<typeof setTimeout> | undefined;
+const flushPersistedVolume = () => {
+  if (volumePersistTimer !== undefined) clearTimeout(volumePersistTimer);
+  volumePersistTimer = undefined;
+  if (pendingPersistedVolume === undefined) return;
+  const value = pendingPersistedVolume;
+  pendingPersistedVolume = undefined;
+  try { localStorage.setItem("auralis.volume", String(value)); } catch { /* Storage can be unavailable. */ }
+};
+const persistVolume = (volume: number) => {
+  pendingPersistedVolume = volume;
+  if (volumePersistTimer !== undefined) clearTimeout(volumePersistTimer);
+  volumePersistTimer = setTimeout(flushPersistedVolume, VOLUME_PERSIST_DELAY_MS);
+};
+if (typeof window !== "undefined") window.addEventListener?.("pagehide", flushPersistedVolume);
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   tracks: [],
   inactiveTracks: [],
@@ -732,7 +752,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setPlaybackObserved: (playing) => set({ playing }),
   setTiming: (currentTime, duration) => set({ currentTime, duration }),
   setVolume: (volume) => {
-    localStorage.setItem("auralis.volume", String(volume));
+    persistVolume(volume);
     set({ volume });
   },
   setMuted: (muted) => set({ muted }),

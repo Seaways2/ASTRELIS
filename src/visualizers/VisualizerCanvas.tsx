@@ -13,7 +13,21 @@ interface VisualizerCanvasProps {
   backgroundUrl?: string;
   backgroundBrightness?: number;
   backgroundOpacity?: number;
+  /** Small overview tile: fewer particles and a shared per-frame draw budget. */
+  thumbnail?: boolean;
 }
+
+// Overview thumbnails cover a small fraction of a full visualizer. Drawing the
+// full particle population in each of six tiles saturated the GPU process's
+// Canvas2D rasterizer (measured ~19 FPS for the whole window while playing).
+export const THUMBNAIL_PARTICLE_DENSITY = .4;
+// At most this many thumbnails draw in one animation frame; the rest wait for
+// the next frame, so six 30 FPS tiles no longer land in the same frame.
+export const THUMBNAIL_DRAWS_PER_FRAME = 2;
+const thumbnailFrameBudget = { frameTime: -1, used: 0 };
+// The canvas size comes from ResizeObserver; this periodic re-read is only a
+// safety net and must not run every frame (it forces a synchronous layout).
+const CANVAS_SIZE_RECHECK_MS = 1000;
 
 export function VisualizerCanvas({
   mode,
@@ -25,7 +39,8 @@ export function VisualizerCanvas({
   visible = true,
   backgroundUrl,
   backgroundBrightness = 1,
-  backgroundOpacity = 1
+  backgroundOpacity = 1,
+  thumbnail = false
 }: VisualizerCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -53,11 +68,14 @@ export function VisualizerCanvas({
     const starsPerEffectUnit = settings.lowPerformance ? 4 : 8;
     const starCount = Math.max(96, Math.round(settings.barCount * starsPerEffectUnit));
     const starEffectSize = .5 + settings.lineWidth / 3;
-    const particles = Array.from({ length: starCount }, (_, index) => ({
+    // Thumbnails keep the same distributions with a thinner population.
+    const thinned = (count: number) => thumbnail ? Math.max(24, Math.round(count * THUMBNAIL_PARTICLE_DENSITY)) : count;
+    const particleCount = thinned(starCount);
+    const particles = Array.from({ length: particleCount }, (_, index) => ({
       x: (Math.random() - .5) * 2.2,
       y: (Math.random() - .5) * 1.45,
-      z: .04 + (index / starCount) * .96,
-      previousZ: .04 + (index / starCount) * .96,
+      z: .04 + (index / particleCount) * .96,
+      previousZ: .04 + (index / particleCount) * .96,
       size: .26 + Math.random() * .84,
       twinkle: Math.random() * Math.PI * 2,
       twinkleSpeed: 1.3 + Math.random() * 6.7,
@@ -67,7 +85,7 @@ export function VisualizerCanvas({
     const coreMoteCount = settings.lowPerformance
       ? Math.max(36, Math.round(settings.barCount * .8))
       : Math.max(64, Math.round(settings.barCount * 1.4));
-    const coreMotes = Array.from({ length: coreMoteCount }, () => ({
+    const coreMotes = Array.from({ length: thinned(coreMoteCount) }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .5 + Math.random() * .62,
       speed: (.16 + Math.random() * .42) * (Math.random() > .24 ? 1 : -1),
@@ -80,7 +98,7 @@ export function VisualizerCanvas({
     const galaxyDustCount = Math.max(192, Math.round(settings.barCount * galaxyDustPerEffectUnit));
     const galaxyLiveStarsPerEffectUnit = settings.lowPerformance ? 3 : 6;
     const galaxyLiveStarCount = Math.max(120, Math.round(settings.barCount * galaxyLiveStarsPerEffectUnit));
-    const galaxyLiveStars = Array.from({ length: galaxyLiveStarCount }, (_, index) => {
+    const galaxyLiveStars = Array.from({ length: thinned(galaxyLiveStarCount) }, (_, index) => {
       const radius = .06 + Math.pow(Math.random(), .72) * .92;
       const layer = radius < .36 ? 0 : radius < .68 ? 1 : 2;
       const arm = index % 4;
@@ -104,7 +122,7 @@ export function VisualizerCanvas({
     const galaxyOrbitMoteCount = settings.lowPerformance
       ? Math.max(42, Math.round(settings.barCount * .9))
       : Math.max(84, Math.round(settings.barCount * 1.7));
-    const galaxyOrbitMotes = Array.from({ length: galaxyOrbitMoteCount }, () => ({
+    const galaxyOrbitMotes = Array.from({ length: thinned(galaxyOrbitMoteCount) }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .68 + Math.pow(Math.random(), .72) * .52,
       speed: (.035 + Math.random() * .085) * (Math.random() > .16 ? 1 : -.58),
@@ -117,7 +135,7 @@ export function VisualizerCanvas({
     const galaxyInnerOrbitMoteCount = settings.lowPerformance
       ? Math.max(32, Math.round(settings.barCount * .65))
       : Math.max(64, Math.round(settings.barCount * 1.2));
-    const galaxyInnerOrbitMotes = Array.from({ length: galaxyInnerOrbitMoteCount }, () => ({
+    const galaxyInnerOrbitMotes = Array.from({ length: thinned(galaxyInnerOrbitMoteCount) }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .12 + Math.pow(Math.random(), .8) * .58,
       speed: (.055 + Math.random() * .13) * (Math.random() > .12 ? 1 : -.52),
@@ -136,6 +154,7 @@ export function VisualizerCanvas({
     let frame = 0;
     let raf = 0;
     let lastDraw = 0;
+    let lastSizeCheck = 0;
     let fpsStarted = performance.now();
     let fpsFrames = 0;
     const displayedBars: number[] = [];
@@ -305,6 +324,18 @@ export function VisualizerCanvas({
         raf = requestAnimationFrame(draw);
         return;
       }
+      if (thumbnail) {
+        // All rAF callbacks of one frame share the same timestamp.
+        if (thumbnailFrameBudget.frameTime !== now) {
+          thumbnailFrameBudget.frameTime = now;
+          thumbnailFrameBudget.used = 0;
+        }
+        if (thumbnailFrameBudget.used >= THUMBNAIL_DRAWS_PER_FRAME) {
+          raf = requestAnimationFrame(draw);
+          return;
+        }
+        thumbnailFrameBudget.used++;
+      }
       const deltaSeconds = Math.min(.1, Math.max(.001, (now - lastDraw) / 1000));
       const visualDecaySpeed = settings.decaySpeed * (playbackActive ? 1 : .28);
       lastDraw = now;
@@ -314,7 +345,10 @@ export function VisualizerCanvas({
         fpsFrames = 0;
         fpsStarted = now;
       }
-      syncCanvasSize();
+      if (now - lastSizeCheck >= CANVAS_SIZE_RECHECK_MS) {
+        lastSizeCheck = now;
+        syncCanvasSize();
+      }
       const ratio = Math.min(devicePixelRatio, 1.6);
       const { width, height } = size;
       if (mode === "waterfall") {
@@ -438,7 +472,7 @@ export function VisualizerCanvas({
           context.shadowBlur = 0;
 
           // Sparse environmental motes establish depth without competing with the creature.
-          const moteCount = settings.lowPerformance ? 48 : 105;
+          const moteCount = Math.min(particles.length, thinned(settings.lowPerformance ? 48 : 105));
           for (let i = 0; i < moteCount; i++) {
             const mote = particles[i];
             const x = width * (.5 + mote.x * .43) + Math.sin(time * .08 + mote.twinkle) * scale * .008;
@@ -1693,7 +1727,8 @@ export function VisualizerCanvas({
     settings.lowPerformance,
     playbackActive,
     visible,
-    onFps
+    onFps,
+    thumbnail
   ]);
   return <canvas ref={ref} className="visualizer-canvas" />;
 }

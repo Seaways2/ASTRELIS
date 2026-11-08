@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { audioEngine } from "../audio/AudioEngine";
 import type { VisualizerMode, VisualizerRenderSettings } from "../types/audio";
+import { frameIsDue, nextFrameDue } from "./framePacing";
 
 interface VisualizerCanvasProps {
   mode: VisualizerMode;
@@ -13,7 +14,7 @@ interface VisualizerCanvasProps {
   backgroundUrl?: string;
   backgroundBrightness?: number;
   backgroundOpacity?: number;
-  /** Small overview tile: fewer particles and a shared per-frame draw budget. */
+  /** Small overview tile: draws a thinner particle population. */
   thumbnail?: boolean;
 }
 
@@ -21,10 +22,9 @@ interface VisualizerCanvasProps {
 // full particle population in each of six tiles saturated the GPU process's
 // Canvas2D rasterizer (measured ~19 FPS for the whole window while playing).
 export const THUMBNAIL_PARTICLE_DENSITY = .4;
-// At most this many thumbnails draw in one animation frame; the rest wait for
-// the next frame, so six 30 FPS tiles no longer land in the same frame.
-export const THUMBNAIL_DRAWS_PER_FRAME = 2;
-const thumbnailFrameBudget = { frameTime: -1, used: 0 };
+// The thinner population is enough on its own: a shared per-frame draw budget
+// was tried and removed, because the tiles registered last in rAF order were
+// always starved (24 FPS with uneven 41-55 ms gaps in the particle tiles).
 // The canvas size comes from ResizeObserver; this periodic re-read is only a
 // safety net and must not run every frame (it forces a synchronous layout).
 const CANVAS_SIZE_RECHECK_MS = 1000;
@@ -154,6 +154,7 @@ export function VisualizerCanvas({
     let frame = 0;
     let raf = 0;
     let lastDraw = 0;
+    let nextDue = 0;
     let lastSizeCheck = 0;
     let fpsStarted = performance.now();
     let fpsFrames = 0;
@@ -320,25 +321,14 @@ export function VisualizerCanvas({
     const draw = (now = performance.now()) => {
       const targetFps = !playbackActive ? 15 : settings.lowPerformance ? 30 : 60;
       const frameInterval = 1000 / targetFps;
-      if (frameInterval && now - lastDraw < frameInterval) {
+      if (!frameIsDue(now, nextDue)) {
         raf = requestAnimationFrame(draw);
         return;
-      }
-      if (thumbnail) {
-        // All rAF callbacks of one frame share the same timestamp.
-        if (thumbnailFrameBudget.frameTime !== now) {
-          thumbnailFrameBudget.frameTime = now;
-          thumbnailFrameBudget.used = 0;
-        }
-        if (thumbnailFrameBudget.used >= THUMBNAIL_DRAWS_PER_FRAME) {
-          raf = requestAnimationFrame(draw);
-          return;
-        }
-        thumbnailFrameBudget.used++;
       }
       const deltaSeconds = Math.min(.1, Math.max(.001, (now - lastDraw) / 1000));
       const visualDecaySpeed = settings.decaySpeed * (playbackActive ? 1 : .28);
       lastDraw = now;
+      nextDue = nextFrameDue(now, nextDue, frameInterval);
       fpsFrames++;
       if (now - fpsStarted >= 750) {
         onFps?.(Math.round(fpsFrames * 1000 / (now - fpsStarted)));

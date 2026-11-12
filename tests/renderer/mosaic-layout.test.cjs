@@ -70,12 +70,14 @@ test("smart cover framing is analysed once per cover and off the busy path", () 
   assert.match(css, /\.library-view-mosaic\.mosaic-panning \.library-infinite-stage \{ pointer-events: none; \}/);
 });
 
-test("a zoomed-out fullscreen mosaic keeps every visible cover cached", () => {
+test("a zoomed-out fullscreen mosaic keeps every visible cover cached and stops at 75%", () => {
   const thumbnail = read("src/components/LibraryThumbnail.tsx");
   // Budget the encoded blobs actually held, not their decoded size.
   assert.match(thumbnail, /weight = Math\.max\(1, blob\.size\)/);
   assert.doesNotMatch(thumbnail, /size \* size \* 4/);
   const library = read("src/components/MusicLibrary.tsx");
-  assert.match(library, /const largeCovers = !\(previewFullscreen && libraryView === "mosaic" && previewZoom < \.75\);/);
-  assert.match(library, /highResolution=\{isVideoTrack\(track\) && largeCovers\}/);
+  assert.match(library, /const MIN_PREVIEW_ZOOM = \.75;/);
+  assert.match(library, /Math\.max\(MIN_PREVIEW_ZOOM, Math\.min\(1, percent \/ 100\)\)/);
+  assert.match(library, /type="range" min=\{MIN_PREVIEW_ZOOM \* 100\} max=\{100\}/);
+  assert.doesNotMatch(library, /largeCovers|noCoverSources/);
 });

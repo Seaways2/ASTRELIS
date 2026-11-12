@@ -3,6 +3,7 @@ import { useFolderProtection } from "./useFolderProtection";
 import { hiddenByFolders } from "../utils/folderVisibility";
 import { useMatchTask } from "../stores/matchTaskStore";
 import { MediaFlow } from "./MediaFlow";
+import { mosaicGridSize, mosaicSlots } from "./mosaicLayout";
 import { isVideoTrack } from "../utils/videoTrack";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { LibraryThumbnail } from "./LibraryThumbnail";
@@ -215,10 +216,15 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const totalListItems = folderItemsVisible
     ? viewModel.folderTotal + (showTrackCards ? viewModel.trackTotal : 0)
     : categoryItemsVisible ? viewModel.categoryTotal : viewModel.trackTotal;
-  const mosaicDensity = previewZoom >= 1 ? "featured" : "zoomed";
-  const mosaicColumns = mosaicDensity === "featured" ? 6 : Math.round(6 + (1 - previewZoom) * 4);
-  const mosaicRows = mosaicDensity === "featured" ? 3 : Math.max(1, Math.round(mosaicColumns * .7));
-  const mosaicItemsPerBoard = mosaicDensity === "featured" ? 10 : mosaicColumns * mosaicRows;
+  // Every zoom level keeps the collage: zooming out adds cells and shrinks the
+  // tiles instead of switching to a uniform grid.
+  const { columns: mosaicColumns, rows: mosaicRows } = mosaicGridSize(previewZoom);
+  const mosaicBoardSlots = useMemo(() => mosaicSlots(mosaicColumns, mosaicRows), [mosaicColumns, mosaicRows]);
+  const mosaicItemsPerBoard = mosaicBoardSlots.length;
+  const mosaicBoardStyle = useMemo(() => ({
+    gridTemplateColumns: `repeat(${mosaicColumns}, minmax(0, 1fr))`,
+    gridTemplateRows: `repeat(${mosaicRows}, minmax(0, 1fr))`
+  }) as CSSProperties, [mosaicColumns, mosaicRows]);
   const mosaicPageCount = Math.max(1, Math.ceil(totalListItems / mosaicItemsPerBoard));
   const resultCount = categoryItemsVisible ? viewModel.categoryTotal
     : folderItemsVisible && !showTrackCards ? viewModel.folderTotal : viewModel.trackTotal;
@@ -689,9 +695,10 @@ export const MusicLibrary = memo(function MusicLibrary() {
       {libraryView === "details" && hasVisibleEntries && <div className="library-detail-head"><span>{t("library.cover")}</span><span>{t("library.item")}</span><span>{t("library.info")}</span><span>{t("library.summary")}</span><span>{t("library.type")}</span><span>{t("library.countSize")}</span><span>{t("library.actions")}</span></div>}
       {previewFullscreen && libraryView === "mosaic" && totalListItems > 0
         ? <div ref={mosaicStage} className="library-infinite-stage" style={{ transform: `translate3d(calc(-33.333333% + ${mosaicCanvasOffset.current.x}px), calc(-33.333333% + ${mosaicCanvasOffset.current.y}px), 0)` }}>
-          {infiniteMosaicBoards.map(board => <div className="library-infinite-cell" key={board.index}><div className="library-mosaic-board" data-density={mosaicDensity} style={mosaicDensity === "zoomed" ? { "--mosaic-columns-wide": String(mosaicColumns) } as CSSProperties : undefined}>{board.entries.map((entry, index) => {
+          {infiniteMosaicBoards.map(board => <div className="library-infinite-cell" key={board.index}><div className="library-mosaic-board" data-layout="slots" style={mosaicBoardStyle}>{board.entries.map((entry, index) => {
             const keyedEntry = { ...entry, key: `${entry.key}-world-${board.index}-${index}` } as VisibleLibraryEntry;
-            return <div className={`library-mosaic-tile mosaic-slot-${index + 1}`} key={keyedEntry.key}>{renderLibraryEntry(keyedEntry)}</div>;
+            const slot = mosaicBoardSlots[index];
+            return <div className={`library-mosaic-tile mosaic-slot-${index + 1}`} key={keyedEntry.key} style={slot ? { gridColumn: `${slot.column} / span ${slot.columnSpan}`, gridRow: `${slot.row} / span ${slot.rowSpan}` } : undefined}>{renderLibraryEntry(keyedEntry)}</div>;
           })}</div></div>)}
         </div>
         : totalListItems > 0 && <div className="library-virtual-body" ref={virtual.containerRef} style={{ height: virtual.totalHeight }}>

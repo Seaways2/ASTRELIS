@@ -214,6 +214,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
   }, []);
 
   const nativeControlsBusy = nativeDeviceLoading || nativeApplyBusy || nativeSelectionBusy || nativeToggleBusy;
+  const nativeOutputOn = state.uiSettings.nativeOutputEnabled || state.uiSettings.hdmiDirectEnabled;
   const handleNativeOutputToggle = (enabled: boolean) => {
     if (nativeDeviceLoading || nativeApplyBusyRef.current || nativeSelectionBusyRef.current || nativeToggleBusyRef.current) return;
     nativeToggleBusyRef.current = true;
@@ -355,9 +356,11 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           </label>
         </header>
 
+        {/* One output device row: the native device while native output is on,
+            otherwise the Chromium output used by local web playback, NetEase and YouTube. */}
         <div className="unified-output-section">
-          <div><SectionHeading icon={MonitorSpeaker}>{t("device.outputDevice")}</SectionHeading></div>
-          <div className="native-device-picker">
+          <div><SectionHeading icon={MonitorSpeaker} hint={t(nativeOutputOn ? "device.nativeDeviceHint" : "device.webFallbackHint")}>{t("device.outputDevice")}</SectionHeading></div>
+          {nativeOutputOn ? <div className="native-device-picker">
           <select aria-label={t("device.outputDevice")} value={nativeSelectedKey} disabled={nativeControlsBusy || !selectableNativeDevices.length} onChange={event => {
             const device = nativeDevices.find(item => nativeDeviceKey(item) === event.target.value);
             if (device) void selectNativeDevice(device);
@@ -367,7 +370,10 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
             </option>)}
           </select>
           <button className="native-device-refresh" type="button" title={t("device.hdmiRefresh")} aria-label={t("device.hdmiRefresh")} disabled={nativeControlsBusy} onClick={() => setNativeDeviceRefresh(value => value + 1)}><RefreshCw size={16} /></button>
-          </div>
+          </div> : <div className="native-device-picker web-output-picker">
+          <select id="web-output-device" aria-label={t("device.outputDevice")} value={deviceId} onChange={(event) => onDevice(event.target.value)}><option value="default">{t("common.defaultOutput")}</option>{devices.filter(d => d.id !== "default").map(device => <option value={device.id} key={device.id}>{device.label}</option>)}</select>
+          </div>}
+          {!nativeOutputOn && deviceError && <p className="error-text">{deviceError}</p>}
         </div>
 
         <div className="unified-output-section hdmi-output-policy">
@@ -439,13 +445,6 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           <article><b>{t("device.guideRateTitle")}</b><p>{t("device.guideRateBody")}</p></article>
           <article><b>{t("device.guideBufferTitle")}</b><p>{t("device.guideBufferBody")}</p></article>
         </div></details>
-      </section>
-      <section className="setting-card workspace-section unified-output-config">
-        <header><SectionHeading icon={Globe2} hint={t("device.directHint")}>{t("device.directTitle")}</SectionHeading></header>
-        <div className="unified-output-section chromium-device-setting"><div className="setting-title"><label htmlFor="web-output-device">{t("device.webFallback")}</label><Hint id="web-output-hint">{t("device.webFallbackHint")}</Hint></div>
-        <select id="web-output-device" aria-describedby="web-output-hint" value={deviceId} onChange={(event) => onDevice(event.target.value)}><option value="default">{t("common.defaultOutput")}</option>{devices.filter(d => d.id !== "default").map(device => <option value={device.id} key={device.id}>{device.label}</option>)}</select>
-        {deviceError && <p className="error-text">{deviceError}</p>}
-        </div>
       </section>
     </div>
   </Page>;

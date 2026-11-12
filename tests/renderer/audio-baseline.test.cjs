@@ -68,8 +68,8 @@ test("Native playback never inherits the Web fallback output selection", () => {
   const page = read("src/components/WorkspacePage.tsx");
   assert.match(app, /selectedOutputLabelRef/,
     "the chosen endpoint label must survive a temporary enumerateDevices gap");
-  assert.match(page, /chromium-device-setting/,
-    "the separate Web fallback selector must remain available");
+  assert.match(page, /\{nativeOutputOn \? <div className="native-device-picker">[\s\S]*: <div className="native-device-picker web-output-picker">/,
+    "the Web output selector remains available in the shared output row while native output is off");
   assert.doesNotMatch(app, /nativeAudio\.command\(\{ type: "output"/,
     "Web fallback selection must not issue Native output commands during selection or track changes");
   assert.match(app, /outputFallbackTimerRef[\s\S]*audioEngine\.listOutputs\(\)[\s\S]*2500/,
@@ -122,10 +122,10 @@ test("device page groups native configuration and status before the unified othe
   assert.match(page, /device\.otherSettings/);
   assert.match(page, /device\.applyConfiguration/);
   const outputConfigIndex = page.indexOf("unified-output-config");
-  const webFallbackIndex = page.indexOf("chromium-device-setting");
-  const explanationIndex = page.indexOf("native-output-overview");
-  assert.ok(outputConfigIndex < webFallbackIndex && explanationIndex < webFallbackIndex, "native configuration and explanation precede ordinary outputs");
-  assert.ok(page.indexOf('native-overview-status') < webFallbackIndex);
+  // One output device row: native device when native output is on, Web output otherwise.
+  const webOutputIndex = page.indexOf("web-output-picker");
+  assert.ok(outputConfigIndex < webOutputIndex && page.indexOf("native-output-overview") < webOutputIndex);
+  assert.doesNotMatch(page, /chromium-device-setting/, "the separate 其他输出 card is merged into the output device row");
   assert.doesNotMatch(page, /youtube-output-device/);
   assert.match(page, /web-output-device/);
   assert.doesNotMatch(page, /nativeDevices\.filter\(device => device\.backend !== "directsound-legacy"\)\.map/);

@@ -67,32 +67,6 @@ test("the canvas loop uses the shared pacing helpers", () => {
   assert.match(canvas, /nextDue = nextFrameDue\(now, nextDue, frameInterval\);/);
 });
 
-test("staggered phases spread six 30 FPS tiles instead of drawing all in one frame", () => {
-  const canvas = fs.readFileSync(path.join(root, "src/visualizers/VisualizerCanvas.tsx"), "utf8");
-  assert.match(canvas, /if \(nextDue === 0 \|\| now - nextDue > frameInterval\) nextDue = now \+ framePhase \* frameInterval;/);
-  assert.match(fs.readFileSync(path.join(root, "src/visualizers/VisualizerOverview.tsx"), "utf8"), /framePhase=\{index \/ modules\.length\}/);
-  const run = (refreshHz, phases) => {
-    const interval = 1000 / 30, period = 1000 / refreshHz;
-    const due = phases.map(() => 0); let worst = 0; const draws = phases.map(() => 0);
-    for (let frame = 1; frame < refreshHz * 4; frame++) {
-      const now = 1000 + frame * period; let inFrame = 0;
-      phases.forEach((phase, tile) => {
-        if (due[tile] === 0 || now - due[tile] > interval) due[tile] = now + phase * interval;
-        if (!frameIsDue(now, due[tile])) return;
-        due[tile] = nextFrameDue(now, due[tile], interval); inFrame++; draws[tile]++;
-      });
-      worst = Math.max(worst, inFrame);
-    }
-    return { worst, draws };
-  };
-  for (const hz of [60, 72, 144]) {
-    const staggered = run(hz, [0, 1, 2, 3, 4, 5].map(i => i / 6));
-    assert.equal(run(hz, [0, 0, 0, 0, 0, 0]).worst, 6);
-    assert.ok(staggered.worst <= 3, `${hz} Hz: ${staggered.worst} tiles in one frame`);
-    assert.ok(staggered.draws.every(count => count >= 110), `${hz} Hz: ${staggered.draws}`);
-  }
-});
-
 test("the reused library index is exported and saved only once", () => {
   const hook = fs.readFileSync(path.join(root, "src/hooks/useLibraryViewModel.ts"), "utf8");
   assert.match(hook, /savedDerivedIndexes\.has\(canonicalIndex\)/);

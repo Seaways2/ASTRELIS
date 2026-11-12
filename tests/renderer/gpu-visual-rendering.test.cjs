@@ -30,12 +30,9 @@ test("Canvas 2D owns every scene while GPU FX stays in the compositor", () => {
   const app = readAppSource();
   const canvas = read("src/visualizers/VisualizerCanvas.tsx");
   const styles = read("src/styles/global.css");
-  const overview = read("src/visualizers/VisualizerOverview.tsx");
   assert.match(canvas,/return <canvas ref=\{ref\} className="visualizer-canvas"/);
   assert.doesNotMatch(canvas,/GpuBlackHoleCanvas|GpuGalaxyCanvas|GpuStarfieldCanvas|gpuSceneActive/,
     "GPU prototypes must not replace the tuned Canvas 2D scenes");
-  assert.doesNotMatch(overview,/gpuConfig=/,
-    "overview thumbnails must remain low-rate Canvas 2D scenes");
   assert.match(app,/gpuEffectsRequested[\s\S]{0,100}&& !lowPerformanceMode[\s\S]{0,80}&& !state\.obsMode/);
   assert.match(app,/gpu-effects-on gpu-effects-\$\{gpuEffectsQuality\}/);
   assert.doesNotMatch(app,/2D \+ GPU FX/,

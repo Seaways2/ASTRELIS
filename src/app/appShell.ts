@@ -6,11 +6,10 @@ export const nav = [
   [Music2, "nowPlaying", "nav.nowPlaying"], [ListMusic, "playlist", "nav.playlist"], [Library, "library", "nav.library"], [Globe2, "online", "nav.online"],
   [Blocks, "plugins", "nav.plugins"], [MonitorSpeaker, "devices", "nav.devices"], [Palette, "appearance", "nav.appearance"], [Settings, "settings", "nav.settings"]
 ] as const;
-export const modes: { id: VisualizerMode; key: "mode.overview" | "mode.spectrum" | "mode.mirror" | "mode.waveform" | "mode.radial" | "mode.particles" | "mode.pulse" }[] = [
-  { id: "overview", key: "mode.overview" },
-  { id: "spectrum", key: "mode.spectrum" }, { id: "mirror", key: "mode.mirror" },
-  { id: "radial", key: "mode.radial" }, { id: "waveform", key: "mode.waveform" },
-  { id: "particles", key: "mode.particles" }, { id: "pulse", key: "mode.pulse" }
+// Galaxy, starfield and black hole first; the bar-based spectra after them.
+export const modes: { id: VisualizerMode; key: "mode.spectrum" | "mode.mirror" | "mode.waveform" | "mode.radial" | "mode.particles" | "mode.pulse" }[] = [
+  { id: "waveform", key: "mode.waveform" }, { id: "particles", key: "mode.particles" }, { id: "pulse", key: "mode.pulse" },
+  { id: "spectrum", key: "mode.spectrum" }, { id: "mirror", key: "mode.mirror" }, { id: "radial", key: "mode.radial" }
 ];
 export const visualTransitionTimings = {
   dissolve: { out: 180, in: 280 },

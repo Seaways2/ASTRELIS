@@ -46,13 +46,11 @@ test("volume persistence is debounced and flushed on pagehide", () => {
   assert.match(store, /addEventListener\?\.\("pagehide", flushPersistedVolume\)/);
 });
 
-test("overview thumbnails draw a thinner population without starving any tile", () => {
-  const overview = read("src/visualizers/VisualizerOverview.tsx");
-  assert.match(overview, /<VisualizerCanvas [^>]*\bthumbnail\b[^>]*\/>/);
+test("the module overview and its thumbnail mode are gone", () => {
+  assert.equal(fs.existsSync(path.join(root, "src/visualizers/VisualizerOverview.tsx")), false);
   const canvas = read("src/visualizers/VisualizerCanvas.tsx");
-  assert.match(canvas, /const particleCount = thinned\(starCount\);/);
-  // A shared draw budget always skipped the tiles registered last in rAF order.
-  assert.doesNotMatch(canvas, /thumbnailFrameBudget/);
+  assert.doesNotMatch(canvas, /thumbnail|thinned|framePhase|THUMBNAIL_PARTICLE_DENSITY/);
+  assert.match(canvas, /const particleCount = starCount;/);
   // The canvas size comes from ResizeObserver, not a forced layout every frame.
   assert.match(canvas, /if \(now - lastSizeCheck >= CANVAS_SIZE_RECHECK_MS\) \{\s*lastSizeCheck = now;\s*syncCanvasSize\(\);/);
 });

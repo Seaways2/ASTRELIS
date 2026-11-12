@@ -14,21 +14,10 @@ interface VisualizerCanvasProps {
   backgroundUrl?: string;
   backgroundBrightness?: number;
   backgroundOpacity?: number;
-  /** Small overview tile: draws a thinner particle population. */
-  thumbnail?: boolean;
-  /** 0..1 offset of this canvas's frame schedule within one frame interval. */
-  framePhase?: number;
 }
 
-// Overview thumbnails cover a small fraction of a full visualizer. Drawing the
-// full particle population in each of six tiles saturated the GPU process's
-// Canvas2D rasterizer (measured ~19 FPS for the whole window while playing).
-export const THUMBNAIL_PARTICLE_DENSITY = .4;
 // Bar count above which particle effects stop growing (the default bar count).
 export const PARTICLE_EFFECT_UNIT_CAP = 90;
-// The thinner population is enough on its own: a shared per-frame draw budget
-// was tried and removed, because the tiles registered last in rAF order were
-// always starved (24 FPS with uneven 41-55 ms gaps in the particle tiles).
 // The canvas size comes from ResizeObserver; this periodic re-read is only a
 // safety net and must not run every frame (it forces a synchronous layout).
 const CANVAS_SIZE_RECHECK_MS = 1000;
@@ -43,9 +32,7 @@ export function VisualizerCanvas({
   visible = true,
   backgroundUrl,
   backgroundBrightness = 1,
-  backgroundOpacity = 1,
-  thumbnail = false,
-  framePhase = 0
+  backgroundOpacity = 1
 }: VisualizerCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -78,8 +65,7 @@ export function VisualizerCanvas({
     const starCount = Math.max(96, Math.round(particleUnits * starsPerEffectUnit));
     const starEffectSize = .5 + settings.lineWidth / 3;
     // Thumbnails keep the same distributions with a thinner population.
-    const thinned = (count: number) => thumbnail ? Math.max(24, Math.round(count * THUMBNAIL_PARTICLE_DENSITY)) : count;
-    const particleCount = thinned(starCount);
+    const particleCount = starCount;
     const particles = Array.from({ length: particleCount }, (_, index) => ({
       x: (Math.random() - .5) * 2.2,
       y: (Math.random() - .5) * 1.45,
@@ -94,7 +80,7 @@ export function VisualizerCanvas({
     const coreMoteCount = settings.lowPerformance
       ? Math.max(36, Math.round(particleUnits * .8))
       : Math.max(64, Math.round(particleUnits * 1.4));
-    const coreMotes = Array.from({ length: thinned(coreMoteCount) }, () => ({
+    const coreMotes = Array.from({ length: coreMoteCount }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .5 + Math.random() * .62,
       speed: (.16 + Math.random() * .42) * (Math.random() > .24 ? 1 : -1),
@@ -107,7 +93,7 @@ export function VisualizerCanvas({
     const galaxyDustCount = Math.max(192, Math.round(particleUnits * galaxyDustPerEffectUnit));
     const galaxyLiveStarsPerEffectUnit = settings.lowPerformance ? 3 : 6;
     const galaxyLiveStarCount = Math.max(120, Math.round(particleUnits * galaxyLiveStarsPerEffectUnit));
-    const galaxyLiveStars = Array.from({ length: thinned(galaxyLiveStarCount) }, (_, index) => {
+    const galaxyLiveStars = Array.from({ length: galaxyLiveStarCount }, (_, index) => {
       const radius = .06 + Math.pow(Math.random(), .72) * .92;
       const layer = radius < .36 ? 0 : radius < .68 ? 1 : 2;
       const arm = index % 4;
@@ -131,7 +117,7 @@ export function VisualizerCanvas({
     const galaxyOrbitMoteCount = settings.lowPerformance
       ? Math.max(42, Math.round(particleUnits * .9))
       : Math.max(84, Math.round(particleUnits * 1.7));
-    const galaxyOrbitMotes = Array.from({ length: thinned(galaxyOrbitMoteCount) }, () => ({
+    const galaxyOrbitMotes = Array.from({ length: galaxyOrbitMoteCount }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .68 + Math.pow(Math.random(), .72) * .52,
       speed: (.035 + Math.random() * .085) * (Math.random() > .16 ? 1 : -.58),
@@ -144,7 +130,7 @@ export function VisualizerCanvas({
     const galaxyInnerOrbitMoteCount = settings.lowPerformance
       ? Math.max(32, Math.round(particleUnits * .65))
       : Math.max(64, Math.round(particleUnits * 1.2));
-    const galaxyInnerOrbitMotes = Array.from({ length: thinned(galaxyInnerOrbitMoteCount) }, () => ({
+    const galaxyInnerOrbitMotes = Array.from({ length: galaxyInnerOrbitMoteCount }, () => ({
       angle: Math.random() * Math.PI * 2,
       radius: .12 + Math.pow(Math.random(), .8) * .58,
       speed: (.055 + Math.random() * .13) * (Math.random() > .12 ? 1 : -.52),
@@ -330,9 +316,8 @@ export function VisualizerCanvas({
     const draw = (now = performance.now()) => {
       const targetFps = !playbackActive ? 15 : settings.lowPerformance ? 30 : 60;
       const frameInterval = 1000 / targetFps;
-      // (Re)start the schedule at this canvas's phase so sibling tiles that
-      // mount or resume together do not all draw in the same frame.
-      if (nextDue === 0 || now - nextDue > frameInterval) nextDue = now + framePhase * frameInterval;
+      // (Re)start the schedule after a pause or a stall instead of catching up.
+      if (nextDue === 0 || now - nextDue > frameInterval) nextDue = now;
       if (!frameIsDue(now, nextDue)) {
         raf = requestAnimationFrame(draw);
         return;
@@ -474,7 +459,7 @@ export function VisualizerCanvas({
           context.shadowBlur = 0;
 
           // Sparse environmental motes establish depth without competing with the creature.
-          const moteCount = Math.min(particles.length, thinned(settings.lowPerformance ? 48 : 105));
+          const moteCount = Math.min(particles.length, settings.lowPerformance ? 48 : 105);
           for (let i = 0; i < moteCount; i++) {
             const mote = particles[i];
             const x = width * (.5 + mote.x * .43) + Math.sin(time * .08 + mote.twinkle) * scale * .008;
@@ -1729,9 +1714,7 @@ export function VisualizerCanvas({
     settings.lowPerformance,
     playbackActive,
     visible,
-    onFps,
-    thumbnail,
-    framePhase
+    onFps
   ]);
   return <canvas ref={ref} className="visualizer-canvas" />;
 }

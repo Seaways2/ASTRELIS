@@ -36,7 +36,6 @@ import { useWindowPresence } from "./app/useWindowPresence";
 import { toNativeRackPayload, useVstRackStore } from "./stores/vstRackStore";
 import type { OutputDevice, VisualizerMode } from "./types/audio";
 import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
-import { VisualizerOverview } from "./visualizers/VisualizerOverview";
 import { resolveVisualizerSettings } from "./utils/visualizerSettings";
 import { useI18n } from "./i18n";
 import type { PageId } from "./types/audio";
@@ -433,9 +432,6 @@ export default function App() {
     void window.desktop?.externalOpen.ready();
     return dispose;
   }, []);
-  useEffect(() => {
-    if (state.visualizer === "waterfall" || state.visualizer === "levels") state.setVisualizer("overview");
-  }, [state.visualizer]);
   useEffect(() => {
     if ((state.activePage as string) === "均衡器") state.setActivePage("plugins");
   }, [state.activePage]);
@@ -1305,11 +1301,9 @@ export default function App() {
             <button className="visual-tune-toggle" title={`${t(videoActive ? "video.fullscreen" : "visual.immersive")}（F11）`} onClick={() => { setVisualSettingsOpen(false); if (videoActive) void detachVideo(); else setImmersiveMode(true); }}><Expand /></button>
           </div>
         </div>
-        <div className={`visual-area visual-mode-${state.visualizer} visual-transition-${state.uiSettings.visualTransition} ${state.visualizer === "overview" ? "overview-active" : ""} ${visualStopped ? "visual-stopped" : ""} ${visualSwitchPhase === "idle" ? "" : `visual-switch-${visualSwitchPhase}`}`}>
+        <div className={`visual-area visual-mode-${state.visualizer} visual-transition-${state.uiSettings.visualTransition} ${visualStopped ? "visual-stopped" : ""} ${visualSwitchPhase === "idle" ? "" : `visual-switch-${visualSwitchPhase}`}`}>
           {videoLanding ? <div className="video-empty-mode"><Film /><h2>{t("video.title")}</h2><p>{t("video.empty")}</p><div><button className="import-button" onClick={() => fileRef.current?.click()}><Import />{t("common.importFiles")}</button><button onClick={() => { setVideoLanding(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("nowPlaying"); }}>{t("video.return")}</button></div></div> : videoActive ? <VideoView preparing={videoPreparing} onFullscreen={()=>void detachVideo()} windowBusy={videoWindowBusy} onBack={() => { if (current) { setLastVideoId(current.id); videoBookmarks.current.set(current.id, videoState?.position || 0); } state.setPlaying(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("library"); }} state={videoState} direct={videoDirect} setDirect={setVideoDirect} rackEnabled={videoRackEnabled} setRackEnabled={setVideoRack} visible={pageVisible && !windowBackgrounded && !channelStripOpen && !dragging && !compactMode} /> : <div className="visualizer-transition-layer" key={`${state.visualizer}-${immersiveMode}`}>
-            {state.visualizer === "overview"
-              ? <VisualizerOverview accent={state.accent} onSelect={switchVisualizer} settings={effectiveVisualSettings} glowStrength={effectiveGlowStrength} playbackActive={lowPerformanceMode ? false : playbackActive} visible={visualsVisible} />
-              : <VisualizerCanvas mode={state.visualizer} accent={state.accent} settings={effectiveVisualSettings} glowStrength={effectiveGlowStrength} playbackActive={lowPerformanceMode ? false : playbackActive} visible={visualsVisible} backgroundUrl={customBackgroundActive ? state.uiSettings.customBackgroundUrl : undefined} backgroundBrightness={1} backgroundOpacity={1 - state.uiSettings.windowOpacity} />}
+            <VisualizerCanvas mode={state.visualizer} accent={state.accent} settings={effectiveVisualSettings} glowStrength={effectiveGlowStrength} playbackActive={lowPerformanceMode ? false : playbackActive} visible={visualsVisible} backgroundUrl={customBackgroundActive ? state.uiSettings.customBackgroundUrl : undefined} backgroundBrightness={1} backgroundOpacity={1 - state.uiSettings.windowOpacity} />
           </div>}
           {!videoActive && visualSettingsOpen && <div className="visual-settings-panel panel">
             <div className="visual-settings-title"><div><span className="eyebrow">VISUAL ENGINE</span><b>{t("visual.tune")}</b></div><button onClick={() => setVisualSettingsOpen(false)}><X /></button></div>

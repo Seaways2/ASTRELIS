@@ -35,9 +35,12 @@ function loadPlayerStore({ desktop, parseBlob = async () => ({ common: {} }), in
     LIBRARY_THUMBNAILS_REFRESH_EVENT: "astrelis:library-thumbnails-refresh",
     refreshLibraryThumbnails: sources => thumbnailRefreshes.push(sources)
   };
+  const visualizerMode = { exports: {} };
+  Function("exports", ts.transpileModule(fs.readFileSync(path.join(root, "src/utils/visualizerMode.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(visualizerMode.exports);
   const requireModule = name => name === "./folderVisibilityStore" ? visibility.exports : name === "../utils/videoTrack" ? helper.exports : name === "music-metadata" ? { parseBlob }
     : name.includes("libraryCoverMerge") ? { mergeScannedLibrary: tracks => tracks, sanitizeLibraryFolders: folders => folders }
     : name === "../utils/libraryThumbnailRefresh" ? thumbnailRefresh
+    : name === "../utils/visualizerMode" ? visualizerMode.exports
     : require(name);
   Function("exports", "module", "require", "localStorage", "window", "URL", javascript)(
     module.exports, module, requireModule, localStorage, { desktop, clearTimeout() {}, setTimeout(fn) { savedCallback = fn; return 1; }, addEventListener(name, fn) { events[name] = fn; } }, URL);

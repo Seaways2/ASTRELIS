@@ -7,8 +7,6 @@ import {
 import { usePlayerStore } from "../stores/playerStore";
 import { PlaylistTable } from "./PlaylistTable";
 import type { OutputDevice } from "../types/audio";
-import { resolveVisualizerSettings } from "../utils/visualizerSettings";
-import { VisualizerOverview } from "../visualizers/VisualizerOverview";
 import { OnlineBrowser } from "./OnlineBrowser";
 import { VstRack } from "./VstRack";
 import { MusicLibrary } from "./MusicLibrary";
@@ -45,10 +43,6 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
   const { t } = useI18n();
   const lowPerformanceMode = state.uiSettings.lowPerformanceMode;
   const gpuCapabilities = useMemo(probeGpuVisualCapabilities, []);
-  const workspaceVisualSettings = useMemo(
-    () => resolveVisualizerSettings(state.visualSettings, lowPerformanceMode),
-    [state.visualSettings, lowPerformanceMode]
-  );
   const [backgroundBusy, setBackgroundBusy] = useState(false);
   const [backgroundError, setBackgroundError] = useState("");
   const [nativeDevices, setNativeDevices] = useState<NativeOutputDeviceInfo[]>([]);
@@ -344,11 +338,6 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
 
   if (page === "library") return <Page title={t("page.library")} code="LOCAL LIBRARY" icon={<FileAudio />}>
     <MusicLibrary />
-  </Page>;
-
-  if ((page as string) === "visualizer") return <Page title={t("mode.overview")} code="VISUAL LAB" icon={<AudioLines />}>
-    <div className="page-toolbar"><span>{t("visual.analysisHint")}</span><b>{t("visual.moduleHint")}</b></div>
-    <VisualizerOverview accent={state.accent} settings={workspaceVisualSettings} glowStrength={lowPerformanceMode ? 0 : state.uiSettings.glowStrength} playbackActive={!lowPerformanceMode} onSelect={(mode) => { state.setVisualizer(mode); state.setActivePage("nowPlaying"); }} />
   </Page>;
 
   if (page === "devices") return <Page title={t("page.devices")} code="OUTPUT ROUTING" icon={<MonitorSpeaker />}>

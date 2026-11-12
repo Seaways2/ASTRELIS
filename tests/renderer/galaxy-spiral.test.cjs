@@ -17,11 +17,16 @@ test("Galaxy Spiral replaces the waveform renderer without changing its persiste
   assert.match(canvas, /if \(mode === "waveform"\)/);
 });
 
-test("Radial Spectrum and Galaxy Spiral exchange positions in both mode lists", () => {
+test("galaxy, starfield and black hole lead the mode tabs, bar spectra follow", () => {
   const app = readAppSource();
-  const overview = read("src/visualizers/VisualizerOverview.tsx");
-  assert.match(app, /\{ id: "radial", key: "mode\.radial" \}, \{ id: "waveform", key: "mode\.waveform" \}/);
-  assert.match(overview, /\{ mode: "radial", key: "mode\.radial" \},\s*\{ mode: "waveform", key: "mode\.waveform" \}/);
+  assert.match(app, /\{ id: "waveform", key: "mode\.waveform" \}, \{ id: "particles", key: "mode\.particles" \}, \{ id: "pulse", key: "mode\.pulse" \},\s*\{ id: "spectrum", key: "mode\.spectrum" \}, \{ id: "mirror", key: "mode\.mirror" \}, \{ id: "radial", key: "mode\.radial" \}/);
+  assert.doesNotMatch(app, /"overview"|VisualizerOverview/);
+  const types = read("src/utils/visualizerMode.ts");
+  assert.match(types, /export const DEFAULT_VISUALIZER_MODE: VisualizerMode = "waveform";/);
+  const store = read("src/stores/playerStore.ts");
+  // First launch, and any saved retired mode, open the galaxy.
+  assert.match(store, /\? normalizeVisualizerMode\(localStorage\.getItem\("auralis\.visualizer"\)\)\s*: DEFAULT_VISUALIZER_MODE,/);
+  assert.match(store, /const visualizer = normalizeVisualizerMode\(mode\);/);
 });
 
 test("Galaxy Spiral uses cached differential dust layers and a bounded live layer", () => {

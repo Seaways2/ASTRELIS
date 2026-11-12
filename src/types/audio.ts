@@ -1,15 +1,12 @@
 import type { FilmMetadata } from "../../electron/library/media/TmdbClient";
 export type RepeatMode = "off" | "all" | "one";
 export type VisualizerMode =
-  | "overview"
-  | "spectrum"
-  | "mirror"
   | "waveform"
-  | "radial"
-  | "waterfall"
   | "particles"
   | "pulse"
-  | "levels";
+  | "spectrum"
+  | "mirror"
+  | "radial";
 
 export type PageId = "nowPlaying" | "playlist" | "library" | "online" | "devices" | "plugins" | "appearance" | "settings";
 

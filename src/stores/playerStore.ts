@@ -5,6 +5,7 @@ import { parseBlob } from "music-metadata";
 import { mergeScannedLibrary, sanitizeLibraryFolders } from "../utils/libraryCoverMerge";
 import { refreshLibraryThumbnails } from "../utils/libraryThumbnailRefresh";
 import type { PageId, RepeatMode, Track, VisualizerMode, VisualizerSettings } from "../types/audio";
+import { DEFAULT_VISUALIZER_MODE, normalizeVisualizerMode } from "../utils/visualizerMode";
 import type { LibraryDerivedIndexSnapshot } from "../library/LibraryQueryService";
 import type { GpuVisualQuality } from "../visualizers/gpuVisualRuntime";
 
@@ -461,9 +462,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   muted: false,
   shuffle: false,
   repeat: "all",
+  // A saved retired mode (the removed overview, waterfall, levels) opens the galaxy.
   visualizer: localStorage.getItem("auralis.visualizer.layout-v2")
-    ? ((localStorage.getItem("auralis.visualizer") as VisualizerMode) || "overview")
-    : "overview",
+    ? normalizeVisualizerMode(localStorage.getItem("auralis.visualizer"))
+    : DEFAULT_VISUALIZER_MODE,
   visualSettings: storedVisualizerSettings,
   activePage: storedUiSettings.startupPage,
   nativeOutputGuideRequest: 0,
@@ -770,7 +772,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setMuted: (muted) => set({ muted }),
   setShuffle: (shuffle) => set({ shuffle }),
   cycleRepeat: () => set((state) => ({ repeat: state.repeat === "off" ? "all" : state.repeat === "all" ? "one" : "off" })),
-  setVisualizer: (visualizer) => {
+  setVisualizer: (mode) => {
+    const visualizer = normalizeVisualizerMode(mode);
     localStorage.setItem("auralis.visualizer", visualizer);
     localStorage.setItem("auralis.visualizer.layout-v2", "1");
     set({ visualizer });

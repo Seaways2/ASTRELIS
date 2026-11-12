@@ -10,7 +10,7 @@ export function usePlaybackShortcuts(options: {
   const latest = useRef(options);
   latest.current = options;
   useEffect(() => {
-    let held = "", started = 0, lastStep = 0, timer = 0, wheelAt = 0;
+    let held = "", started = 0, lastStep = 0, timer = 0;
     let target = 0, seekAt = -Infinity, seekMedia = "";
     const editable = (el: EventTarget | null) => el instanceof Element && Boolean(el.closest('input:not([type="range"]),textarea,select,[contenteditable="true"],[role="dialog"],[role="menu"],[role="listbox"],.queue-list,.playlist-table'));
     const act = (action: string, amount = 0) => {
@@ -31,7 +31,9 @@ export function usePlaybackShortcuts(options: {
         state.setVolume(Math.max(0, Math.min(1, (state.muted ? 0 : state.volume) + amount / 100)));
       }
       if (action === "volumeDb" && !latest.current.direct) {
-        const next = nudgeFaderAmplitude(state.muted ? 0 : state.volume, amount);
+        // Same 1 dB fader steps as the channel strip; a muted volume resumes
+        // from the level it was muted at, like the fader does.
+        const next = nudgeFaderAmplitude(state.volume, amount);
         state.setVolume(next);
         state.setMuted(next <= .001);
       }
@@ -68,8 +70,8 @@ export function usePlaybackShortcuts(options: {
         }
       }
       event.preventDefault();
-      const now = performance.now();
-      if (now - wheelAt >= 60) { wheelAt = now; act("volume", event.deltaY < 0 ? 5 : -5); }
+      // One fader step per wheel event, exactly as over the channel-strip fader.
+      act("volumeDb", event.deltaY < 0 ? 1 : -1);
     };
     const off = window.desktop?.video.onInput(input => { if (latest.current.video) act(input.action, input.amount); });
     window.addEventListener("keydown", down, true);

@@ -73,3 +73,14 @@ test("popovers that close on an outside click also close on a titlebar press", (
   assert.match(strip, /document\.addEventListener\(CAPTION_POINTERDOWN_EVENT, closeFromCaption\);/);
   assert.match(strip, /document\.removeEventListener\(CAPTION_POINTERDOWN_EVENT, closeFromCaption\);/);
 });
+
+test("the wheel changes volume by the same fader step everywhere", () => {
+  const shortcuts = read("src/hooks/usePlaybackShortcuts.ts");
+  const fader = read("src/components/MainVolumeFader.tsx");
+  // The fader: one nudge step per wheel event.
+  assert.match(fader, /onWheel=\{event => \{ if \(disabled\) return; event\.preventDefault\(\); nudge\(event\.deltaY < 0 \? 1 : -1\); \}\}/);
+  // Elsewhere: the same step through the same fader scale, with no linear 5% jumps or throttle.
+  assert.match(shortcuts, /act\("volumeDb", event\.deltaY < 0 \? 1 : -1\);/);
+  assert.match(shortcuts, /const next = nudgeFaderAmplitude\(state\.volume, amount\);/);
+  assert.doesNotMatch(shortcuts, /wheelAt|act\("volume", event\.deltaY/);
+});

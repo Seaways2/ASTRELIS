@@ -18,6 +18,5 @@ export function AtmosphereSettings({ lowPerformance, section }: { lowPerformance
       {key === "glassEdges" && <label className="atmosphere-strength"><span>{t("fx.response")}</span><input aria-label={t("fx.response")} disabled={!settings.glassEdges || lowPerformance} type="range" min="0" max="3" step=".1" value={settings.response} onChange={event => update({ response: Number(event.target.value) })} /><output>{settings.response.toFixed(1)}×</output></label>}
     </div>)}
     {section === "glass" && <label className="atmosphere-strength"><span>{t("fx.intensity")}</span><input aria-label={t("fx.intensity")} type="range" min="0" max="1" step=".05" value={settings.intensity} onChange={event => update({ intensity: Number(event.target.value) })} /><output>{Math.round(settings.intensity * 100)}%</output></label>}
-    {section === "motion" && <p className="atmosphere-note">{t("fx.motionHint")}</p>}
   </div>;
 }

@@ -72,3 +72,14 @@ test("a refreshed cover is analysed again for smart framing", () => {
   const thumbnail = read("src/components/LibraryThumbnail.tsx");
   assert.match(thumbnail, /sources\?\.forEach\(source => \{\s*attentionBySource\.delete\(source\);/);
 });
+
+test("settings use compact rows and fill wide windows in two columns", () => {
+  const modules = read("src/styles/workspace-modules.css");
+  assert.match(modules, /grid-template-columns: minmax\(120px, 170px\) minmax\(0, 420px\) 56px; justify-content: start;/);
+  assert.match(modules, /\.appearance-layout \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); align-items: start; \}/);
+  assert.match(modules, /\.settings-layout > \.cache-settings \{ grid-column: 1 \/ -1;/);
+  assert.match(modules, /\.app-shell \.system-setting-row \{ min-height: 48px; padding-block: 8px; \}/);
+  // The motion note joined the section heading's info mark.
+  assert.doesNotMatch(read("src/components/AtmosphereSettings.tsx"), /atmosphere-note/);
+  assert.match(read("src/components/WorkspacePage.tsx"), /hint=\{t\("fx\.motionHint"\)\}/);
+});

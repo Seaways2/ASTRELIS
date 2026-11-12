@@ -499,7 +499,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
     <section className="appearance-section panel"><SectionHeading icon={Music2}>{t("appearance.group.music")}</SectionHeading>
     <AtmosphereSettings section="music" lowPerformance={lowPerformanceMode} />
     </section>
-    <section className="appearance-section panel"><SectionHeading icon={Sparkles}>{t("appearance.group.motion")}</SectionHeading>
+    <section className="appearance-section panel"><SectionHeading icon={Sparkles} hint={t("fx.motionHint")}>{t("appearance.group.motion")}</SectionHeading>
     <div className="appearance-controls">      <div className={`appearance-animation-module ${state.uiSettings.animations && !state.uiSettings.lowPerformanceMode ? "active" : "disabled"}`}>
         <span><span className="setting-title"><b>{t("appearance.animations")}</b><Hint>{t("appearance.animationsHint")}</Hint></span></span>
         <label className="animation-transition-field"><small>{t("appearance.transition")}</small><select disabled={!state.uiSettings.animations || state.uiSettings.lowPerformanceMode} value={state.uiSettings.visualTransition} onChange={(event) => state.setUiSetting("visualTransition", event.target.value as "dissolve" | "fade" | "zoom" | "slide" | "scan")}><option value="dissolve">{t("appearance.transitionDissolve")}</option><option value="fade">{t("appearance.transitionFade")}</option><option value="zoom">{t("appearance.transitionZoom")}</option><option value="slide">{t("appearance.transitionSlide")}</option><option value="scan">{t("appearance.transitionScan")}</option></select></label>

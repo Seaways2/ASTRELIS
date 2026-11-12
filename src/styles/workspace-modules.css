@@ -425,3 +425,21 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell .native-overview-header .native-output-switch, .app-shell .native-overview-header .native-output-switch input, .app-shell .native-overview-header .native-output-switch input::before { transition: none; }
 }
+
+/* Explanations live behind an info mark (Hint.tsx) instead of small text under every title. */
+.app-shell .setting-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.app-shell .setting-title > b { min-width: 0; margin: 0; }
+.hint { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; color: var(--module-muted, #8a9ca1); cursor: help; vertical-align: middle; transition: color .14s ease; }
+.hint > svg { width: 14px; height: 14px; }
+.hint:hover, .hint:focus-visible { color: var(--accent); outline: none; }
+.hint:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.hint-bubble:not(:popover-open) { display: none; }
+.hint-bubble:popover-open { position: fixed; inset: auto; margin: 0; display: block; box-sizing: border-box; width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 9px 12px; border: 1px solid #7398ab66; border-radius: 8px; background: #11212b; color: #dce7ed; box-shadow: 0 8px 24px #0006; font-size: 12px; font-weight: 400; font-family: inherit; line-height: 1.6; letter-spacing: 0; text-transform: none; white-space: normal; text-align: left; pointer-events: none; }
+.app-shell.theme-light .hint-bubble:popover-open { border-color: #7398ab55; background: #eff5f8; color: #23404c; box-shadow: 0 8px 24px #1c3a4a33; }
+.app-shell h3.section-heading > .hint { margin-left: -4px; }
+/* Output mode cards show the name only; the description is the card's tooltip. */
+.app-shell .native-mode-options .native-mode-description { display: none; }
+/* The background folder action is a compact button, not a full-width grey bar. */
+.app-shell .appearance-controls > label > button { justify-self: start; min-height: 31px; padding: 0 14px; border: 1px solid var(--library-control-border); border-radius: 5px; background: var(--library-control-fill); color: var(--accent); cursor: pointer; }
+.app-shell .appearance-controls > label > button:not(:disabled):hover { background: var(--library-control-hover); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .hint { transition: none; } }

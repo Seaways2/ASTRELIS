@@ -1,4 +1,5 @@
 import { SectionHeading } from "./SectionHeading";
+import { Hint } from "./Hint";
 import { CacheSettings } from "./CacheSettings";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AppWindow, ArrowUpRight, Gauge, Languages, Music2 } from "lucide-react";
@@ -9,7 +10,7 @@ function SettingRow({ id, title, hint, children, wide = false }: {
   id: string; title: string; hint: string; children: ReactNode; wide?: boolean;
 }) {
   return <div className={`system-setting-row ${wide ? "system-setting-wide" : ""}`}>
-    <label htmlFor={id}><b>{title}</b><small id={`${id}-hint`}>{hint}</small></label>
+    <label htmlFor={id}><span className="setting-title"><b>{title}</b><Hint id={`${id}-hint`}>{hint}</Hint></span></label>
     <div className="system-setting-control">{children}</div>
   </div>;
 }

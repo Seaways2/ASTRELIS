@@ -44,3 +44,20 @@ test("the native output switch follows the theme accent", () => {
   assert.match(modules, /\.native-output-switch input:checked \{ background: var\(--accent\); \}/);
   assert.doesNotMatch(read("src/styles/global.css"), /\.native-output-switch\.active, \.loopback-status\.active/);
 });
+
+test("setting explanations sit behind an info mark instead of small text", () => {
+  const hint = read("src/components/Hint.tsx");
+  // Top-layer popover: never clipped by scrolling panels; shown on hover and keyboard focus.
+  assert.match(hint, /setAttribute\("popover", "manual"\)/);
+  assert.match(hint, /onMouseEnter=\{show\} onMouseLeave=\{hide\} onFocus=\{show\} onBlur=\{hide\}/);
+  // A click on the mark inside a <label> must not toggle the control.
+  assert.match(hint, /event\.preventDefault\(\); event\.stopPropagation\(\);/);
+  const page = read("src/components/WorkspacePage.tsx");
+  for (const key of ["appearance.colorMode", "background.auto", "appearance.glass", "appearance.opacity", "appearance.glow", "appearance.animations", "appearance.lowPerformanceMode"]) {
+    assert.ok(page.includes(`<b>{t("${key}")}</b><Hint>{t("${key}Hint")}</Hint>`), key);
+  }
+  assert.doesNotMatch(page, /<p>\{t\("device\.hdmiHint"\)\}<\/p>|<small>\{t\("device\.hdmiFormats"\)\}<\/small>|<p>\{t\("device\.directHint"\)\}<\/p>/);
+  assert.match(read("src/components/SystemSettings.tsx"), /<Hint id=\{`\$\{id\}-hint`\}>\{hint\}<\/Hint>/);
+  assert.match(read("src/components/CacheSettings.tsx"), /hint=\{t\("cache\.hint"\)\}/);
+  assert.match(read("src/components/AtmosphereSettings.tsx"), /<Hint>\{t\(`fx\.\$\{key\}Hint`\)\}<\/Hint>/);
+});

@@ -1,6 +1,7 @@
 import { useAtmosphereStore } from "../stores/atmosphereStore";
 import { type AtmosphereSettings as Settings } from "../utils/atmosphere";
 import { useI18n } from "../i18n";
+import { Hint } from "./Hint";
 type Section = "glass" | "music" | "motion";
 const keys: Record<Section, Array<keyof Omit<Settings, "intensity" | "response">>> = {
   glass: ["glassEdges"], music: ["coverColors", "orbitParticles"], motion: ["trackTransition"]
@@ -11,7 +12,7 @@ export function AtmosphereSettings({ lowPerformance, section }: { lowPerformance
   return <div className="appearance-effects">
     {section === "music" && lowPerformance && <p role="status">{t("fx.eco")}</p>}
     {keys[section].map(key => <div key={key}>
-      <label className="appearance-effect-row"><span><b>{t(`fx.${key}`)}</b><small>{t(`fx.${key}Hint`)}</small></span>
+      <label className="appearance-effect-row"><span className="setting-title"><b>{t(`fx.${key}`)}</b><Hint>{t(`fx.${key}Hint`)}</Hint></span>
         <input type="checkbox" checked={settings[key]} onChange={event => update({ [key]: event.target.checked })} />
       </label>
       {key === "glassEdges" && <label className="atmosphere-strength"><span>{t("fx.response")}</span><input aria-label={t("fx.response")} disabled={!settings.glassEdges || lowPerformance} type="range" min="0" max="3" step=".1" value={settings.response} onChange={event => update({ response: Number(event.target.value) })} /><output>{settings.response.toFixed(1)}×</output></label>}

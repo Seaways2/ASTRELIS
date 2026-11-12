@@ -1,4 +1,5 @@
 import { SectionHeading } from "./SectionHeading";
+import { Hint } from "./Hint";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines, Blocks, Check, FileAudio, Globe2, ImagePlus, Import, ListMusic, MonitorSpeaker,
@@ -370,15 +371,13 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         </div>
 
         <div className="unified-output-section hdmi-output-policy">
-          <SectionHeading icon={Music2}>{t("device.playbackPolicy")}</SectionHeading>
+          <SectionHeading icon={Music2} hint={<>{t("device.hdmiHint")}<br />{t("device.hdmiFormats")}</>}>{t("device.playbackPolicy")}</SectionHeading>
           <div className="native-mode-options">
             <button type="button" disabled={nativeControlsBusy} className={!state.uiSettings.hdmiDirectEnabled ? "active" : ""} onClick={() => void setHdmiDirect(false)}><span>{t("device.normalPlayback")}</span></button>
             <button type="button" disabled={nativeControlsBusy} className={state.uiSettings.hdmiDirectEnabled ? "active" : ""} onClick={() => void setHdmiDirect(true)}><span>{t("device.hdmiDirect")}</span></button>
           </div>
-          <p>{t("device.hdmiHint")}</p>
           {nativeDeviceError && <p className="error-text" role="alert">{nativeDeviceError}</p>}
           {nativeApplyMessage && <p className="native-apply-message" role="status">{nativeApplyMessage}</p>}
-          <small>{t("device.hdmiFormats")}</small>
           {state.uiSettings.hdmiDirectEnabled && <p>{state.uiSettings.hdmiDeviceName} · {t("device.hdmiVolume")}</p>}
         </div>
         <header><SectionHeading icon={AudioLines}>{t("device.outputMode")}</SectionHeading></header>
@@ -386,8 +385,8 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           {nativeOutputModes.map(mode => <button
             type="button" key={mode.backend} disabled={nativeControlsBusy || state.uiSettings.hdmiDirectEnabled}
             className={selectedNativeBackend === mode.backend ? "active" : ""}
-            onClick={() => selectNativeBackend(mode.backend)}
-          ><span>{mode.name}</span><small>{t(mode.descriptionKey)}</small>{selectedNativeBackend === mode.backend && <Check />}</button>)}
+            onClick={() => selectNativeBackend(mode.backend)} title={t(mode.descriptionKey)}
+          ><span>{mode.name}</span><small className="native-mode-description">{t(mode.descriptionKey)}</small>{selectedNativeBackend === mode.backend && <Check />}</button>)}
         </div>
 
         <fieldset className="native-configuration-fields" disabled={state.uiSettings.hdmiDirectEnabled}>
@@ -442,9 +441,8 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         </div></details>
       </section>
       <section className="setting-card workspace-section unified-output-config">
-        <header><SectionHeading icon={Globe2}>{t("device.directTitle")}</SectionHeading></header>
-        <p>{t("device.directHint")}</p>
-        <div className="unified-output-section chromium-device-setting"><div><label htmlFor="web-output-device">{t("device.webFallback")}</label><small id="web-output-hint">{t("device.webFallbackHint")}</small></div>
+        <header><SectionHeading icon={Globe2} hint={t("device.directHint")}>{t("device.directTitle")}</SectionHeading></header>
+        <div className="unified-output-section chromium-device-setting"><div className="setting-title"><label htmlFor="web-output-device">{t("device.webFallback")}</label><Hint id="web-output-hint">{t("device.webFallbackHint")}</Hint></div>
         <select id="web-output-device" aria-describedby="web-output-hint" value={deviceId} onChange={(event) => onDevice(event.target.value)}><option value="default">{t("common.defaultOutput")}</option>{devices.filter(d => d.id !== "default").map(device => <option value={device.id} key={device.id}>{device.label}</option>)}</select>
         {deviceError && <p className="error-text">{deviceError}</p>}
         </div>
@@ -459,7 +457,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
   if (page === "appearance") return <Page title={t("page.appearance")} code="INTERFACE SYSTEM" icon={<Palette />}>
     <div className="appearance-layout">
     <section className="appearance-section panel"><SectionHeading icon={Palette}>{t("appearance.group.theme")}</SectionHeading>
-    <div className="appearance-controls">      <label><span><b>{t("appearance.colorMode")}</b><small>{t("appearance.colorModeHint")}</small></span><select value={state.uiSettings.colorMode} onChange={(event) => state.setUiSetting("colorMode", event.target.value as "dark" | "light" | "system")}><option value="dark">{t("appearance.dark")}</option><option value="light">{t("appearance.light")}</option><option value="system">{t("appearance.system")}</option></select><em>{state.uiSettings.colorMode.toUpperCase()}</em></label></div>
+    <div className="appearance-controls">      <label><span><span className="setting-title"><b>{t("appearance.colorMode")}</b><Hint>{t("appearance.colorModeHint")}</Hint></span></span><select value={state.uiSettings.colorMode} onChange={(event) => state.setUiSetting("colorMode", event.target.value as "dark" | "light" | "system")}><option value="dark">{t("appearance.dark")}</option><option value="light">{t("appearance.light")}</option><option value="system">{t("appearance.system")}</option></select><em>{state.uiSettings.colorMode.toUpperCase()}</em></label></div>
     <div className="theme-swatches">{themes.map(([name, color]) => <button aria-label={name} title={name} aria-pressed={state.accent === color} className={`theme-swatch ${state.accent === color ? "active" : ""}`} key={name} onClick={() => state.setAccent(color)}>
       <span style={{ background: color }} /><b>{name}</b>{state.accent === color && <Check />}
     </button>)}
@@ -484,15 +482,15 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         {state.uiSettings.customBackgroundUrl && <Check />}
       </button>
       <div className="appearance-controls">
-        <label><span><b>{t("background.folder")}</b><small>{state.uiSettings.backgroundFolder ? `${t("background.count").replace("{count}", String(state.uiSettings.backgroundImages.length))} · ${state.uiSettings.backgroundFolder}` : t("background.folderHint")}</small></span><button disabled={backgroundBusy} onClick={()=>void chooseBackgroundFolder()}>{backgroundBusy ? t("background.importing") : t("background.addFolder")}</button></label>
-        <label><span><b>{t("background.auto")}</b><small>{t("background.autoHint")}</small></span><select disabled={state.uiSettings.backgroundImages.length<2} value={state.uiSettings.backgroundInterval} onChange={e=>state.setUiSetting("backgroundInterval",Number(e.target.value))}>{[[0,t("duration.off")],[15,t("duration.s15")],[30,t("duration.s30")],[60,t("duration.m1")],[300,t("duration.m5")],[600,t("duration.m10")],[1800,t("duration.m30")]].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+        <label><span><span className="setting-title"><b>{t("background.folder")}</b><Hint>{t("background.folderHint")}</Hint></span>{state.uiSettings.backgroundFolder && <small>{`${t("background.count").replace("{count}", String(state.uiSettings.backgroundImages.length))} · ${state.uiSettings.backgroundFolder}`}</small>}</span><button disabled={backgroundBusy} onClick={()=>void chooseBackgroundFolder()}>{backgroundBusy ? t("background.importing") : t("background.addFolder")}</button></label>
+        <label><span><span className="setting-title"><b>{t("background.auto")}</b><Hint>{t("background.autoHint")}</Hint></span></span><select disabled={state.uiSettings.backgroundImages.length<2} value={state.uiSettings.backgroundInterval} onChange={e=>state.setUiSetting("backgroundInterval",Number(e.target.value))}>{[[0,t("duration.off")],[15,t("duration.s15")],[30,t("duration.s30")],[60,t("duration.m1")],[300,t("duration.m5")],[600,t("duration.m10")],[1800,t("duration.m30")]].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
       </div>
     </section>
     <section className="appearance-section panel"><SectionHeading icon={Layers}>{t("appearance.group.glass")}</SectionHeading>
     <div className="appearance-controls">
-      <label><span><b>{t("appearance.glass")}</b><small>{t("appearance.glassHint")}</small></span><select value={state.uiSettings.glassMaterial} onChange={(event) => state.setUiSetting("glassMaterial", event.target.value as "mica" | "acrylic" | "none")}><option value="mica">{t("appearance.mica")}</option><option value="acrylic">{t("appearance.acrylic")}</option><option value="none">{t("appearance.transparent")}</option></select><em>{state.uiSettings.glassMaterial.toUpperCase()}</em></label>
-      <label><span><b>{t("appearance.opacity")}</b><small>{t("appearance.opacityHint")}</small></span><input type="range" min=".20" max="1" step=".01" value={state.uiSettings.windowOpacity} onDoubleClick={() => state.setUiSetting("windowOpacity", .94)} onChange={(event) => state.setUiSetting("windowOpacity", Number(event.target.value))} /><em>{Math.round(state.uiSettings.windowOpacity * 100)}%</em></label>
-      <label><span><b>{t("appearance.glow")}</b><small>{t("appearance.glowHint")}</small></span><input type="range" min="0" max="3" step=".05" value={state.uiSettings.glowStrength} onDoubleClick={() => state.setUiSetting("glowStrength", 1)} onChange={(event) => state.setUiSetting("glowStrength", Number(event.target.value))} /><em>{state.uiSettings.glowStrength.toFixed(2)}×</em></label>
+      <label><span><span className="setting-title"><b>{t("appearance.glass")}</b><Hint>{t("appearance.glassHint")}</Hint></span></span><select value={state.uiSettings.glassMaterial} onChange={(event) => state.setUiSetting("glassMaterial", event.target.value as "mica" | "acrylic" | "none")}><option value="mica">{t("appearance.mica")}</option><option value="acrylic">{t("appearance.acrylic")}</option><option value="none">{t("appearance.transparent")}</option></select><em>{state.uiSettings.glassMaterial.toUpperCase()}</em></label>
+      <label><span><span className="setting-title"><b>{t("appearance.opacity")}</b><Hint>{t("appearance.opacityHint")}</Hint></span></span><input type="range" min=".20" max="1" step=".01" value={state.uiSettings.windowOpacity} onDoubleClick={() => state.setUiSetting("windowOpacity", .94)} onChange={(event) => state.setUiSetting("windowOpacity", Number(event.target.value))} /><em>{Math.round(state.uiSettings.windowOpacity * 100)}%</em></label>
+      <label><span><span className="setting-title"><b>{t("appearance.glow")}</b><Hint>{t("appearance.glowHint")}</Hint></span></span><input type="range" min="0" max="3" step=".05" value={state.uiSettings.glowStrength} onDoubleClick={() => state.setUiSetting("glowStrength", 1)} onChange={(event) => state.setUiSetting("glowStrength", Number(event.target.value))} /><em>{state.uiSettings.glowStrength.toFixed(2)}×</em></label>
     </div>
     <AtmosphereSettings section="glass" lowPerformance={lowPerformanceMode} />
     </section>
@@ -501,7 +499,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
     </section>
     <section className="appearance-section panel"><SectionHeading icon={Sparkles}>{t("appearance.group.motion")}</SectionHeading>
     <div className="appearance-controls">      <div className={`appearance-animation-module ${state.uiSettings.animations && !state.uiSettings.lowPerformanceMode ? "active" : "disabled"}`}>
-        <span><b>{t("appearance.animations")}</b><small>{t("appearance.animationsHint")}</small></span>
+        <span><span className="setting-title"><b>{t("appearance.animations")}</b><Hint>{t("appearance.animationsHint")}</Hint></span></span>
         <label className="animation-transition-field"><small>{t("appearance.transition")}</small><select disabled={!state.uiSettings.animations || state.uiSettings.lowPerformanceMode} value={state.uiSettings.visualTransition} onChange={(event) => state.setUiSetting("visualTransition", event.target.value as "dissolve" | "fade" | "zoom" | "slide" | "scan")}><option value="dissolve">{t("appearance.transitionDissolve")}</option><option value="fade">{t("appearance.transitionFade")}</option><option value="zoom">{t("appearance.transitionZoom")}</option><option value="slide">{t("appearance.transitionSlide")}</option><option value="scan">{t("appearance.transitionScan")}</option></select></label>
         <label className="animation-master-switch"><input aria-label={t("appearance.animations")} disabled={state.uiSettings.lowPerformanceMode} type="checkbox" checked={state.uiSettings.animations} onChange={(event) => state.setUiSetting("animations", event.target.checked)} /></label>
       </div>
@@ -513,7 +511,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         <label className="gpu-quality-field"><small>{t("appearance.gpuQuality")}</small><select aria-label={t("appearance.gpuQuality")} disabled={!state.uiSettings.gpuAccelerationEnabled || !gpuCapabilities.webgl2} value={state.uiSettings.gpuQuality} onChange={(event) => state.setUiSetting("gpuQuality", event.target.value as GpuVisualQuality)}><option value="eco">{t("appearance.gpuEco")}</option><option value="standard">{t("appearance.gpuStandard")}</option><option value="cosmic">{t("appearance.gpuCosmic")}</option></select></label>
         <label className="gpu-master-switch"><input aria-label={t("appearance.gpuAcceleration")} disabled={!gpuCapabilities.webgl2} type="checkbox" checked={state.uiSettings.gpuAccelerationEnabled && gpuCapabilities.webgl2} onChange={(event) => state.setUiSetting("gpuAccelerationEnabled", event.target.checked)} /></label>
       </div>
-      <label className={`low-performance-setting ${state.uiSettings.lowPerformanceMode ? "active" : ""}`}><span><b>{t("appearance.lowPerformanceMode")}</b><small>{t("appearance.lowPerformanceModeHint")}</small></span><em>{t(state.uiSettings.lowPerformanceMode ? "appearance.lowPerformanceActive" : "appearance.lowPerformanceFull")}</em><input aria-label={t("appearance.lowPerformanceMode")} type="checkbox" checked={state.uiSettings.lowPerformanceMode} onChange={(event) => state.setUiSetting("lowPerformanceMode", event.target.checked)} /></label>
+      <label className={`low-performance-setting ${state.uiSettings.lowPerformanceMode ? "active" : ""}`}><span><span className="setting-title"><b>{t("appearance.lowPerformanceMode")}</b><Hint>{t("appearance.lowPerformanceModeHint")}</Hint></span></span><em>{t(state.uiSettings.lowPerformanceMode ? "appearance.lowPerformanceActive" : "appearance.lowPerformanceFull")}</em><input aria-label={t("appearance.lowPerformanceMode")} type="checkbox" checked={state.uiSettings.lowPerformanceMode} onChange={(event) => state.setUiSetting("lowPerformanceMode", event.target.checked)} /></label>
     </div></details>
     </section>
     </div>

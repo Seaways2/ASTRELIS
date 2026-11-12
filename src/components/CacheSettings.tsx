@@ -37,8 +37,7 @@ export function CacheSettings() {
     finally { setBusy(false); }
   };
   return <section className="settings-section panel cache-settings" aria-busy={busy}>
-    <SectionHeading icon={HardDrive}>{t("cache.title")}</SectionHeading>
-    <p>{t("cache.hint")}</p>
+    <SectionHeading icon={HardDrive} hint={t("cache.hint")}>{t("cache.title")}</SectionHeading>
     <dl><div><dt>{t("cache.decoded")}</dt><dd>{size(snapshot.decodedBytes)}</dd></div>
       <div><dt>{t("cache.direct")}</dt><dd>{size(snapshot.directBytes)}</dd></div>
       <div><dt>{t("cache.total")}</dt><dd>{size(snapshot.bytes)}</dd></div></dl>

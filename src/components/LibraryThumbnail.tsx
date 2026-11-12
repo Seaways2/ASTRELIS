@@ -112,6 +112,7 @@ function invalidateThumbnail(source: string, size: ThumbnailSize) {
 function invalidateRefreshedThumbnails(event: Event) {
   const sources = (event as CustomEvent<{ sources?: string[] }>).detail?.sources;
   sources?.forEach(source => {
+    attentionBySource.delete(source);
     invalidateThumbnail(source, 256);
     invalidateThumbnail(source, 512);
     invalidateThumbnail(source, 1024);

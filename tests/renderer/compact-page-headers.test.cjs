@@ -61,3 +61,14 @@ test("setting explanations sit behind an info mark instead of small text", () =>
   assert.match(read("src/components/CacheSettings.tsx"), /hint=\{t\("cache\.hint"\)\}/);
   assert.match(read("src/components/AtmosphereSettings.tsx"), /<Hint>\{t\(`fx\.\$\{key\}Hint`\)\}<\/Hint>/);
 });
+
+test("native-only configuration shows only while native output is on", () => {
+  const page = read("src/components/WorkspacePage.tsx");
+  assert.match(page, /\{nativeOutputOn && <>\s*<header><SectionHeading icon=\{AudioLines\}>\{t\("device\.outputMode"\)\}/);
+  assert.match(page, /<\/fieldset>\s*<\/>\}/);
+});
+
+test("a refreshed cover is analysed again for smart framing", () => {
+  const thumbnail = read("src/components/LibraryThumbnail.tsx");
+  assert.match(thumbnail, /sources\?\.forEach\(source => \{\s*attentionBySource\.delete\(source\);/);
+});

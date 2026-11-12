@@ -574,11 +574,13 @@ function createWindow() {
   let screenFilling = mainWindow.isMaximized();
   mainWindow.on("resize", () => {
     if (!mainWindow) return;
-    const filling = mainWindow.isMaximized() || mainWindow.isFullScreen();
+    const bounds = mainWindow.getBounds();
+    // HTML fullscreen (library preview) reports neither maximized nor fullscreen.
+    const filling = mainWindow.isMaximized() || mainWindow.isFullScreen() || fillsDisplay(bounds, screen.getDisplayMatching(bounds));
     if (filling === screenFilling) return;
     screenFilling = filling;
     syncWindowOutline();
-    refreshMaximizedAppearance(mainWindow.isMaximized());
+    refreshMaximizedAppearance(filling);
   });
   const emitPresentationState = () => mainWindow?.webContents.send("window:presentation-state", {
     minimized: Boolean(mainWindow?.isMinimized()),
@@ -715,7 +717,8 @@ function setClickThrough(enabled: boolean) {
 function refreshWindowOutline() {
   if (!mainWindow || mainWindow.isDestroyed() || process.platform !== "win32") return;
   mainWindow.setHasShadow(false);
-  applyNativeWindowOutline(mainWindow);
+  const bounds = mainWindow.getBounds();
+  applyNativeWindowOutline(mainWindow, fillsDisplay(bounds, screen.getDisplayMatching(bounds)));
 }
 
 function setWindowGlass(material: "acrylic" | "mica" | "none") {

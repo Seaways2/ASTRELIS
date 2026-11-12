@@ -5,6 +5,8 @@ import { nudgeFaderAmplitude } from "../utils/volumeFaderScale";
 // Shared playback controls; visualizers and scrollable UI retain their own wheel gestures.
 export function usePlaybackShortcuts(options: {
   enabled: boolean; direct: boolean; video: boolean; mediaKey: string; duration: number;
+  /** Level to resume from when the volume sits at zero (the fader uses the same). */
+  restoreVolume?: () => number;
   seek: (time: number) => void;
 }) {
   const latest = useRef(options);
@@ -33,7 +35,8 @@ export function usePlaybackShortcuts(options: {
       if (action === "volumeDb" && !latest.current.direct) {
         // Same 1 dB fader steps as the channel strip; a muted volume resumes
         // from the level it was muted at, like the fader does.
-        const next = nudgeFaderAmplitude(state.volume, amount);
+        const base = state.volume > .001 ? state.volume : latest.current.restoreVolume?.() ?? 0;
+        const next = nudgeFaderAmplitude(base, amount);
         state.setVolume(next);
         state.setMuted(next <= .001);
       }

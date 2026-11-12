@@ -102,7 +102,6 @@
    share the secondary row. Advanced explanations remain available on demand. */
 .device-page-grid { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; padding-bottom: 20px; }
 .device-page-grid .unified-output-config { grid-column: 1 / -1; gap: 20px; }
-.device-page-grid .chromium-device-setting { margin: 4px 0 0; display: grid; gap: 16px 20px; }
 .chromium-device-setting label { font-size: 13px; font-weight: 600; }
 .chromium-device-setting small { display: block; margin-top: 6px; color: var(--module-muted); font-size: 12px; line-height: 1.65; }
 .chromium-device-setting .error-text { grid-column: 1 / -1; }

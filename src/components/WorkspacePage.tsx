@@ -386,6 +386,8 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           {nativeApplyMessage && <p className="native-apply-message" role="status">{nativeApplyMessage}</p>}
           {state.uiSettings.hdmiDirectEnabled && <p>{state.uiSettings.hdmiDeviceName} · {t("device.hdmiVolume")}</p>}
         </div>
+        {/* Mode, rate, buffer and apply act on the native device, which the output row shows only while native output is on. */}
+        {nativeOutputOn && <>
         <header><SectionHeading icon={AudioLines}>{t("device.outputMode")}</SectionHeading></header>
         <div className="native-mode-options">
           {nativeOutputModes.map(mode => <button
@@ -416,6 +418,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           {nativeApplyBusy ? t("device.applying") : `${t("device.applyConfiguration")}${selectedNativeDevice ? ` · ${selectedNativeDevice.juceDeviceName}` : ""}`}
         </button>
         </fieldset>
+        </>}
         {nativeOutputGuideVisible && <div className="native-output-vst-guide" role="alert">
           <ShieldAlert /><div><b>{t("vst.nativeOutputRequiredTitle")}</b><span>{t("vst.nativeOutputRequiredGuideHint")}</span></div>
         </div>}

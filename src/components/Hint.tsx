@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from "react";
 import { Info } from "lucide-react";
+import { useI18n } from "../i18n";
 
 const GAP = 8;
 const EDGE = 12;
@@ -10,6 +11,7 @@ const EDGE = 12;
  * top-layer popover, so panels with overflow never clip it.
  */
 export function Hint({ children, id }: { children: ReactNode; id?: string }) {
+  const { t } = useI18n();
   const generated = useId();
   const tipId = id ?? `hint-${generated.replace(/:/g, "")}`;
   const trigger = useRef<HTMLSpanElement>(null);
@@ -36,7 +38,7 @@ export function Hint({ children, id }: { children: ReactNode; id?: string }) {
   // Inside a <label>, a click on the mark must not toggle the labelled control.
   const keepControl = (event: MouseEvent) => { event.preventDefault(); event.stopPropagation(); };
 
-  return <span className="hint" ref={trigger} tabIndex={0} aria-describedby={tipId}
+  return <span className="hint" ref={trigger} tabIndex={0} role="button" aria-label={t("common.moreInfo")} aria-describedby={tipId}
     onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} onClick={keepControl}
     onKeyDown={event => { if (event.key === "Escape") hide(); }}>
     <Info aria-hidden="true" />

@@ -915,7 +915,8 @@ export default function App() {
   usePlaybackShortcuts({
     enabled: Boolean(current) && !onlineSession && state.activePage === "nowPlaying" && !(videoActive && videoState?.standalone),
     video: videoActive, direct: videoActive ? videoDirect : hdmiDirect,
-    mediaKey: `${current?.id}:${state.localPlayRequest}`, duration: displayDuration, seek
+    mediaKey: `${current?.id}:${state.localPlayRequest}`, duration: displayDuration, seek,
+    restoreVolume: () => lastAudibleVolume.current
   });
   const toggleShuffle = () => onlineSession ? void onlineAction("shuffle") : state.setShuffle(!state.shuffle);
   const toggleRepeat = () => onlineSession ? void onlineAction("repeat") : state.cycleRepeat();

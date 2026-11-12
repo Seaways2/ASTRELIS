@@ -13,7 +13,8 @@ let outline: OutlineModule | undefined;
  * window fills the screen. Electron emulates maximize for transparent
  * frameless windows, so DWM cannot detect that state itself.
  */
-export function applyNativeWindowOutline(window: BrowserWindow): void {
+/** `coversDisplay`: the bounds fill the display (HTML fullscreen reports neither state). */
+export function applyNativeWindowOutline(window: BrowserWindow, coversDisplay = false): void {
   if (!outline) {
     const file = app.isPackaged
       ? path.join(process.resourcesPath, "native-window", "window_outline.node")
@@ -21,7 +22,7 @@ export function applyNativeWindowOutline(window: BrowserWindow): void {
     outline = require(file) as OutlineModule;
   }
   const fillsScreen = window.isMaximized() || window.isFullScreen();
-  if (!outline.apply(window.getNativeWindowHandle(), fillsScreen)) {
+  if (!outline.apply(window.getNativeWindowHandle(), fillsScreen || coversDisplay)) {
     throw new Error("Windows rejected the native window region");
   }
 }

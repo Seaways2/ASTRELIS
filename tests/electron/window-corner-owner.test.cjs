@@ -16,7 +16,7 @@ test("DWM owns the rounded window contour; no aliased custom region", () => {
 test("emulated maximize and fullscreen switch the contour to square", () => {
   const outline = read("electron/nativeWindowOutline.ts");
   assert.match(outline, /const fillsScreen = window\.isMaximized\(\) \|\| window\.isFullScreen\(\);/);
-  assert.match(outline, /outline\.apply\(window\.getNativeWindowHandle\(\), fillsScreen\)/);
+  assert.match(outline, /outline\.apply\(window\.getNativeWindowHandle\(\), fillsScreen \|\| coversDisplay\)/);
   const main = read("electron/main.ts");
   for (const event of ["maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"])
     assert.match(main, new RegExp(`mainWindow\\.on\\("${event}", syncWindowOutline\\)`));
@@ -25,4 +25,11 @@ test("emulated maximize and fullscreen switch the contour to square", () => {
 test("native glass keeps the renderer square so only one arc exists", () => {
   const styles = read("src/styles/global.css");
   assert.match(styles, /\.app-shell\.native-glass\s*\{[^}]*border-radius:\s*0;/s);
+});
+
+test("a window covering the display stays square during HTML fullscreen", () => {
+  const main = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../electron/main.ts"), "utf8");
+  assert.match(main, /applyNativeWindowOutline\(mainWindow, fillsDisplay\(bounds, screen\.getDisplayMatching\(bounds\)\)\)/);
+  assert.match(main, /const filling = mainWindow\.isMaximized\(\) \|\| mainWindow\.isFullScreen\(\) \|\| fillsDisplay\(bounds, screen\.getDisplayMatching\(bounds\)\);/);
+  assert.match(main, /refreshMaximizedAppearance\(filling\);/);
 });

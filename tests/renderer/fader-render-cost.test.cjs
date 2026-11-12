@@ -82,6 +82,8 @@ test("the wheel changes volume by the same fader step everywhere", () => {
   assert.match(fader, /onWheel=\{event => \{ if \(disabled\) return; event\.preventDefault\(\); nudge\(event\.deltaY < 0 \? 1 : -1\); \}\}/);
   // Elsewhere: the same step through the same fader scale, with no linear 5% jumps or throttle.
   assert.match(shortcuts, /act\("volumeDb", event\.deltaY < 0 \? 1 : -1\);/);
-  assert.match(shortcuts, /const next = nudgeFaderAmplitude\(state\.volume, amount\);/);
+  // A volume at zero resumes from the last audible level, as the fader does.
+  assert.match(shortcuts, /const base = state\.volume > \.001 \? state\.volume : latest\.current\.restoreVolume\?\.\(\) \?\? 0;\s*const next = nudgeFaderAmplitude\(base, amount\);/);
+  assert.match(readAppSource(), /restoreVolume: \(\) => lastAudibleVolume\.current/);
   assert.doesNotMatch(shortcuts, /wheelAt|act\("volume", event\.deltaY/);
 });

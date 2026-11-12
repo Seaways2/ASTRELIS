@@ -159,6 +159,12 @@ export const MusicLibrary = memo(function MusicLibrary() {
     document.addEventListener("fullscreenchange", syncFullscreen);
     return () => document.removeEventListener("fullscreenchange", syncFullscreen);
   }, []);
+  // Library stats sit in the page title row so the controls fit one row.
+  const [statsSlot, setStatsSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const page = libraryRootRef.current?.closest(".workspace-page");
+    setStatsSlot(page?.querySelector<HTMLElement>(":scope > header > .page-header-aside") ?? null);
+  }, [protection.state.ready]);
   useLayoutEffect(() => {
     const root = libraryRootRef.current;
     if (!protection.state.ready || !root || !librarySession.restorePreviewFullscreen) return;
@@ -619,10 +625,13 @@ export const MusicLibrary = memo(function MusicLibrary() {
     {protection.error && <div className="library-status" role="alert">{protection.error}</div>}
     <button className="library-tools-toggle" aria-expanded={toolsOpen} onClick={() => setToolsOpen(open => !open)}><Grid3X3 />{toolsOpen ? t("media.toolsHide") : t("media.toolsShow")}</button>
     <div className="library-header library-header-simple panel">
-    <section className="library-command workspace-section panel">
+    {statsSlot ? createPortal(<div className="library-page-stats">
+      <b>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</b>
+      <span>{state.libraryFolders.length ? `${state.libraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</span>
+    </div>, statsSlot) : <section className="library-command workspace-section panel">
       <div className="library-pulse"><AudioWaveform /></div>
       <div><h3>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</h3><p>{state.libraryFolders.length ? `${state.libraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</p></div>
-    </section>
+    </section>}
 
     {state.libraryScanning && progress && <section className="library-scan-progress">
       <div className="scan-radar"><span /><AudioWaveform /></div>

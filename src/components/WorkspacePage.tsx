@@ -533,7 +533,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
 }
 
 function Page({ title, code, icon, children }: { title: string; code: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return <section className="workspace-page"><header><div className="page-icon">{icon}</div><div><span className="eyebrow">{code}</span><h2>{title}</h2></div></header><div className="page-content">{children}</div></section>;
+  return <section className="workspace-page"><header><div className="page-icon">{icon}</div><div><span className="eyebrow">{code}</span><h2>{title}</h2></div><div className="page-header-aside" /></header><div className="page-content">{children}</div></section>;
 }
 
 function Empty({ text, button, onImport }: { text: string; button: string; onImport(): void }) {

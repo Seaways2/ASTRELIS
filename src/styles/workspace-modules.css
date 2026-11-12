@@ -295,19 +295,24 @@
 .app-shell .library-header-simple .facet-tabs { width: auto; flex: 1 1 auto; border: 0; background: transparent; }
 .app-shell .library-header-simple .facet-tabs button { border: 0; border-radius: 0; background: transparent; border-bottom: 2px solid transparent; }
 .app-shell .library-header-simple .facet-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); background: transparent; }
-/* Two rows instead of three: library stats share the row with a compact search
-   and its filters; facet tabs and view controls form the second row. */
-.app-shell .library-header-simple { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; column-gap: 16px; row-gap: 8px; }
-.app-shell .library-header-simple > .library-browse { display: contents; }
-.app-shell .library-header-simple > .library-command { grid-column: 1; grid-row: 1; min-width: 0; }
-.app-shell .library-header-simple .library-controls { grid-column: 2; grid-row: 1; grid-template-columns: minmax(0,340px) auto auto; justify-content: end; margin: 0; }
-.app-shell .library-header-simple .library-view-toolbar { grid-column: 1 / -1; grid-row: 2; margin: 0; }
-.app-shell .library-header-simple > .library-scan-progress { grid-column: 1 / -1; grid-row: 3; }
+/* One row: library stats live in the page title row (.library-page-stats);
+   facet tabs, view controls, search and filters share a single wrapping row. */
+.app-shell .workspace-page > header > .page-header-aside { margin-left: auto; min-width: 0; }
+.app-shell .library-page-stats { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 4px 10px; color: var(--module-muted); font-size: 11px; text-align: right; }
+.app-shell .library-page-stats b { font-weight: 500; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple > .library-browse { display: contents; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .library-view-toolbar { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; justify-content: flex-start; flex-wrap: nowrap; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .facet-tabs { flex: 0 1 auto; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: max-content; margin-right: auto; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .facet-tabs button { padding: 0 12px; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .library-controls { order: 2; flex: 0 1 auto; grid-template-columns: clamp(150px, 15vw, 240px) auto auto; margin: 0; }
+/* The fullscreen toggle keeps its label as a tooltip here; its own bar shows the text. */
+.app-shell .music-library:not(:fullscreen) .library-header-simple .library-mosaic-preview-toggle { width: 34px; padding: 0; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .library-mosaic-preview-toggle > span { display: none; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple > .library-scan-progress { order: 3; flex: 1 1 100%; }
 @media (max-width: 760px) {
-  .app-shell .library-header-simple { grid-template-columns: minmax(0,1fr); }
-  .app-shell .library-header-simple .library-controls { grid-column: 1; grid-row: 2; grid-template-columns: minmax(0,1fr) auto auto; }
-  .app-shell .library-header-simple .library-view-toolbar { grid-row: 3; }
-  .app-shell .library-header-simple > .library-scan-progress { grid-row: 4; }
+  .app-shell .music-library:not(:fullscreen) .library-header-simple .library-view-toolbar { flex-wrap: wrap; }
+  .app-shell .music-library:not(:fullscreen) .library-header-simple .library-controls { flex: 1 1 100%; grid-template-columns: minmax(0,1fr) auto auto; }
 }
 .app-shell .library-header-simple :is(select,.library-menu-trigger) { min-height: 32px; padding: 6px 10px; border: 1px solid var(--surface-glass-border); border-radius: 5px; background: var(--module-surface, #11212b); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .app-shell .library-header-simple .library-menu { position: relative; margin-left: 0; }

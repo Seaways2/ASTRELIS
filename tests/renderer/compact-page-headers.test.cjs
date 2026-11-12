@@ -37,3 +37,10 @@ test("the native output switch is a large labelled switch beside its title", () 
   const i18n = read("src/i18n/index.ts");
   for (const key of ["device.nativeOn", "device.nativeOff", "device.nativeHdmi"]) assert.equal(i18n.split(`"${key}"`).length - 1, 3, key);
 });
+
+test("the native output switch follows the theme accent", () => {
+  const modules = read("src/styles/workspace-modules.css");
+  assert.match(modules, /\.native-output-switch\.active \{ color: var\(--accent\);/);
+  assert.match(modules, /\.native-output-switch input:checked \{ background: var\(--accent\); \}/);
+  assert.doesNotMatch(read("src/styles/global.css"), /\.native-output-switch\.active, \.loopback-status\.active/);
+});

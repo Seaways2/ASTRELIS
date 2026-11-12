@@ -610,7 +610,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .native-overview-header { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px 16px; }
 .native-overview-header h3 { margin-bottom: 0; }
 .native-output-switch { display: flex; align-items: center; gap: 9px; color: #708286; font: 8px "JetBrains Mono"; cursor: pointer; }
-.native-output-switch.active { color: #45e397; }
+.native-output-switch.active { color: var(--accent); }
 .native-output-switch.busy { color: var(--accent); cursor: wait; }
 .native-output-switch.locked { cursor: pointer; }
 .native-output-switch.locked:hover, .native-output-switch.locked:focus-visible { color: var(--accent); outline: none; }
@@ -3653,7 +3653,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 /* Functional status colors remain semantic rather than becoming neutral
    black with the rest of the light-theme typography. */
 .app-shell.theme-light :is(
-  .native-output-switch.active, .loopback-status.active,
+  .loopback-status.active,
   .online-provider-tabs button > i, .channel-insert.active > i,
   .transport-status-card.active b
 ) { color: #45e397 !important; }

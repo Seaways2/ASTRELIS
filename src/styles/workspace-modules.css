@@ -74,7 +74,8 @@
 .app-shell :is(.settings-layout, .appearance-layout, .device-page-grid, .vst-workspace) { gap: var(--module-gap); }
 
 /* One list surface: actions above the rows, consistent empty-state spacing. */
-.playlist-section .page-toolbar { height: auto; min-height: 40px; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 0 0 16px; }
+.playlist-section .page-toolbar { height: auto; min-height: 40px; gap: 16px; flex-wrap: wrap; font-size: 13px; margin: 0 0 8px; }
+.playlist-section .page-toolbar .queue-type-tabs { padding: 0; }
 .playlist-section .playlist-toolbar-actions { flex-wrap: wrap; }
 .app-shell .playlist-section .page-toolbar { background: transparent; box-shadow: none; }
 .app-shell .playlist-section > .playlist-table { border: 0; }
@@ -131,6 +132,20 @@
 /* Stable flex lists tolerate optional warnings, progress and scan sources.
    The former fixed grid row count assigned space to the wrong optional child. */
 .app-shell .vst-workspace { height: auto; min-height: 100%; grid-template-rows: auto auto; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; padding-bottom: 20px; }
+/* Plugin page: engine status in the title row, scan counts in the section header. */
+.app-shell .page-header-aside .vst-engine-status-compact { min-height: 0; padding: 6px 6px 6px 12px; grid-template-columns: 16px minmax(0,auto) auto auto; gap: 10px; max-width: min(620px, 100%); }
+.app-shell .page-header-aside .vst-engine-status-compact > svg { width: 16px; }
+.app-shell .page-header-aside .vst-engine-status-compact div { gap: 2px; }
+.app-shell .page-header-aside .vst-engine-status-compact span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .page-header-aside .vst-engine-status-compact em { order: 1; width: auto; }
+.app-shell .page-header-aside .vst-engine-status-compact > button { order: 2; width: auto; }
+.app-shell .vst-browser > header { flex-wrap: wrap; gap: 8px 14px; }
+.app-shell .vst-scan-counts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-right: auto; font: 9px "JetBrains Mono"; color: var(--module-muted, #65777b); }
+.app-shell .vst-scan-counts span { display: inline-flex; align-items: baseline; gap: 5px; }
+.app-shell .vst-scan-counts b { color: var(--accent); font: 12px "JetBrains Mono"; }
+.app-shell .vst-scan-counts .failed b { color: #ff816f; }
+.app-shell .vst-scan-summary.vst-scan-summary-search { min-height: 0; grid-template-columns: minmax(0,1fr); }
+.app-shell .vst-scan-summary.vst-scan-summary-search .vst-scan-meta { border-top: 0; }
 .app-shell .vst-workspace :is(.vst-browser,.vst-chain) { display: flex; flex-direction: column; gap: 16px; overflow: visible; }
 .vst-workspace :is(.vst-plugin-list,.vst-rack-list) { flex: 1 0 auto; min-height: 160px; max-height: 480px; overflow-y: auto; }
 .vst-workspace .vst-engine-status { gap: 16px; padding: 16px 22px; }

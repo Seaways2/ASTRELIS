@@ -1,4 +1,3 @@
-import { QueueTabs } from "./QueueTabs";
 import { memo, useMemo } from "react";
 import { Heart, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
@@ -19,7 +18,7 @@ export const PlaylistTable = memo(function PlaylistTable() {
   const favorites = useMemo(() => new Set(state.favoriteTrackKeys), [state.favoriteTrackKeys]);
   const rowHeight = 50;
   const virtual = useVirtualQueueRows(state.tracks.length, rowHeight, ".page-content");
-  return <div className="playlist-table"><QueueTabs />
+  return <div className="playlist-table">
     <div className="table-head"><span>#</span><span>{t("common.track")}</span><span>{t("common.format")}</span><span>{t("common.size")}</span><span /></div>
     <div ref={virtual.containerRef} style={{ position: "relative", height: virtual.totalHeight }} data-virtual-queue-count={virtual.limit}>
       {state.tracks.slice(virtual.offset, virtual.offset + virtual.limit).map((track, visibleIndex) => {

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { PlaylistTable } from "./PlaylistTable";
+import { QueueTabs } from "./QueueTabs";
 import type { OutputDevice } from "../types/audio";
 import { OnlineBrowser } from "./OnlineBrowser";
 import { VstRack } from "./VstRack";
@@ -330,7 +331,8 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
 
   if (page === "playlist") return <Page title={t("page.playlist")} code="PLAY QUEUE" icon={<ListMusic />}>
     <section className="workspace-section panel playlist-section">
-    <div className="page-toolbar"><span>{state.tracks.length} {t("common.tracks")}</span><div className="playlist-toolbar-actions"><button className="clear-playlist" disabled={!state.tracks.length} onClick={() => { audioEngine.stop(); state.clearTracks(); }}><Trash2 />{t("library.clearPlaylist")}</button><button className="primary-action" onClick={onImport}><Import /> {t("common.addMusic")}</button></div></div>
+    {/* One row: the music/video tabs carry the track counts, actions sit on the right. */}
+    <div className="page-toolbar"><QueueTabs /><div className="playlist-toolbar-actions"><button className="clear-playlist" disabled={!state.tracks.length} onClick={() => { audioEngine.stop(); state.clearTracks(); }}><Trash2 />{t("library.clearPlaylist")}</button><button className="primary-action" onClick={onImport}><Import /> {t("common.addMusic")}</button></div></div>
     <PlaylistTable />
     {!state.tracks.length && <Empty onImport={onImport} text={t("common.emptyPlaylist")} button={t("common.selectAudio")} />}
     </section>

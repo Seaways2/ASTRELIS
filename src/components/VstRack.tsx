@@ -1,5 +1,6 @@
 import { SectionHeading } from "./SectionHeading";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowDown, ArrowUp, Ban, Blocks, ChevronDown, Eye, EyeOff, ExternalLink, FolderPlus, Power, RefreshCw, RotateCcw, Search, ShieldAlert, SkipForward, Trash2 } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useVstPluginSearch } from "../hooks/useVstPluginSearch";
@@ -25,6 +26,13 @@ export function VstRack() {
   const [showScanSources, setShowScanSources] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PLUGIN_PAGE_SIZE);
   const pluginListRef = useRef<HTMLDivElement>(null);
+  // The engine status sits in the page title row instead of a full-width banner.
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const page = workspaceRef.current?.closest(".workspace-page");
+    setStatusSlot(page?.querySelector<HTMLElement>(":scope > header > .page-header-aside") ?? null);
+  }, []);
 
   useEffect(() => { void vst.initialize(); }, []);
 
@@ -35,28 +43,32 @@ export function VstRack() {
     if (pluginListRef.current) pluginListRef.current.scrollTop = 0;
   }, [filtered]);
 
-  return <div className="vst-workspace">
-    <div className={`vst-engine-status ${vst.runtimeReady ? "online" : "offline"}`}>
+  const engineStatus = <div className={`vst-engine-status ${vst.runtimeReady ? "online" : "offline"}${statusSlot ? " vst-engine-status-compact" : ""}`}>
       <Blocks />
-      <div><b>{vst.performanceSuspended ? "VST SUSPENDED · ECO MODE" : vst.runtimeReady ? "PLUGIN CHAIN LOADED" : vst.nativeEnabled ? "PLUGIN ENGINE STARTING" : "DRY PATH · VST OFF"}</b><span>{vst.error || vst.engine.detail}</span></div>
+      <div title={vst.error || vst.engine.detail}><b>{vst.performanceSuspended ? "VST SUSPENDED · ECO MODE" : vst.runtimeReady ? "PLUGIN CHAIN LOADED" : vst.nativeEnabled ? "PLUGIN ENGINE STARTING" : "DRY PATH · VST OFF"}</b><span>{vst.error || vst.engine.detail}</span></div>
       <button disabled={vst.performanceSuspended} className={vst.nativeEnabled ? "active" : ""} onClick={() => void vst.toggleNativeEngine()}>{vst.performanceSuspended ? "ECO LOCKED" : vst.nativeEnabled ? t("vst.disableProcessing") : t("vst.enableProcessing")}</button>
       <em>{vst.runtimeReady ? `${vst.rack.filter(item => item.enabled).length} PLUGINS ACTIVE` : vst.engine.backend}</em>
-    </div>
+    </div>;
+
+  return <div className="vst-workspace" ref={workspaceRef}>
+    {statusSlot ? createPortal(engineStatus, statusSlot) : engineStatus}
 
     <section className="vst-browser workspace-section panel">
       <header>
         <div><SectionHeading icon={Blocks}>{t("vst.installed")}</SectionHeading></div>
+        <div className="vst-scan-counts" title={vst.scanSession ? `SESSION ${vst.scanSession.id}` : t("vst.waitingSession")}>
+          <span><b>{vst.scanSession?.pluginDescriptorsDiscovered ?? 0}</b><small>FOUND</small></span>
+          <span><b>{vst.scanSession?.acceptedPlugins ?? 0}</b><small>AVAILABLE</small></span>
+          <span><b>{vst.scanSession?.policyRejectedPlugins ?? 0}</b><small>FILTERED</small></span>
+          <span className={vst.scanSession?.failedModules ? "failed" : ""}><b>{vst.scanSession?.failedModules ?? 0}</b><small>FAILED</small></span>
+        </div>
         <div className="vst-tools">
           <button className={showUnavailable ? "active" : ""} title={t(showUnavailable ? "vst.hideUnavailable" : "vst.showUnavailable")} onClick={() => setShowUnavailable(value => !value)}>{showUnavailable ? <EyeOff /> : <Eye />}</button>
           <button title={t("vst.addFolder")} onClick={() => void vst.addFolder()}><FolderPlus /></button>
           <button title={t("vst.rescan")} onClick={() => void vst.scan()} disabled={vst.scanning}><RefreshCw className={vst.scanning ? "spin" : ""} /></button>
         </div>
       </header>
-      <div className="vst-scan-summary" title={vst.scanSession ? `SESSION ${vst.scanSession.id}` : t("vst.waitingSession")}>
-        <span><small>FOUND</small><b>{vst.scanSession?.pluginDescriptorsDiscovered ?? 0}</b></span>
-        <span><small>AVAILABLE</small><b>{vst.scanSession?.acceptedPlugins ?? 0}</b></span>
-        <span><small>FILTERED BY POLICY</small><b>{vst.scanSession?.policyRejectedPlugins ?? 0}</b></span>
-        <span className={vst.scanSession?.failedModules ? "failed" : ""}><small>SCAN FAILED</small><b>{vst.scanSession?.failedModules ?? 0}</b></span>
+      <div className="vst-scan-summary vst-scan-summary-search">
         <div className="vst-scan-meta">
           <label className="vst-search vst-search-inline" title={`${vst.scanSession?.moduleCacheHits ?? 0} MODULE / ${vst.scanSession?.pluginCacheHits ?? 0} PLUGIN CACHE HITS · ${vst.scanSession?.durationMs ?? 0} ms`}><Search /><input value={query} onChange={event => setQuery(event.target.value)} aria-label={t("vst.search")} placeholder={t("vst.search")} />{query && <b>{filtered.length} / {vst.plugins.length}</b>}</label>
           <div className={`vst-directory-menu ${showScanSources ? "open" : ""}`}>

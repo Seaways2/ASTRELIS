@@ -24,3 +24,16 @@ test("plugin engine status moves to the page title row and scan counts join the 
   assert.doesNotMatch(rack, /FILTERED BY POLICY|SCAN FAILED/);
   assert.match(read("src/components/WorkspacePage.tsx"), /<div className="page-header-aside" \/>/);
 });
+
+test("the native output switch is a large labelled switch beside its title", () => {
+  const page = read("src/components/WorkspacePage.tsx");
+  assert.match(page, /<input role="switch" disabled=\{nativeControlsBusy \|\| state\.uiSettings\.hdmiDirectEnabled\} type="checkbox"/);
+  assert.match(page, /t\("device\.nativeOn"\) : t\("device\.nativeOff"\)/);
+  assert.doesNotMatch(page, /"NATIVE ON" : "WEB FALLBACK"/);
+  const styles = read("src/styles/global.css");
+  assert.match(styles, /\.native-overview-header \{ display: flex; align-items: center; justify-content: flex-start;/);
+  const modules = read("src/styles/workspace-modules.css");
+  assert.match(modules, /\.native-overview-header \.native-output-switch input:checked::before \{ transform: translateX\(18px\); \}/);
+  const i18n = read("src/i18n/index.ts");
+  for (const key of ["device.nativeOn", "device.nativeOff", "device.nativeHdmi"]) assert.equal(i18n.split(`"${key}"`).length - 1, 3, key);
+});

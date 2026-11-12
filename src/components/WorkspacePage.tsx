@@ -348,8 +348,9 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         <header className="native-overview-header">
           <div><SectionHeading icon={Cable}>{t(state.uiSettings.hdmiDirectEnabled ? "device.hdmiDirect" : "device.nativeTitle")}</SectionHeading></div>
           <label className={`native-output-switch ${state.uiSettings.nativeOutputEnabled ? "active" : ""} ${nativeOutputGuideVisible ? "vst-guide-active" : ""} ${nativeToggleBusy ? "busy" : ""}`}>
-            <span>{nativeToggleBusy ? t("device.switching") : state.uiSettings.hdmiDirectEnabled ? "HDMI DIRECT" : state.uiSettings.nativeOutputEnabled ? "NATIVE ON" : "WEB FALLBACK"}</span>
-            <input disabled={nativeControlsBusy || state.uiSettings.hdmiDirectEnabled} type="checkbox" checked={state.uiSettings.nativeOutputEnabled || state.uiSettings.hdmiDirectEnabled} onChange={event => handleNativeOutputToggle(event.target.checked)} />
+            {/* A large switch right beside the title: the main control of this page. */}
+            <input role="switch" disabled={nativeControlsBusy || state.uiSettings.hdmiDirectEnabled} type="checkbox" checked={state.uiSettings.nativeOutputEnabled || state.uiSettings.hdmiDirectEnabled} onChange={event => handleNativeOutputToggle(event.target.checked)} />
+            <span>{nativeToggleBusy ? t("device.switching") : state.uiSettings.hdmiDirectEnabled ? t("device.nativeHdmi") : state.uiSettings.nativeOutputEnabled ? t("device.nativeOn") : t("device.nativeOff")}</span>
           </label>
         </header>
 

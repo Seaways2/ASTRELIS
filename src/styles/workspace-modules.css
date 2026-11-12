@@ -295,6 +295,20 @@
 .app-shell .library-header-simple .facet-tabs { width: auto; flex: 1 1 auto; border: 0; background: transparent; }
 .app-shell .library-header-simple .facet-tabs button { border: 0; border-radius: 0; background: transparent; border-bottom: 2px solid transparent; }
 .app-shell .library-header-simple .facet-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); background: transparent; }
+/* Two rows instead of three: library stats share the row with a compact search
+   and its filters; facet tabs and view controls form the second row. */
+.app-shell .library-header-simple { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; column-gap: 16px; row-gap: 8px; }
+.app-shell .library-header-simple > .library-browse { display: contents; }
+.app-shell .library-header-simple > .library-command { grid-column: 1; grid-row: 1; min-width: 0; }
+.app-shell .library-header-simple .library-controls { grid-column: 2; grid-row: 1; grid-template-columns: minmax(0,340px) auto auto; justify-content: end; margin: 0; }
+.app-shell .library-header-simple .library-view-toolbar { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+.app-shell .library-header-simple > .library-scan-progress { grid-column: 1 / -1; grid-row: 3; }
+@media (max-width: 760px) {
+  .app-shell .library-header-simple { grid-template-columns: minmax(0,1fr); }
+  .app-shell .library-header-simple .library-controls { grid-column: 1; grid-row: 2; grid-template-columns: minmax(0,1fr) auto auto; }
+  .app-shell .library-header-simple .library-view-toolbar { grid-row: 3; }
+  .app-shell .library-header-simple > .library-scan-progress { grid-row: 4; }
+}
 .app-shell .library-header-simple :is(select,.library-menu-trigger) { min-height: 32px; padding: 6px 10px; border: 1px solid var(--surface-glass-border); border-radius: 5px; background: var(--module-surface, #11212b); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .app-shell .library-header-simple .library-menu { position: relative; margin-left: 0; }
 /* Popovers use the browser top layer, not the cover flow stacking context. */

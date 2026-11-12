@@ -428,20 +428,16 @@
 /* Explanations live behind an info mark (Hint.tsx) instead of small text under every title. */
 .app-shell .setting-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .app-shell .setting-title > b { min-width: 0; margin: 0; }
-.hint { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; color: var(--module-muted, #8a9ca1); cursor: help; vertical-align: middle; transition: color .14s ease; }
-.hint > svg { width: 14px; height: 14px; }
-.hint:hover, .hint:focus-visible { color: var(--accent); outline: none; }
-.hint:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.hint { display: contents; }
+.app-shell .has-hint { cursor: help; }
 .hint-bubble:not(:popover-open) { display: none; }
 .hint-bubble:popover-open { position: fixed; inset: auto; margin: 0; display: block; box-sizing: border-box; width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 9px 12px; border: 1px solid #7398ab66; border-radius: 8px; background: #11212b; color: #dce7ed; box-shadow: 0 8px 24px #0006; font-size: 12px; font-weight: 400; font-family: inherit; line-height: 1.6; letter-spacing: 0; text-transform: none; white-space: normal; text-align: left; pointer-events: none; }
 .app-shell.theme-light .hint-bubble:popover-open { border-color: #7398ab55; background: #eff5f8; color: #23404c; box-shadow: 0 8px 24px #1c3a4a33; }
-.app-shell h3.section-heading > .hint { margin-left: -4px; }
 /* Output mode cards show the name only; the description is the card's tooltip. */
 .app-shell .native-mode-options .native-mode-description { display: none; }
 /* The background folder action is a compact button, not a full-width grey bar. */
 .app-shell .appearance-controls > label > button { justify-self: start; min-height: 31px; padding: 0 14px; border: 1px solid var(--library-control-border); border-radius: 5px; background: var(--library-control-fill); color: var(--accent); cursor: pointer; }
 .app-shell .appearance-controls > label > button:not(:disabled):hover { background: var(--library-control-hover); border-color: var(--accent); }
-@media (prefers-reduced-motion: reduce) { .hint { transition: none; } }
 
 /* Compact settings layout: with explanations behind info marks, each setting is
    one short row (title · control · value) instead of a tall row stretched across
@@ -451,29 +447,52 @@
 .app-shell .appearance-layout .theme-swatches { margin: 6px 0 10px; }
 .app-shell .appearance-layout .appearance-section .appearance-controls { gap: 2px; }
 .app-shell .appearance-layout .appearance-section :is(.appearance-controls > label, .appearance-controls > .appearance-animation-module, .appearance-controls > .gpu-render-module) {
-  min-height: 46px; padding-block: 6px; grid-template-columns: minmax(120px, 170px) minmax(0, 420px) 56px; justify-content: start; gap: 14px;
+  min-height: 44px; padding: 4px 0; grid-template-columns: var(--setting-title-width) minmax(0, var(--setting-control-width)) 52px; justify-content: start; gap: 12px;
 }
 .app-shell .appearance-layout .appearance-effect-row { min-height: 44px; justify-content: flex-start; gap: 14px; }
-.app-shell .appearance-layout .appearance-effect-row > span { flex: 0 1 170px; }
+.app-shell .appearance-layout .appearance-effect-row > span { flex: 0 0 var(--setting-title-width); }
 .app-shell .appearance-layout .appearance-performance { margin-top: 8px; }
 .app-shell .appearance-layout .appearance-performance summary { padding: 8px 0; }
 @media (min-width: 1280px) {
-  .app-shell .appearance-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .app-shell .appearance-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .app-shell .appearance-layout > .appearance-section:first-child { grid-column: 1 / -1; }
   /* Glass on the left; music response and motion stack on the right. */
   .app-shell .appearance-layout > .appearance-section:nth-child(2) { grid-row: span 2; }
 }
 .app-shell .system-setting-row { min-height: 48px; padding-block: 8px; }
 /* Strength sliders line up with the other rows: title · slider · value. */
-.app-shell .appearance-layout .appearance-effects .atmosphere-strength { display: grid; grid-template-columns: minmax(120px, 170px) minmax(0, 420px) 56px; justify-content: start; gap: 14px; min-height: 44px; margin: 0; padding: 0; }
-.app-shell .appearance-layout .appearance-effects .atmosphere-strength > span { font-size: var(--font-ui, 14px); }
+.app-shell .appearance-layout .appearance-effects .atmosphere-strength { display: grid; grid-template-columns: var(--setting-title-width) minmax(0, var(--setting-control-width)) 52px; justify-content: start; gap: 14px; min-height: 44px; margin: 0; padding: 0; }
 .app-shell .appearance-layout .appearance-effects .atmosphere-strength output { width: auto; }
-/* System settings: the audio cache is a full-width bar under the four cards
-   (sizes side by side, path and actions on one line) instead of a lone half card. */
+
+/* Settings typography and alignment: one title style and one title column per page. */
+.app-shell .appearance-layout { --setting-title-width: 132px; --setting-control-width: 360px; }
+.app-shell .appearance-layout :is(.setting-title > b, .appearance-effect-row b, .atmosphere-strength > span, .gpu-render-module > span > b) { font-size: 13px; font-weight: 600; line-height: 1.35; }
+.app-shell .appearance-layout .appearance-effects .atmosphere-strength { margin: 0; }
+/* The transition and GPU quality selects carry aria-labels; their visible captions only squeezed the select. */
+.app-shell .appearance-layout :is(.animation-transition-field, .gpu-quality-field) { display: block; min-width: 0; }
+.app-shell .appearance-layout :is(.animation-transition-field, .gpu-quality-field) > small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.app-shell .appearance-layout :is(.animation-transition-field, .gpu-quality-field) select { width: 100%; }
+.app-shell .appearance-layout :is(.animation-master-switch, .gpu-master-switch) { justify-self: start; }
+
+/* System settings: three narrow cards per row; title and control sit together. */
+.app-shell .system-setting-row { min-height: 40px; padding-block: 5px; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.app-shell .system-setting-row:not(.system-setting-wide) .system-setting-control select { width: 180px; max-width: 100%; }
+.app-shell .system-setting-row.system-setting-wide { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.app-shell .system-setting-row b { font-size: 13px; font-weight: 600; }
+.app-shell .settings-layout > .settings-section { padding: 16px 18px; }
+.app-shell .settings-layout > .settings-section > h3 { margin-bottom: 8px; }
 @media (min-width: 1301px) {
-  .app-shell .settings-layout > .cache-settings { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 20px; }
-  .app-shell .settings-layout > .cache-settings > :is(h3, dl, p, .cache-confirm) { grid-column: 1 / -1; }
-  .app-shell .settings-layout > .cache-settings dl { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 32px; margin: 4px 0 12px; }
-  .app-shell .settings-layout > .cache-settings dl > div { justify-content: flex-start; gap: 12px; }
-  .app-shell .settings-layout > .cache-settings > .cache-actions { margin-top: 0; justify-content: flex-end; }
+  .app-shell .settings-layout { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+  /* Performance sits under General; the audio cache fills the two columns beside it. */
+  .app-shell .settings-layout > .cache-settings { grid-column: span 2; }
 }
+
+/* Audio cache: sizes as one compact group with the actions on the same row, path below. */
+.app-shell .cache-settings { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 20px; row-gap: 8px; }
+.app-shell .cache-settings > :is(h3, p, .cache-confirm) { grid-column: 1 / -1; }
+.app-shell .cache-settings dl { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 0; }
+.app-shell .cache-settings dl > div { display: flex; align-items: baseline; gap: 8px; }
+.app-shell .cache-settings dt { color: var(--module-muted, #8a9ca1); font-size: 12px; }
+.app-shell .cache-settings dd { font-size: 14px; font-weight: 600; }
+.app-shell .cache-settings > .cache-actions { grid-column: 2; grid-row: 2; margin-top: 0; justify-content: flex-end; }
+.app-shell .cache-settings > .cache-path { grid-column: 1 / -1; font-size: 11px; }

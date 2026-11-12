@@ -45,21 +45,23 @@ test("the native output switch follows the theme accent", () => {
   assert.doesNotMatch(read("src/styles/global.css"), /\.native-output-switch\.active, \.loopback-status\.active/);
 });
 
-test("setting explanations sit behind an info mark instead of small text", () => {
+test("setting explanations show when hovering the title, with no icon", () => {
   const hint = read("src/components/Hint.tsx");
-  // Top-layer popover: never clipped by scrolling panels; shown on hover and keyboard focus.
-  assert.match(hint, /setAttribute\("popover", "manual"\)/);
-  assert.match(hint, /onMouseEnter=\{show\} onMouseLeave=\{hide\} onFocus=\{show\} onBlur=\{hide\}/);
-  // A click on the mark inside a <label> must not toggle the control.
-  assert.match(hint, /event\.preventDefault\(\); event\.stopPropagation\(\);/);
+  // Top-layer popover anchored to the title that contains the Hint; no icon is drawn.
+  assert.match(hint, /tip\.setAttribute\("popover", "manual"\)/);
+  assert.match(hint, /anchor\.addEventListener\("mouseenter", show\);\s*anchor\.addEventListener\("mouseleave", hide\);/);
+  assert.match(hint, /anchor\.setAttribute\("aria-describedby"/);
+  assert.doesNotMatch(hint, /lucide-react|<Info/);
+  const modules = read("src/styles/workspace-modules.css");
+  assert.match(modules, /\.hint \{ display: contents; \}/);
+  assert.match(modules, /\.app-shell \.has-hint \{ cursor: help; \}/);
   const page = read("src/components/WorkspacePage.tsx");
   for (const key of ["appearance.colorMode", "background.auto", "appearance.glass", "appearance.opacity", "appearance.glow", "appearance.animations", "appearance.lowPerformanceMode"]) {
     assert.ok(page.includes(`<b>{t("${key}")}</b><Hint>{t("${key}Hint")}</Hint>`), key);
   }
-  assert.doesNotMatch(page, /<p>\{t\("device\.hdmiHint"\)\}<\/p>|<small>\{t\("device\.hdmiFormats"\)\}<\/small>|<p>\{t\("device\.directHint"\)\}<\/p>/);
+  assert.doesNotMatch(page, /<p>\{t\("device\.hdmiHint"\)\}<\/p>|<small>\{t\("device\.hdmiFormats"\)\}<\/small>/);
   assert.match(read("src/components/SystemSettings.tsx"), /<Hint id=\{`\$\{id\}-hint`\}>\{hint\}<\/Hint>/);
   assert.match(read("src/components/CacheSettings.tsx"), /hint=\{t\("cache\.hint"\)\}/);
-  assert.match(read("src/components/AtmosphereSettings.tsx"), /<Hint>\{t\(`fx\.\$\{key\}Hint`\)\}<\/Hint>/);
 });
 
 test("native-only configuration shows only while native output is on", () => {
@@ -73,13 +75,18 @@ test("a refreshed cover is analysed again for smart framing", () => {
   assert.match(thumbnail, /sources\?\.forEach\(source => \{\s*attentionBySource\.delete\(source\);/);
 });
 
-test("settings use compact rows and fill wide windows in two columns", () => {
+test("settings use compact, aligned rows and fill wide windows", () => {
   const modules = read("src/styles/workspace-modules.css");
-  assert.match(modules, /grid-template-columns: minmax\(120px, 170px\) minmax\(0, 420px\) 56px; justify-content: start;/);
-  assert.match(modules, /\.appearance-layout \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); align-items: start; \}/);
-  assert.match(modules, /\.settings-layout > \.cache-settings \{ grid-column: 1 \/ -1;/);
-  assert.match(modules, /\.app-shell \.system-setting-row \{ min-height: 48px; padding-block: 8px; \}/);
-  // The motion note joined the section heading's info mark.
+  // Appearance: one title column and one title style per page.
+  assert.match(modules, /--setting-title-width: 132px; --setting-control-width: 360px;/);
+  assert.match(modules, /grid-template-columns: var\(--setting-title-width\) minmax\(0, var\(--setting-control-width\)\) 52px;/);
+  assert.match(modules, /\.appearance-layout \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); align-items: stretch; \}/);
+  // System settings: three narrow cards; the audio cache fills the two columns beside performance.
+  assert.match(modules, /\.settings-layout \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); align-items: stretch; \}/);
+  assert.match(modules, /\.settings-layout > \.cache-settings \{ grid-column: span 2; \}/);
+  // Cache: sizes grouped, actions on the same row.
+  assert.match(modules, /\.cache-settings dl \{ display: flex;/);
+  assert.match(modules, /\.cache-settings > \.cache-actions \{ grid-column: 2; grid-row: 2;/);
   assert.doesNotMatch(read("src/components/AtmosphereSettings.tsx"), /atmosphere-note/);
   assert.match(read("src/components/WorkspacePage.tsx"), /hint=\{t\("fx\.motionHint"\)\}/);
 });

@@ -1,47 +1,52 @@
-import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from "react";
-import { Info } from "lucide-react";
-import { useI18n } from "../i18n";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 
 const GAP = 8;
 const EDGE = 12;
 
 /**
- * Explanatory text kept out of the layout. Settings show only an info mark
- * next to the title; the text appears on hover or keyboard focus in a
- * top-layer popover, so panels with overflow never clip it.
+ * Explanatory text kept out of the layout. Nothing is drawn next to the title:
+ * hovering the title itself (the element that contains the Hint) shows the
+ * text in a top-layer popover, so panels with overflow never clip it. The title
+ * links the text with aria-describedby for screen readers.
  */
 export function Hint({ children, id }: { children: ReactNode; id?: string }) {
-  const { t } = useI18n();
   const generated = useId();
   const tipId = id ?? `hint-${generated.replace(/:/g, "")}`;
-  const trigger = useRef<HTMLSpanElement>(null);
+  const holder = useRef<HTMLSpanElement>(null);
   const bubble = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    bubble.current?.setAttribute("popover", "manual");
-  }, []);
+    const tip = bubble.current, anchor = holder.current?.parentElement;
+    if (!tip || !anchor) return;
+    tip.setAttribute("popover", "manual");
+    const show = () => {
+      try { if (!tip.matches(":popover-open")) tip.showPopover(); } catch { return; }
+      const box = anchor.getBoundingClientRect(), size = tip.getBoundingClientRect();
+      const left = Math.min(Math.max(EDGE, box.left), window.innerWidth - size.width - EDGE);
+      const below = box.bottom + GAP;
+      const top = below + size.height <= window.innerHeight - EDGE ? below : Math.max(EDGE, box.top - GAP - size.height);
+      tip.style.left = `${Math.round(left)}px`;
+      tip.style.top = `${Math.round(top)}px`;
+    };
+    const hide = () => {
+      try { if (tip.matches(":popover-open")) tip.hidePopover(); } catch { /* Already closed. */ }
+    };
+    const described = anchor.getAttribute("aria-describedby");
+    anchor.classList.add("has-hint");
+    anchor.setAttribute("aria-describedby", described ? `${described} ${tipId}` : tipId);
+    anchor.addEventListener("mouseenter", show);
+    anchor.addEventListener("mouseleave", hide);
+    return () => {
+      hide();
+      anchor.removeEventListener("mouseenter", show);
+      anchor.removeEventListener("mouseleave", hide);
+      anchor.classList.remove("has-hint");
+      if (described) anchor.setAttribute("aria-describedby", described);
+      else anchor.removeAttribute("aria-describedby");
+    };
+  }, [tipId]);
 
-  const show = () => {
-    const anchor = trigger.current, tip = bubble.current;
-    if (!anchor || !tip) return;
-    try { if (!tip.matches(":popover-open")) tip.showPopover(); } catch { return; }
-    const box = anchor.getBoundingClientRect(), size = tip.getBoundingClientRect();
-    const left = Math.min(Math.max(EDGE, box.left + box.width / 2 - size.width / 2), window.innerWidth - size.width - EDGE);
-    const below = box.bottom + GAP;
-    const top = below + size.height <= window.innerHeight - EDGE ? below : Math.max(EDGE, box.top - GAP - size.height);
-    tip.style.left = `${Math.round(left)}px`;
-    tip.style.top = `${Math.round(top)}px`;
-  };
-  const hide = () => {
-    try { if (bubble.current?.matches(":popover-open")) bubble.current.hidePopover(); } catch { /* Already closed. */ }
-  };
-  // Inside a <label>, a click on the mark must not toggle the labelled control.
-  const keepControl = (event: MouseEvent) => { event.preventDefault(); event.stopPropagation(); };
-
-  return <span className="hint" ref={trigger} tabIndex={0} role="button" aria-label={t("common.moreInfo")} aria-describedby={tipId}
-    onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide} onClick={keepControl}
-    onKeyDown={event => { if (event.key === "Escape") hide(); }}>
-    <Info aria-hidden="true" />
+  return <span className="hint" ref={holder}>
     <span className="hint-bubble" id={tipId} role="tooltip" ref={bubble}>{children}</span>
   </span>;
 }

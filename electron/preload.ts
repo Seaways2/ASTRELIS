@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld("desktop", {
   onClickThrough: (listener: (enabled: boolean) => void) => subscribe("window:click-through-state", listener),
   onMediaKey: (listener: (action: "toggle" | "previous" | "next" | "stop") => void) => subscribe("media-key", listener),
   onMaximized: (listener: (maximized: boolean) => void) => subscribe("window:maximized-state", listener),
+  onCaptionPointerDown: (listener: () => void) => subscribe("window:caption-pointerdown", listener),
   onPresentationState: (listener: (state: { minimized: boolean; trayConcealed: boolean }) => void) => subscribe("window:presentation-state", listener),
   confirmPluginRemoval: (name: string) => ipcRenderer.invoke("dialog:confirm-plugin-removal", name),
   appearance: {

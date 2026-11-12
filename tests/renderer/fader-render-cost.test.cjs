@@ -64,3 +64,12 @@ test("particle populations stop growing above the default bar count", () => {
   // ...while the spectrum still draws every requested bar.
   assert.match(canvas, /const bars = Math\.max\(12, Math\.min\(settings\.barCount, data\.length\)\);/);
 });
+
+test("popovers that close on an outside click also close on a titlebar press", () => {
+  const app = readAppSource();
+  assert.match(app, /window\.desktop\?\.onCaptionPointerDown\?\.\(\(\) => document\.dispatchEvent\(new Event\(CAPTION_POINTERDOWN_EVENT\)\)\)/);
+  assert.match(app, /document\.addEventListener\(CAPTION_POINTERDOWN_EVENT, closeAllPopovers\);/);
+  const strip = read("src/components/ChannelStripPopover.tsx");
+  assert.match(strip, /document\.addEventListener\(CAPTION_POINTERDOWN_EVENT, closeFromCaption\);/);
+  assert.match(strip, /document\.removeEventListener\(CAPTION_POINTERDOWN_EVENT, closeFromCaption\);/);
+});

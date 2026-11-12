@@ -35,6 +35,7 @@ import { useVolumeRouting } from "./app/useVolumeRouting";
 import { useWindowPresence } from "./app/useWindowPresence";
 import { toNativeRackPayload, useVstRackStore } from "./stores/vstRackStore";
 import type { OutputDevice, VisualizerMode } from "./types/audio";
+import { CAPTION_POINTERDOWN_EVENT } from "./utils/captionPointer";
 import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
 import { resolveVisualizerSettings } from "./utils/visualizerSettings";
 import { useI18n } from "./i18n";
@@ -1004,8 +1005,15 @@ export default function App() {
       window.removeEventListener("drop", clearDragState);
     };
   }, []);
+  // Titlebar presses arrive from the main process, not as DOM events.
+  useEffect(() => window.desktop?.onCaptionPointerDown?.(() => document.dispatchEvent(new Event(CAPTION_POINTERDOWN_EVENT))), []);
   useEffect(() => {
     if (!queueOpen && !videoVolumeOpen && !visualSettingsOpen) return;
+    const closeAllPopovers = () => {
+      setVisualSettingsOpen(false);
+      setQueueOpen(false);
+      setVideoVolumeOpen(false);
+    };
     const closePopoversOutside = (event: globalThis.PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -1020,7 +1028,11 @@ export default function App() {
       }
     };
     document.addEventListener("pointerdown", closePopoversOutside, true);
-    return () => document.removeEventListener("pointerdown", closePopoversOutside, true);
+    document.addEventListener(CAPTION_POINTERDOWN_EVENT, closeAllPopovers);
+    return () => {
+      document.removeEventListener("pointerdown", closePopoversOutside, true);
+      document.removeEventListener(CAPTION_POINTERDOWN_EVENT, closeAllPopovers);
+    };
   }, [queueOpen, videoVolumeOpen, visualSettingsOpen]);
   useEffect(() => {
     const onlinePlayingNow = Boolean(state.onlineMedia?.playing);

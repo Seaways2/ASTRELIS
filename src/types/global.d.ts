@@ -52,6 +52,8 @@ declare global {
       onClickThrough(listener: (enabled: boolean) => void): () => void;
       onMediaKey(listener: (action: "toggle" | "previous" | "next" | "stop") => void): () => void;
       onMaximized(listener: (maximized: boolean) => void): () => void;
+      /** A press on the titlebar drag region, which never reaches the page as a pointerdown. */
+      onCaptionPointerDown?(listener: () => void): () => void;
       onPresentationState(listener: (state: { minimized: boolean; trayConcealed: boolean }) => void): () => void;
       confirmPluginRemoval(name: string): Promise<boolean>;
       appearance: {

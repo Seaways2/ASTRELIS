@@ -227,7 +227,7 @@ function windowHarness(t, preferences = {}) {
     getBounds() { return this.bounds; } getNormalBounds() { return this.bounds; }
     getSize() { return [this.bounds.width, this.bounds.height]; }
     isDestroyed() { return false; } isFullScreen() { return false; }
-    hookWindowMessage(message, callback) { this.windowMessageHook = { message, callback }; }
+    hookWindowMessage(message, callback) { (this.windowMessageHooks ??= new Map()).set(message, callback); if (message === 0x0112) this.windowMessageHook = { message, callback }; }
     maximize() { this.maximized = true; } unmaximize() { this.maximized = false; }
     setHasShadow(value) { this.shadow = value; } setShape(value) { this.shape = value; }
     setIgnoreMouseEvents() {} setFocusable() {} setSkipTaskbar() {} setOpacity(value) { this.opacity = value; } blur() {}
@@ -405,4 +405,17 @@ test("restore after fullscreen-while-maximized returns to the last floating boun
   // The saved state no longer records the work area as the normal size.
   doubleClick(); h.flush();
   assert.deepEqual(JSON.parse(fs.readFileSync(h.stateFile, "utf8")), { ...floating, maximized: true });
+});
+
+test("titlebar presses are forwarded so click-outside popovers close", t => {
+  const h = windowHarness(t), sent = [];
+  h.window.webContents.send = (channel, ...args) => sent.push([channel, ...args]);
+  const hooks = h.window.windowMessageHooks;
+  for (const message of [0x00A1, 0x00A4]) {
+    assert.equal(typeof hooks.get(message), "function", `message ${message.toString(16)} is hooked`);
+    hooks.get(message)(Buffer.alloc(8));
+  }
+  assert.deepEqual(sent, [["window:caption-pointerdown"], ["window:caption-pointerdown"]]);
+  // Other non-client messages are not forwarded.
+  assert.equal(hooks.has(0x00A0), false);
 });

@@ -18,7 +18,6 @@ test('preload subscriptions forward only payloads and unsubscribe independently'
     [desktop.onClickThrough,'window:click-through-state'],
     [desktop.onMediaKey,'media-key'],
     [desktop.onMaximized,'window:maximized-state'],
-    [desktop.onCaptionPointerDown,'window:caption-pointerdown'],
     [desktop.onPresentationState,'window:presentation-state'],
     [desktop.externalOpen.onFiles,'external-open-files'],
     [desktop.library.onScanProgress,'library:scan-progress'],

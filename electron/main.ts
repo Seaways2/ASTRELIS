@@ -479,14 +479,6 @@ function createWindow() {
       toggleMaximize(hookedWindow);
     });
   });
-  // A press on a drag region (the titlebar) is a non-client click: Chromium
-  // never sees it as a DOM pointerdown, so "click outside to close" popovers
-  // would ignore it. Forward left and right caption presses to the renderer.
-  for (const message of [0x00A1 /* WM_NCLBUTTONDOWN */, 0x00A4 /* WM_NCRBUTTONDOWN */]) {
-    mainWindow.hookWindowMessage(message, () => {
-      if (mainWindow === hookedWindow && !hookedWindow.isDestroyed()) hookedWindow.webContents.send("window:caption-pointerdown");
-    });
-  }
 
   // A cancelled pointer gesture must never survive focus, mode or renderer changes.
   mainWindow.on("blur", () => windowResize.end());

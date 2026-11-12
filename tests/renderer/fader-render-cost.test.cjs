@@ -65,13 +65,14 @@ test("particle populations stop growing above the default bar count", () => {
   assert.match(canvas, /const bars = Math\.max\(12, Math\.min\(settings\.barCount, data\.length\)\);/);
 });
 
-test("popovers that close on an outside click also close on a titlebar press", () => {
+test("a titlebar press closes the volume strip, queue and visual settings", () => {
   const app = readAppSource();
-  assert.match(app, /window\.desktop\?\.onCaptionPointerDown\?\.\(\(\) => document\.dispatchEvent\(new Event\(CAPTION_POINTERDOWN_EVENT\)\)\)/);
-  assert.match(app, /document\.addEventListener\(CAPTION_POINTERDOWN_EVENT, closeAllPopovers\);/);
-  const strip = read("src/components/ChannelStripPopover.tsx");
-  assert.match(strip, /document\.addEventListener\(CAPTION_POINTERDOWN_EVENT, closeFromCaption\);/);
-  assert.match(strip, /document\.removeEventListener\(CAPTION_POINTERDOWN_EVENT, closeFromCaption\);/);
+  // While a popover is open the titlebar stops being a drag region, so the press
+  // reaches the page as a pointerdown and the click-outside handlers run.
+  assert.match(app, /const transientPopoverOpen = queueOpen \|\| videoVolumeOpen \|\| visualSettingsOpen \|\| channelStripOpen;/);
+  assert.match(app, /\$\{transientPopoverOpen \? "popover-open" : ""\}/);
+  assert.match(read("src/styles/global.css"), /\.app-shell\.popover-open :is\(\.titlebar, \.immersive-drag-zone\) \{ -webkit-app-region: no-drag; \}/);
+  assert.doesNotMatch(app, /onCaptionPointerDown/);
 });
 
 test("the wheel changes volume by the same fader step everywhere", () => {

@@ -8,7 +8,6 @@ import { contrastPeakColor } from "../utils/color";
 import { amplitudeToMeterPosition, dbToMeterPosition, formatFaderScaleTick, METER_DB_TICKS } from "../utils/meterScale";
 import { amplitudeToFaderPercent, formatFaderDb } from "../utils/volumeFaderScale";
 import { useI18n } from "../i18n";
-import { CAPTION_POINTERDOWN_EVENT } from "../utils/captionPointer";
 import { VolumeLevelIcon } from "./VolumeLevelIcon";
 import { MainVolumeFader } from "./MainVolumeFader";
 
@@ -114,10 +113,6 @@ export function ChannelStripPopover({
         setOpen(false);
       }
     };
-    const closeFromCaption = () => {
-      setQuery("");
-      setOpen(false);
-    };
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.stopPropagation();
@@ -125,7 +120,6 @@ export function ChannelStripPopover({
       else { setOpen(false); openerRef.current?.focus(); }
     };
     document.addEventListener("pointerdown", closeOutside, true);
-    document.addEventListener(CAPTION_POINTERDOWN_EVENT, closeFromCaption);
     document.addEventListener("keydown", closeOnEscape);
     const timer = visible ? window.setInterval(() => {
       const levels = audioEngine.meters();
@@ -134,7 +128,6 @@ export function ChannelStripPopover({
     }, lowPerformance ? 240 : 50) : undefined;
     return () => {
       document.removeEventListener("pointerdown", closeOutside, true);
-      document.removeEventListener(CAPTION_POINTERDOWN_EVENT, closeFromCaption);
       document.removeEventListener("keydown", closeOnEscape);
       if (timer !== undefined) window.clearInterval(timer);
     };

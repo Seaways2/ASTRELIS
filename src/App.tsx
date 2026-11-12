@@ -35,7 +35,6 @@ import { useVolumeRouting } from "./app/useVolumeRouting";
 import { useWindowPresence } from "./app/useWindowPresence";
 import { toNativeRackPayload, useVstRackStore } from "./stores/vstRackStore";
 import type { OutputDevice, VisualizerMode } from "./types/audio";
-import { CAPTION_POINTERDOWN_EVENT } from "./utils/captionPointer";
 import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
 import { resolveVisualizerSettings } from "./utils/visualizerSettings";
 import { useI18n } from "./i18n";
@@ -1005,15 +1004,8 @@ export default function App() {
       window.removeEventListener("drop", clearDragState);
     };
   }, []);
-  // Titlebar presses arrive from the main process, not as DOM events.
-  useEffect(() => window.desktop?.onCaptionPointerDown?.(() => document.dispatchEvent(new Event(CAPTION_POINTERDOWN_EVENT))), []);
   useEffect(() => {
     if (!queueOpen && !videoVolumeOpen && !visualSettingsOpen) return;
-    const closeAllPopovers = () => {
-      setVisualSettingsOpen(false);
-      setQueueOpen(false);
-      setVideoVolumeOpen(false);
-    };
     const closePopoversOutside = (event: globalThis.PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -1028,11 +1020,7 @@ export default function App() {
       }
     };
     document.addEventListener("pointerdown", closePopoversOutside, true);
-    document.addEventListener(CAPTION_POINTERDOWN_EVENT, closeAllPopovers);
-    return () => {
-      document.removeEventListener("pointerdown", closePopoversOutside, true);
-      document.removeEventListener(CAPTION_POINTERDOWN_EVENT, closeAllPopovers);
-    };
+    return () => document.removeEventListener("pointerdown", closePopoversOutside, true);
   }, [queueOpen, videoVolumeOpen, visualSettingsOpen]);
   useEffect(() => {
     const onlinePlayingNow = Boolean(state.onlineMedia?.playing);
@@ -1170,8 +1158,13 @@ export default function App() {
   const toggleVideoQueue = () => { setVideoVolumeOpen(false); setVisualSettingsOpen(false); setQueueOpen(open => !open); };
   const toggleVideoVolume = () => { setQueueOpen(false); setVisualSettingsOpen(false); setVideoVolumeOpen(open => !open); };
 
+  // A press on a drag region (the titlebar) is a Windows caption click and never
+  // reaches the page, so click-outside handlers cannot see it. While a popover
+  // is open the titlebar stops being a drag region; the first press closes the
+  // popover and dragging works again right after.
+  const transientPopoverOpen = queueOpen || videoVolumeOpen || visualSettingsOpen || channelStripOpen;
   return <main
-    className={`app-shell ${videoSidebarMode ? `video-layout ${queueOpen ? "video-queue-open" : ""} ${videoVolumeOpen ? "video-volume-open" : ""}` : ""} ${visualsVisible ? "" : "visuals-suspended"} ${lightTheme ? "theme-light" : "theme-dark"} ${maximized ? "maximized" : ""} ${dragging ? "dragging" : ""} ${state.obsMode ? "obs-mode" : ""} ${!state.obsMode && !lowPerformanceMode && state.uiSettings.glassMaterial !== "none" ? (!customBackgroundActive ? "native-glass" : "css-glass") : "glass-off"} ${immersiveMode ? "immersive-mode" : ""} ${compactMode ? "compact-mode" : ""} ${customBackgroundActive ? "has-custom-background" : ""} ${motionEnabled ? "" : "animations-off"} ${lowPerformanceMode ? "low-performance-mode" : ""} ${gpuEffectsActive ? `gpu-effects-on gpu-effects-${gpuEffectsQuality}` : ""}`}
+    className={`app-shell ${videoSidebarMode ? `video-layout ${queueOpen ? "video-queue-open" : ""} ${videoVolumeOpen ? "video-volume-open" : ""}` : ""} ${visualsVisible ? "" : "visuals-suspended"} ${lightTheme ? "theme-light" : "theme-dark"} ${maximized ? "maximized" : ""} ${transientPopoverOpen ? "popover-open" : ""} ${dragging ? "dragging" : ""} ${state.obsMode ? "obs-mode" : ""} ${!state.obsMode && !lowPerformanceMode && state.uiSettings.glassMaterial !== "none" ? (!customBackgroundActive ? "native-glass" : "css-glass") : "glass-off"} ${immersiveMode ? "immersive-mode" : ""} ${compactMode ? "compact-mode" : ""} ${customBackgroundActive ? "has-custom-background" : ""} ${motionEnabled ? "" : "animations-off"} ${lowPerformanceMode ? "low-performance-mode" : ""} ${gpuEffectsActive ? `gpu-effects-on gpu-effects-${gpuEffectsQuality}` : ""}`}
     style={{
       "--accent": state.accent,
       "--meter-peak": contrastPeakColor(state.accent),

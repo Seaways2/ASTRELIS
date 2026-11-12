@@ -147,6 +147,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .output-status { width: 260px; }
 .output-status svg { color: var(--accent); }
 .window-actions { height: 100%; display: flex; -webkit-app-region: no-drag; }
+.app-shell.popover-open :is(.titlebar, .immersive-drag-zone) { -webkit-app-region: no-drag; }
 .window-actions button { width: 46px; height: 100%; display: grid; place-items: center; padding: 0; background: transparent; color: #75878b; }
 .window-actions button:hover { background: rgba(255,255,255,.06); color: white; }
 .window-actions button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }

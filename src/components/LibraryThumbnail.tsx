@@ -66,7 +66,11 @@ const dimensions = new Map<string, number>();
 // Smart framing reads image pixels back on the main thread. A mosaic mounts
 // hundreds of tiles, so each cover is analysed once and remembered.
 const attentionBySource = new Map<string, ArtworkAttention>();
-const MAX_READY_WEIGHT = 128 * 1024 * 1024;
+// The cache holds encoded thumbnail blobs (tens of KB each); decoded pixels belong
+// to Chromium's own discardable image cache. Budgeting blobs at their decoded
+// size capped a 512px video mosaic at ~128 covers, so a zoomed-out fullscreen
+// mosaic (400+ covers) kept revoking and re-reading thumbnails it was showing.
+const MAX_READY_WEIGHT = 96 * 1024 * 1024;
 const MAX_SOURCE_METADATA = 512;
 let readyWeight = 0;
 function cacheKey(source: string, size: ThumbnailSize) { return `${size}\0${source}`; }
@@ -116,7 +120,7 @@ function invalidateRefreshedThumbnails(event: Event) {
 function keepThumbnail(source: string, size: ThumbnailSize, blob: Blob) {
   const key = cacheKey(source, size), previous = ready.get(key);
   if (previous) { readyWeight -= previous.weight; URL.revokeObjectURL(previous.url); }
-  const url = URL.createObjectURL(blob), weight = size * size * 4;
+  const url = URL.createObjectURL(blob), weight = Math.max(1, blob.size);
   ready.set(key, { url, weight });
   readyWeight += weight;
   while (readyWeight > MAX_READY_WEIGHT && ready.size > 1) {

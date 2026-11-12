@@ -69,3 +69,13 @@ test("smart cover framing is analysed once per cover and off the busy path", () 
   const css = read("src/styles/global.css");
   assert.match(css, /\.library-view-mosaic\.mosaic-panning \.library-infinite-stage \{ pointer-events: none; \}/);
 });
+
+test("a zoomed-out fullscreen mosaic keeps every visible cover cached", () => {
+  const thumbnail = read("src/components/LibraryThumbnail.tsx");
+  // Budget the encoded blobs actually held, not their decoded size.
+  assert.match(thumbnail, /weight = Math\.max\(1, blob\.size\)/);
+  assert.doesNotMatch(thumbnail, /size \* size \* 4/);
+  const library = read("src/components/MusicLibrary.tsx");
+  assert.match(library, /const largeCovers = !\(previewFullscreen && libraryView === "mosaic" && previewZoom < \.75\);/);
+  assert.match(library, /highResolution=\{isVideoTrack\(track\) && largeCovers\}/);
+});

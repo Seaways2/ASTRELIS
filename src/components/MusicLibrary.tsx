@@ -18,6 +18,7 @@ import type { LibraryCategoryGroup, LibraryFolderNode } from "../library/Library
 import type { Track } from "../types/audio";
 
 type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
+const noCoverSources: ReadonlySet<string> = new Set();
 type LibraryView = "flow" | "cards" | "details" | "mosaic";
 type LibrarySort = "title" | "artist" | "album" | "format" | "size";
 
@@ -227,6 +228,9 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const { columns: mosaicColumns, rows: mosaicRows } = mosaicGridSize(previewZoom);
   const mosaicBoardSlots = useMemo(() => mosaicSlots(mosaicColumns, mosaicRows), [mosaicColumns, mosaicRows]);
   const mosaicItemsPerBoard = mosaicBoardSlots.length;
+  // Zoomed-out fullscreen mosaic tiles are at most ~300px: 256px thumbnails are
+  // enough there, and decode a quarter of the pixels of the 512px video covers.
+  const largeCovers = !(previewFullscreen && libraryView === "mosaic" && previewZoom < .75);
   const mosaicBoardStyle = useMemo(() => ({
     gridTemplateColumns: `repeat(${mosaicColumns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${mosaicRows}, minmax(0, 1fr))`
@@ -570,7 +574,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
     if (entry.kind === "folder") {
       const group = entry.item;
       return <div className="library-entry library-folder-entry" role="button" tabIndex={0} key={entry.key} onContextMenu={e => protection.context(e, group.path)} onClick={() => setFolderPath(group.path)} onKeyDown={event => { if (event.key === "Enter" && event.target === event.currentTarget) setFolderPath(group.path); }}>
-      <div className="library-entry-media"><CoverTile covers={group.covers} count={group.count} fallback={<Folder />} coverFlow={libraryView === "flow"} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} highResolutionSources={videoCoverSources} />{libraryView === "mosaic" ? <div className="library-folder-control">
+      <div className="library-entry-media"><CoverTile covers={group.covers} count={group.count} fallback={<Folder />} coverFlow={libraryView === "flow"} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} highResolutionSources={largeCovers ? videoCoverSources : noCoverSources} />{libraryView === "mosaic" ? <div className="library-folder-control">
         <span className="library-folder-badge"><FolderOpen /><span>{t("library.folder")} · {group.count}</span></span>
         {group.directIds.length > 0 && <button type="button" className="bulk-queue-action" onClick={event => { event.stopPropagation(); enqueueTracksWithFeedback(group.directIds); }}>+ {t("library.addLayer")} · {group.directIds.length}</button>}
       </div> : <span className="library-folder-badge"><FolderOpen />{t("library.folder")} · {group.count}</span>}{hiddenIndicator(group.path)}</div>
@@ -585,7 +589,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
     if (entry.kind === "category") {
       const group = entry.item;
       return <div className="library-entry library-category-entry" role="button" tabIndex={0} key={entry.key} onClick={() => { setValue(group.name); setCategoryId(group.key); setQuery(""); }} onKeyDown={event => { if (event.key === "Enter") { setValue(group.name); setCategoryId(group.key); setQuery(""); } }}>
-        <div className="library-entry-media"><CoverTile covers={group.covers} count={group.count} fallback={categoryIcon} coverFlow={libraryView === "flow"} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} highResolutionSources={videoCoverSources} /></div>
+        <div className="library-entry-media"><CoverTile covers={group.covers} count={group.count} fallback={categoryIcon} coverFlow={libraryView === "flow"} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} highResolutionSources={largeCovers ? videoCoverSources : noCoverSources} /></div>
         <b className="library-entry-title" title={group.name}>{group.name}</b>
         <small className="library-entry-primary" title={facet === "专辑" ? Array.from(group.artists).join(" · ") : undefined}>{facet === "专辑" ? group.artistSummary : t("library.collection")}</small>
         <em className="library-entry-secondary">{facet === "艺术家" ? `${group.albums.size} ALBUMS · ` : ""}{group.formats.size} FORMATS</em>
@@ -598,7 +602,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
     const favorite = favoriteKeySet.has(favoriteTrackKey(track));
     const selected = selectedFavoriteIds.has(track.id);
     return <div className={`library-entry library-track-entry ${queuedTrackIds.has(track.id) ? "queued" : ""} ${selected ? "selected-favorite" : ""}`} role="button" tabIndex={0} key={entry.key} onContextMenu={e => protection.context(e, undefined, track)} onDoubleClick={() => enqueueTrackWithFeedback(track.id, true)} onKeyDown={event => { if (event.key === "Enter") enqueueTrackWithFeedback(track.id, true); }}>
-      <div className="library-entry-media library-art">{track.coverUrl ? <LibraryThumbnail source={track.coverUrl} coverFlow={libraryView === "flow"} highResolution={isVideoTrack(track)} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} /> : isVideoTrack(track) ? <Film /> : <AudioWaveform />}<span className="library-track-format">{track.format}</span>{facet === "收藏" && <label className="favorite-select-action" title={t("library.selectTrack")} onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => toggleFavoriteSelection(track.id)} /></label>}<button className={`favorite-track-action ${favorite ? "active" : ""}`} type="button" aria-label={t(favorite ? "library.unfavorite" : "library.favorite")} title={t(favorite ? "library.unfavorite" : "library.favorite")} onClick={event => { event.stopPropagation(); state.toggleFavoriteTrack(track); }} onDoubleClick={event => event.stopPropagation()}><Heart fill={favorite ? "currentColor" : "none"} /></button>{hiddenIndicator(track.sourcePath, track)}<div className="card-scanline" /></div>
+      <div className="library-entry-media library-art">{track.coverUrl ? <LibraryThumbnail source={track.coverUrl} coverFlow={libraryView === "flow"} highResolution={isVideoTrack(track) && largeCovers} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} /> : isVideoTrack(track) ? <Film /> : <AudioWaveform />}<span className="library-track-format">{track.format}</span>{facet === "收藏" && <label className="favorite-select-action" title={t("library.selectTrack")} onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}><input type="checkbox" checked={selected} onChange={() => toggleFavoriteSelection(track.id)} /></label>}<button className={`favorite-track-action ${favorite ? "active" : ""}`} type="button" aria-label={t(favorite ? "library.unfavorite" : "library.favorite")} title={t(favorite ? "library.unfavorite" : "library.favorite")} onClick={event => { event.stopPropagation(); state.toggleFavoriteTrack(track); }} onDoubleClick={event => event.stopPropagation()}><Heart fill={favorite ? "currentColor" : "none"} /></button>{hiddenIndicator(track.sourcePath, track)}<div className="card-scanline" /></div>
       <b className="library-entry-title" title={track.name}>{track.name}</b>
       <small className="library-entry-primary">{track.artist}{isVideoTrack(track) && track.year ? ` · ${track.year}` : ""}</small>
       <em className="library-entry-secondary" title={track.videoInfo}>{isVideoTrack(track) ? track.videoInfo || track.format : track.album}</em>

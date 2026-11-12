@@ -302,8 +302,8 @@
 .app-shell .library-page-stats b { font-weight: 500; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple > .library-browse { display: contents; }
-.app-shell .music-library:not(:fullscreen) .library-header-simple .library-view-toolbar { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; justify-content: flex-start; flex-wrap: nowrap; }
-.app-shell .music-library:not(:fullscreen) .library-header-simple .facet-tabs { flex: 0 1 auto; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: max-content; margin-right: auto; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .library-view-toolbar { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; justify-content: flex-start; flex-wrap: wrap; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .facet-tabs { flex: 0 0 auto; max-width: 100%; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: max-content; margin-right: auto; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple .facet-tabs button { padding: 0 12px; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple .library-controls { order: 2; flex: 0 1 auto; grid-template-columns: clamp(150px, 15vw, 240px) auto auto; margin: 0; }
 /* The fullscreen toggle keeps its label as a tooltip here; its own bar shows the text. */
@@ -311,8 +311,13 @@
 .app-shell .music-library:not(:fullscreen) .library-header-simple .library-mosaic-preview-toggle > span { display: none; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple > .library-scan-progress { order: 3; flex: 1 1 100%; }
 @media (max-width: 760px) {
-  .app-shell .music-library:not(:fullscreen) .library-header-simple .library-view-toolbar { flex-wrap: wrap; }
   .app-shell .music-library:not(:fullscreen) .library-header-simple .library-controls { flex: 1 1 100%; grid-template-columns: minmax(0,1fr) auto auto; }
+}
+/* Cover flow on a small window keeps the controls in the "筛选与工具" popover
+   (MediaFlow.css): hidden until opened, then the same wrapping row layout. */
+@media (max-height: 850px), (max-width: 1180px) {
+  .app-shell .music-library.library-flow-layout:not(:fullscreen):not(.library-tools-open) > .library-header.library-header-simple { display: none; }
+  .app-shell .music-library.library-flow-layout.library-tools-open:not(:fullscreen) > .library-header.library-header-simple { display: flex; padding: 10px 12px; }
 }
 .app-shell .library-header-simple :is(select,.library-menu-trigger) { min-height: 32px; padding: 6px 10px; border: 1px solid var(--surface-glass-border); border-radius: 5px; background: var(--module-surface, #11212b); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .app-shell .library-header-simple .library-menu { position: relative; margin-left: 0; }

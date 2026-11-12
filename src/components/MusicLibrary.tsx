@@ -328,8 +328,10 @@ export const MusicLibrary = memo(function MusicLibrary() {
     ? Array.from({ length: 9 }, (_, index) => {
       const column = index % 3 - 1;
       const row = Math.floor(index / 3) - 1;
-      const page = positiveModulo(mosaicCenterPage + column + row * 3, mosaicPageCount);
-      return { index, entries: wrappedEntriesAt(page) };
+      // World index: unbounded, so a board keeps its key while it stays in the
+      // 3x3 window and panning one board only mounts the newly exposed ones.
+      const world = mosaicCenterPage + column + row * 3;
+      return { index, world, column, row, entries: wrappedEntriesAt(positiveModulo(world, mosaicPageCount)) };
     })
     : [];
   const hasVisibleEntries = totalListItems > 0;
@@ -461,10 +463,9 @@ export const MusicLibrary = memo(function MusicLibrary() {
     mosaicCanvasOffset.current = { x: horizontal.offset, y: vertical.offset };
     mosaicStage.current?.style.setProperty("transform", `translate3d(calc(-33.333333% + ${horizontal.offset}px), calc(-33.333333% + ${vertical.offset}px), 0)`);
     if (horizontal.pages || vertical.pages) {
-      const pageCount = mosaicPageCount;
-      setMosaicCenterPage(center => positiveModulo(center + horizontal.pages + vertical.pages * 3, pageCount));
+      setMosaicCenterPage(center => center + horizontal.pages + vertical.pages * 3);
     }
-  }, [mosaicPageCount]);
+  }, []);
   useEffect(() => {
     const viewport = mosaicViewport.current;
     if (!previewFullscreen || libraryView !== "mosaic" || !viewport) return;
@@ -704,8 +705,8 @@ export const MusicLibrary = memo(function MusicLibrary() {
       {libraryView === "details" && hasVisibleEntries && <div className="library-detail-head"><span>{t("library.cover")}</span><span>{t("library.item")}</span><span>{t("library.info")}</span><span>{t("library.summary")}</span><span>{t("library.type")}</span><span>{t("library.countSize")}</span><span>{t("library.actions")}</span></div>}
       {previewFullscreen && libraryView === "mosaic" && totalListItems > 0
         ? <div ref={mosaicStage} className="library-infinite-stage" style={{ transform: `translate3d(calc(-33.333333% + ${mosaicCanvasOffset.current.x}px), calc(-33.333333% + ${mosaicCanvasOffset.current.y}px), 0)` }}>
-          {infiniteMosaicBoards.map(board => <div className="library-infinite-cell" key={board.index}><div className="library-mosaic-board" data-layout="slots" style={mosaicBoardStyle}>{board.entries.map((entry, index) => {
-            const keyedEntry = { ...entry, key: `${entry.key}-world-${board.index}-${index}` } as VisibleLibraryEntry;
+          {infiniteMosaicBoards.map(board => <div className="library-infinite-cell" key={`world-${board.world}`} style={{ gridColumn: board.column + 2, gridRow: board.row + 2 }}><div className="library-mosaic-board" data-layout="slots" style={mosaicBoardStyle}>{board.entries.map((entry, index) => {
+            const keyedEntry = { ...entry, key: `${entry.key}-world-${board.world}-${index}` } as VisibleLibraryEntry;
             const slot = mosaicBoardSlots[index];
             return <div className={`library-mosaic-tile mosaic-slot-${index + 1}`} key={keyedEntry.key} style={slot ? { gridColumn: `${slot.column} / span ${slot.columnSpan}`, gridRow: `${slot.row} / span ${slot.rowSpan}` } : undefined}>{renderLibraryEntry(keyedEntry)}</div>;
           })}</div></div>)}

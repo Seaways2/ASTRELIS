@@ -51,3 +51,21 @@ test("the fullscreen mosaic places tiles from the shared layout at every zoom", 
   assert.match(library, /gridColumn: `\$\{slot\.column\} \/ span \$\{slot\.columnSpan\}`/);
   assert.doesNotMatch(read("src/styles/global.css"), /data-density="zoomed"/);
 });
+
+test("panning the fullscreen mosaic remounts only the boards it exposes", () => {
+  const library = read("src/components/MusicLibrary.tsx");
+  // Boards are keyed by an unbounded world index, not by their 3x3 position.
+  assert.match(library, /const world = mosaicCenterPage \+ column \+ row \* 3;/);
+  assert.match(library, /key=\{`world-\$\{board\.world\}`\} style=\{\{ gridColumn: board\.column \+ 2, gridRow: board\.row \+ 2 \}\}/);
+  assert.match(library, /setMosaicCenterPage\(center => center \+ horizontal\.pages \+ vertical\.pages \* 3\);/);
+  assert.match(library, /key: `\$\{entry\.key\}-world-\$\{board\.world\}-\$\{index\}`/);
+});
+
+test("smart cover framing is analysed once per cover and off the busy path", () => {
+  const thumbnail = read("src/components/LibraryThumbnail.tsx");
+  assert.match(thumbnail, /const attentionBySource = new Map<string, ArtworkAttention>\(\);/);
+  assert.match(thumbnail, /window\.requestIdleCallback\(analyse, \{ timeout: 1000 \}\)/);
+  assert.match(thumbnail, /rememberSourceValue\(attentionBySource, source, attention\);/);
+  const css = read("src/styles/global.css");
+  assert.match(css, /\.library-view-mosaic\.mosaic-panning \.library-infinite-stage \{ pointer-events: none; \}/);
+});

@@ -63,6 +63,9 @@ const cache = new Map<string, Promise<string>>();
 const ready = new Map<string, CachedThumbnail>();
 const failed = new Set<string>();
 const dimensions = new Map<string, number>();
+// Smart framing reads image pixels back on the main thread. A mosaic mounts
+// hundreds of tiles, so each cover is analysed once and remembered.
+const attentionBySource = new Map<string, ArtworkAttention>();
 const MAX_READY_WEIGHT = 128 * 1024 * 1024;
 const MAX_SOURCE_METADATA = 512;
 let readyWeight = 0;
@@ -199,7 +202,10 @@ export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFl
   const image = useRef<HTMLImageElement>(null);
   const [result, setResult] = useState<{ source: string; size: ThumbnailSize; url: string }>();
   const [framing, setFraming] = useState(() => framingFor(source));
-  const [smartFraming, setSmartFraming] = useState<{ source: string; focusY: number }>();
+  const [smartFraming, setSmartFraming] = useState<{ source: string; focusY: number } | undefined>(() => {
+    const known = smartFocus ? attentionBySource.get(source) : undefined;
+    return known ? { source, focusY: known.focusY } : undefined;
+  });
   const [refreshVersion, setRefreshVersion] = useState(0);
   const currentFraming = framing.source === source ? framing : framingFor(source);
   const requestedSize: ThumbnailSize = highResolution ? 512 : 256;
@@ -231,23 +237,37 @@ export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFl
       delete element.dataset.smartBottom;
       if (entry) updateEntryLabelPlacement(entry);
     };
-    const update = () => {
-      if (!smartFocus) return;
-      const attention = estimateArtworkAttention(element);
-      if (!attention) return;
+    const apply = (attention: ArtworkAttention) => {
       element.dataset.smartTop = String(attention.topScore);
       element.dataset.smartBottom = String(attention.bottomScore);
-      setSmartFraming({ source, focusY: attention.focusY });
+      setSmartFraming(current => current?.source === source && current.focusY === attention.focusY ? current : { source, focusY: attention.focusY });
       if (entry) updateEntryLabelPlacement(entry);
+    };
+    let idle = 0;
+    const analyse = () => {
+      idle = 0;
+      if (!element.complete || !element.naturalWidth) return;
+      const attention = estimateArtworkAttention(element);
+      if (!attention) return;
+      rememberSourceValue(attentionBySource, source, attention);
+      apply(attention);
+    };
+    // Analyse when the main thread is idle, never inside a pan or a mount burst.
+    const update = () => {
+      const known = attentionBySource.get(source);
+      if (known) { apply(known); return; }
+      if (!idle) idle = window.requestIdleCallback ? window.requestIdleCallback(analyse, { timeout: 1000 }) : window.setTimeout(analyse, 0);
     };
     if (smartFocus) {
       element.addEventListener("load", update);
       if (element.complete && element.naturalWidth) update();
+      else { const known = attentionBySource.get(source); if (known) apply(known); }
     } else {
       clear();
       setSmartFraming(undefined);
     }
     return () => {
+      if (idle) { if (window.cancelIdleCallback) window.cancelIdleCallback(idle); else window.clearTimeout(idle); }
       element.removeEventListener("load", update);
       clear();
     };

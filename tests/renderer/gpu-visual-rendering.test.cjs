@@ -28,9 +28,9 @@ test("capability probing respects Chromium safety decisions", () => {
 
 test("Canvas 2D owns every scene while GPU FX stays in the compositor", () => {
   const app = readAppSource();
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   const styles = read("src/styles/global.css");
-  assert.match(canvas,/return <canvas ref=\{ref\} className="visualizer-canvas"/);
+  assert.match(read("src/visualizers/VisualizerCanvas.tsx"),/return <canvas ref=\{ref\} key=\{canvasGeneration\} className="visualizer-canvas"/);
   assert.doesNotMatch(canvas,/GpuBlackHoleCanvas|GpuGalaxyCanvas|GpuStarfieldCanvas|gpuSceneActive/,
     "GPU prototypes must not replace the tuned Canvas 2D scenes");
   assert.match(app,/gpuEffectsRequested[\s\S]{0,100}&& !lowPerformanceMode[\s\S]{0,80}&& !state\.obsMode/);

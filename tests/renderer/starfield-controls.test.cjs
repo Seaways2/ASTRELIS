@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, "../..");
 const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 
 test("Starfield Motion maps the shared effect controls to star count and size", () => {
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   assert.match(canvas, /starsPerEffectUnit = settings\.lowPerformance \? 4 : 8/);
   assert.match(canvas, /starCount = Math\.max\(96, Math\.round\(particleUnits \* starsPerEffectUnit\)\)/);
   assert.match(canvas, /starEffectSize = \.5 \+ settings\.lineWidth \/ 3/);
@@ -20,7 +20,7 @@ test("Starfield Motion maps the shared effect controls to star count and size", 
 });
 
 test("Starfield Motion gives every star a shared low-frequency beat flash", () => {
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   assert.match(canvas, /bassOnset = Math\.max\(0, rawBass - starBassLevel\)/);
   assert.match(canvas, /starBeatTarget = Math\.min\(\.9, \.42 \+ bassOnset \* 4\.5\)/);
   assert.match(canvas, /beatFadeSpeed = starBeatTarget > starBeatFlash \? 12 : 3\.2/);
@@ -29,7 +29,7 @@ test("Starfield Motion gives every star a shared low-frequency beat flash", () =
 });
 
 test("Galaxy Spiral and Black Hole Pulse reuse the Starfield Motion beat timing", () => {
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   assert.ok((canvas.match(/\.42 \+ onset \* 4\.5/g) || []).length >= 2);
   assert.ok((canvas.match(/\? 12 : 3\.2/g) || []).length >= 3);
   assert.match(canvas, /currentTime - lastGalaxyBeatAt > \.16/);
@@ -38,7 +38,7 @@ test("Galaxy Spiral and Black Hole Pulse reuse the Starfield Motion beat timing"
 });
 
 test("Starfield Motion applies effect opacity to trails, stars, halos, and flashes", () => {
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   assert.match(canvas, /const starfieldOpacity = barOpacity/);
   assert.match(canvas, /shimmer\) \* starfieldOpacity/);
   assert.match(canvas, /musicalFlash\) \* starfieldOpacity/);

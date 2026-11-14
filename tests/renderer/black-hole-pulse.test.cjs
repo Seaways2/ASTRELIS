@@ -5,7 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
-const source = fs.readFileSync(path.join(root, "src/visualizers/VisualizerCanvas.tsx"), "utf8");
+const source = fs.readFileSync(path.join(root, "src/visualizers/visualizerScene.ts"), "utf8");
 
 test("Black Hole Pulse separates bass, mid, and high-frequency responses", () => {
   assert.match(source, /averageHz\(40, 180\)/);
@@ -33,7 +33,10 @@ test("Black Hole Pulse adds shockwaves and gravitational lensing", () => {
 test("Black Hole Pulse refracts the custom wallpaper through concentric lens rings", () => {
   const app = readAppSource();
   assert.match(app, /backgroundUrl=\{customBackgroundActive \? state\.uiSettings\.customBackgroundUrl : undefined\}/);
-  assert.match(source, /lensBackground = backgroundUrl \? new Image\(\) : undefined/);
+  const host = fs.readFileSync(path.join(root, "src/visualizers/visualizerHost.ts"), "utf8");
+  // The page decodes the wallpaper and hands the scene (in the worker) a bitmap.
+  assert.match(host, /image\.decode\(\)\s*\.then\(\(\) => createImageBitmap\(image\)\)/);
+  assert.match(source, /if \(lensBackground && lensBackground\.width > 0 && backgroundOpacity > 0\)/);
   assert.match(source, /lensRingCount = settings\.lowPerformance \? 10 : 18/);
   assert.match(source, /distortionProfile = Math\.pow\(Math\.sin\(middleMix \* Math\.PI\), 1\.35\)/);
   assert.match(source, /context\.clip\("evenodd"\)/);

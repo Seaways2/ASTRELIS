@@ -6,7 +6,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "../..");
 const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
-const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+const canvas = read("src/visualizers/visualizerScene.ts");
 
 test("Galaxy Spiral replaces the waveform renderer without changing its persisted mode id", () => {
   const dictionary = read("src/i18n/index.ts");
@@ -60,7 +60,7 @@ test("Galaxy Spiral separates musical bands and reinforces a traveling density r
 });
 
 test("Galaxy Spiral derives luminous layers from the active accent", () => {
-  const galaxyBlock = canvas.match(/if \(mode === "waveform"\) \{[\s\S]*?\} else if \(mode === "levels"\)/)?.[0] || "";
+  const galaxyBlock = canvas.match(/if \(mode === "waveform"\) \{[\s\S]*?\} else if \(mode === "pulse"\)/)?.[0] || "";
   assert.match(canvas, /layerContext\.fillStyle = accent/);
   assert.match(canvas, /diskGlow\.addColorStop\(\.12, accent\)/);
   assert.match(canvas, /core\.addColorStop\(\.24, galaxyAccent\(\.62\)\)/);
@@ -123,7 +123,7 @@ test("Galaxy Spiral reduces the broad fog disk and selectively lifts the existin
 });
 
 test("Galaxy Spiral fog uses four continuous cached paths with two-axis falloff", () => {
-  assert.match(canvas, /galaxyFogLayer = document\.createElement\("canvas"\)/);
+  assert.match(canvas, /galaxyFogLayer = createLayer\(\)/);
   assert.match(canvas, /for \(let arm = 0; arm < 4; arm\+\+\)/);
   assert.match(canvas, /const armFogPath = new Path2D\(\)/);
   assert.match(canvas, /for \(let sample = 0; sample <= 96; sample\+\+\)/);

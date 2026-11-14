@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
-const source = fs.readFileSync(path.join(root, "src/visualizers/VisualizerCanvas.tsx"), "utf8");
+const source = fs.readFileSync(path.join(root, "src/visualizers/visualizerScene.ts"), "utf8");
 
 test("Mirror Spectrum draws held peak blocks above and below the center line", () => {
   assert.match(source, /mirrorPeakHeight = \(peakBars\[i\] \?\? value\) \* height \* \.42/);

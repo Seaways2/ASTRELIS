@@ -62,8 +62,11 @@ test("a long pause resets the schedule instead of bursting", () => {
 });
 
 test("the canvas loop uses the shared pacing helpers", () => {
-  const canvas = fs.readFileSync(path.join(root, "src/visualizers/VisualizerCanvas.tsx"), "utf8");
-  assert.match(canvas, /if \(!frameIsDue\(now, nextDue\)\) \{/);
+  const canvas = fs.readFileSync(path.join(root, "src/visualizers/visualizerScene.ts"), "utf8");
+  assert.match(canvas, /if \(!frameIsDue\(now, nextDue\)\) return;/);
+  // The page reads the analyser at the same pace for the worker.
+  const host = fs.readFileSync(path.join(root, "src/visualizers/visualizerHost.ts"), "utf8");
+  assert.match(host, /if \(!frameIsDue\(now, this\.nextDue\)\) return;\s*this\.nextDue = nextFrameDue\(now, this\.nextDue, frameInterval\);/);
   assert.match(canvas, /nextDue = nextFrameDue\(now, nextDue, frameInterval\);/);
 });
 

@@ -6,7 +6,7 @@ const test = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
 const app = readAppSource();
-const canvas = fs.readFileSync(path.join(root, "src/visualizers/VisualizerCanvas.tsx"), "utf8");
+const canvas = fs.readFileSync(path.join(root, "src/visualizers/visualizerScene.ts"), "utf8");
 
 test("Decay Speed uses the requested direct 0.05 to 1.0 range", () => {
   assert.match(app, /visual\.decay[\s\S]*?min="\.05" max="1" step="\.05"/);

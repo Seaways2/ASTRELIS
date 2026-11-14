@@ -35,5 +35,5 @@ test('hidden status retains transport polling without FFT; hidden canvas stops i
   assert.match(app,/enabled: analysisNeeded/);
   assert.match(app,/!analysisNeeded \|\| \(statusTicks/);
   const canvas=fs.readFileSync(path.join(root,'src/visualizers/VisualizerCanvas.tsx'),'utf8');
-  assert.match(canvas,/if \(!canvas \|\| !visible\) return/);
+  assert.match(canvas,/if \(!current \|\| !visible\) return;[\s\S]*?return \(\) => current\.stop\(\);/);
 });

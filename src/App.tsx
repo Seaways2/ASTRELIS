@@ -8,9 +8,9 @@ import type { VideoState } from "../electron/videoPlayer";
 import { prefetchTarget } from "./utils/playbackResources";
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import {
-  Blend, Blocks, CircleStop, Copy, Disc3, Expand, Globe2, Import, Library, ListMusic, Lock, Minus,
-  MonitorSpeaker, Music2, Palette, Pause, PictureInPicture2, Play, Power, Repeat, Repeat1, Square,
-  Settings, Shuffle, SkipBack, SkipForward, SlidersHorizontal,
+  Blend, Blocks, CircleStop, Copy, Disc3, Expand, Import, ListMusic, Lock, Minus,
+  MonitorSpeaker, Pause, PictureInPicture2, Play, Power, Repeat, Repeat1, Square,
+  Shuffle, SkipBack, SkipForward, SlidersHorizontal,
   Film, Volume2, X, Zap
 } from "lucide-react";
 import { audioEngine } from "./audio/AudioEngine";

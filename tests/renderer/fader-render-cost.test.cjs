@@ -48,15 +48,18 @@ test("volume persistence is debounced and flushed on pagehide", () => {
 
 test("the module overview and its thumbnail mode are gone", () => {
   assert.equal(fs.existsSync(path.join(root, "src/visualizers/VisualizerOverview.tsx")), false);
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   assert.doesNotMatch(canvas, /thumbnail|thinned|framePhase|THUMBNAIL_PARTICLE_DENSITY/);
   assert.match(canvas, /const particleCount = starCount;/);
   // The canvas size comes from ResizeObserver, not a forced layout every frame.
-  assert.match(canvas, /if \(now - lastSizeCheck >= CANVAS_SIZE_RECHECK_MS\) \{\s*lastSizeCheck = now;\s*syncCanvasSize\(\);/);
+  // The periodic size re-read (a forced layout) lives on the page side, once a second.
+  const host = read("src/visualizers/visualizerHost.ts");
+  assert.match(host, /if \(now - this\.lastSizeCheck >= CANVAS_SIZE_RECHECK_MS\) \{\s*this\.lastSizeCheck = now;\s*this\.syncLayout\(\);/);
+  assert.doesNotMatch(canvas, /getBoundingClientRect|documentElement|devicePixelRatio/);
 });
 
 test("particle populations stop growing above the default bar count", () => {
-  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const canvas = read("src/visualizers/visualizerScene.ts");
   assert.match(canvas, /export const PARTICLE_EFFECT_UNIT_CAP = 90;/);
   assert.match(canvas, /const particleUnits = Math\.min\(settings\.barCount, PARTICLE_EFFECT_UNIT_CAP\);/);
   // Particle counts never scale with the raw bar setting...

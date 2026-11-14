@@ -837,7 +837,7 @@ const saveQueues = () => {
   if (!queuesRestored && !tracks.length) return;
   const snapshot: SavedQueueSnapshot = {
     kind: state.queueKind,
-    tracks: tracks as SavedQueueSnapshot["tracks"],
+    tracks: tracks as unknown as SavedQueueSnapshot["tracks"],
     selection: { ...state.queueSelection, ...(current ? { [state.queueKind]: current.id } : {}) },
     bookmarks: { ...state.queueBookmarks, ...(current ? { [current.id]: state.duration > 0 && state.currentTime >= state.duration - .5 ? 0 : state.currentTime } : {}) }
   };

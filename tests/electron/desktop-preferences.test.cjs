@@ -246,7 +246,8 @@ function windowHarness(t, preferences = {}) {
     windowStatePath: () => stateFile,
     screen: { on() {}, removeListener() {}, getDisplayMatching: () => ({workArea:{x:0,y:0,width:2200,height:1400}}), getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 2200, height: 1400 } }] },
     BrowserWindow: FakeWindow, mainWindow: null, rendererAcceptsExternalFiles: false,
-    videoScreenRestore: undefined, compactActive: false, compactRestoreBounds: null, immersiveActive: false, immersiveRestoreBounds: null,
+    WindowStateMachine: require("../../dist-electron/windowStateMachine").WindowStateMachine,
+    videoScreenRestore: undefined, compactActive: false, immersiveActive: false,
     trayConcealed: false, isQuitting: false, resolveAppIconPath: () => null,
     app: { quit: () => { context.quitCalls++; } }, quitCalls: 0,
     safeExternalUrl: () => false, sameOriginNavigation: () => false, shell: { openExternal() {} },
@@ -352,7 +353,8 @@ test("compact mode keeps its forced top state while preferences change and resto
     windowResize: { end() {} },
     path, app: { getPath: () => directory }, DesktopMediaKeys, DesktopPreferenceService,
     globalShortcut: { register: () => true, unregister() {} }, mainWindow: window,
-    compactActive: false, compactPreviousTop: false, compactRestoreBounds: null,
+    compactActive: false, compactPreviousTop: false,
+    windowState: new (require("../../dist-electron/windowStateMachine").WindowStateMachine)(),
     ipcMain: { on: (name, handler) => handlers.set(name, handler) }
   });
   vm.runInContext(sourceBlock("const desktopMediaKeys =", "let nativeAudioActive =")

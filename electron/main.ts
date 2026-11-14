@@ -1,4 +1,5 @@
-import { fillsDisplay, fitWindowBounds, fittedUiZoom, restorableNormalBounds } from "./windowFit";
+import { fillsDisplay, fitWindowBounds, fittedUiZoom } from "./windowFit";
+import { WindowStateMachine, type WindowSnapshot } from "./windowStateMachine";
 import { FolderVisibility } from "./FolderVisibility";
 import { restoreVisibleLibrary } from "./library/migration/RestoreVisibleLibrary";
 import { VstStateProfiles } from "./vstStateProfiles";
@@ -117,11 +118,9 @@ const windowResize = new DipWindowResize(() => mainWindow, () => screen.getCurso
 let onlineView: WebContentsView | null = null;
 
 let clickThrough = false;
-let compactRestoreBounds: ViewBounds | null = null;
 let compactPreviousTop = false;
 let compactActive = false;
 let trayConcealed = false;
-let immersiveRestoreBounds: ViewBounds | null = null;
 let immersiveActive = false;
 let onlineVolume = .72;
 let onlineMuted = false;
@@ -282,28 +281,23 @@ function loadWindowState(): WindowState {
   }
 }
 
-// Last bounds of the window while it floated normally. Electron's own restore
-// rectangle for this transparent thickFrame:false window is lost when HTML
-// fullscreen is entered while maximized (see restorableNormalBounds).
-let lastNormalBounds: ViewBounds | undefined;
+// Floating, maximized, fullscreen, HTML fullscreen, compact, immersive and tray
+// geometry for the main window: what to remember and what to restore.
+const windowState = new WindowStateMachine();
 
-function rememberNormalBounds() {
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized() || mainWindow.isMaximized()
-    || mainWindow.isFullScreen() || compactActive || immersiveActive || trayConcealed) return;
-  const bounds = mainWindow.getBounds();
-  if (!fillsDisplay(bounds, screen.getDisplayMatching(bounds))) lastNormalBounds = { ...bounds };
-}
-
-/** Bounds to restore to, valid even when Electron's restore rectangle was overwritten. */
-function windowNormalBounds(window: BrowserWindow): ViewBounds {
-  const reported = (window.isMaximized() || window.isFullScreen()) ? window.getNormalBounds() : window.getBounds();
-  return restorableNormalBounds(reported, screen.getDisplayMatching(window.getBounds()), lastNormalBounds);
+function windowSnapshot(window: BrowserWindow): WindowSnapshot {
+  const bounds = window.getBounds();
+  return {
+    bounds, normalBounds: window.getNormalBounds(), display: screen.getDisplayMatching(bounds),
+    minimized: window.isMinimized(), maximized: window.isMaximized(), fullScreen: window.isFullScreen(),
+    concealed: trayConcealed, compact: compactActive, immersive: immersiveActive
+  };
 }
 
 /** Maximize, or restore to real floating bounds (titlebar button and caption double-click). */
 function toggleMaximize(window: BrowserWindow) {
   if (!window.isMaximized()) { window.maximize(); return; }
-  const restore = windowNormalBounds(window);
+  const restore = windowState.restoreBounds(windowSnapshot(window));
   window.unmaximize();
   // unmaximize() resized to the overwritten rectangle and the window still fills the screen.
   if (window.isMaximized()) window.setBounds(restore, false);
@@ -437,7 +431,6 @@ function syncWindowFit(clamp = false, restoreSize = false) {
 function createWindow() {
   const saved = loadWindowState();
   preferredNormalSize={width:saved.width,height:saved.height};
-  lastNormalBounds = undefined;
   const workArea = screen.getDisplayMatching(saved).workArea;
   Object.assign(saved,fitWindowBounds(saved,workArea));
   rendererAcceptsExternalFiles = false;
@@ -483,8 +476,6 @@ function createWindow() {
   // A cancelled pointer gesture must never survive focus, mode or renderer changes.
   mainWindow.on("blur", () => windowResize.end());
   mainWindow.on("minimize", () => windowResize.end());
-  mainWindow.on("maximize", () => windowResize.end());
-  mainWindow.on("unmaximize", () => windowResize.end());
   mainWindow.on("close", () => windowResize.end());
   mainWindow.on("closed", () => windowResize.end());
   mainWindow.webContents.on("did-start-loading", () => windowResize.end());
@@ -495,8 +486,6 @@ function createWindow() {
     try { refreshWindowOutline(); }
     catch (error) { writeLog("WINDOW", `Window outline update failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
-  mainWindow.on("maximize", syncWindowOutline);
-  mainWindow.on("unmaximize", syncWindowOutline);
   mainWindow.on("enter-full-screen", syncWindowOutline);
   mainWindow.on("leave-full-screen", syncWindowOutline);
   mainWindow.on("restore", syncWindowOutline);
@@ -515,7 +504,8 @@ function createWindow() {
   });
   if (devUrl) mainWindow.loadURL(devUrl);
   else mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
-  rememberNormalBounds();
+  windowState.reset(windowSnapshot(mainWindow));
+  windowState.observe(windowSnapshot(mainWindow));
   if (saved.maximized) mainWindow.maximize();
   let saveTimer: NodeJS.Timeout | undefined;
   const saveWindowState = () => {
@@ -525,16 +515,36 @@ function createWindow() {
     if (!desktopPreferences.get().preferences.rememberWindowState) return;
     saveTimer = setTimeout(() => {
       if (!mainWindow || !desktopPreferences.get().preferences.rememberWindowState) return;
-      const bounds = compactActive && compactRestoreBounds
-        ? compactRestoreBounds
-        : immersiveActive && immersiveRestoreBounds
-          ? immersiveRestoreBounds
-          : windowNormalBounds(mainWindow);
-      fs.writeFileSync(windowStatePath(), JSON.stringify({ ...bounds, maximized: mainWindow.isMaximized() }));
+      fs.writeFileSync(windowStatePath(), JSON.stringify(windowState.persisted(windowSnapshot(mainWindow))));
     }, 180);
   };
+  const refreshMaximizedAppearance = (maximized: boolean) => {
+    mainWindow?.webContents.send("window:maximized-state", maximized);
+    setWindowGlass(currentWindowGlass);
+  };
+  // Electron fires no maximize/unmaximize event when the emulated state changes
+  // through setBounds (restoring overwritten bounds, a manual resize or snap),
+  // and HTML fullscreen (library preview) reports neither state, so the
+  // square/rounded contour and the titlebar icon follow the real size.
+  const observeWindow = () => {
+    if (!mainWindow) return;
+    const { filling, changed } = windowState.observe(windowSnapshot(mainWindow));
+    if (!changed) return;
+    syncWindowOutline();
+    refreshMaximizedAppearance(filling);
+  };
+  const maximizedChanged = (maximized: boolean) => {
+    windowResize.end();
+    syncWindowOutline();
+    saveWindowState();
+    refreshMaximizedAppearance(maximized);
+    scheduleOnlineBoundsResync();
+    if (mainWindow) windowState.observe(windowSnapshot(mainWindow));
+  };
+  mainWindow.on("maximize", () => maximizedChanged(true));
+  mainWindow.on("unmaximize", () => maximizedChanged(false));
   mainWindow.on("resize", () => {
-    rememberNormalBounds();
+    observeWindow();
     syncWindowFit();
     saveWindowState();
     scheduleOnlineBoundsResync();
@@ -548,7 +558,7 @@ function createWindow() {
     // moves the HWND beneath the cursor and makes it stick to the new edge.
     // Only display topology changes (below) are allowed to reposition it.
     if (changed) syncWindowFit();
-    rememberNormalBounds();
+    observeWindow();
     saveWindowState();
   });
   const displayChanged = () => syncWindowFit(true,true);
@@ -559,28 +569,6 @@ function createWindow() {
     windowFitTimer=undefined;
     screen.removeListener("display-metrics-changed",displayChanged);
     screen.removeListener("display-removed",displayChanged);
-  });
-  mainWindow.on("maximize", saveWindowState);
-  mainWindow.on("unmaximize", saveWindowState);
-  const refreshMaximizedAppearance = (maximized: boolean) => {
-    mainWindow?.webContents.send("window:maximized-state", maximized);
-    setWindowGlass(currentWindowGlass);
-  };
-  mainWindow.on("maximize", () => { refreshMaximizedAppearance(true); scheduleOnlineBoundsResync(); });
-  mainWindow.on("unmaximize", () => { refreshMaximizedAppearance(false); scheduleOnlineBoundsResync(); });
-  // Electron fires no maximize/unmaximize event when the emulated state changes
-  // through setBounds (restoring overwritten bounds, a manual resize or snap),
-  // so the square/rounded contour and the titlebar icon follow the real size.
-  let screenFilling = mainWindow.isMaximized();
-  mainWindow.on("resize", () => {
-    if (!mainWindow) return;
-    const bounds = mainWindow.getBounds();
-    // HTML fullscreen (library preview) reports neither maximized nor fullscreen.
-    const filling = mainWindow.isMaximized() || mainWindow.isFullScreen() || fillsDisplay(bounds, screen.getDisplayMatching(bounds));
-    if (filling === screenFilling) return;
-    screenFilling = filling;
-    syncWindowOutline();
-    refreshMaximizedAppearance(filling);
   });
   const emitPresentationState = () => mainWindow?.webContents.send("window:presentation-state", {
     minimized: Boolean(mainWindow?.isMinimized()),
@@ -612,7 +600,7 @@ function createWindow() {
     if (!mainWindow) return;
     // Fit the whole interface in DIP space, without applying Windows DPI twice.
     syncWindowFit(true);
-    mainWindow.webContents.send("window:maximized-state", mainWindow.isMaximized());
+    mainWindow.webContents.send("window:maximized-state", windowState.fillsScreen);
     emitPresentationState();
     setWindowGlass(currentWindowGlass);
   });
@@ -620,12 +608,7 @@ function createWindow() {
   mainWindow.on("close", () => {
     if (saveTimer) clearTimeout(saveTimer);
     if (!mainWindow || !desktopPreferences.get().preferences.rememberWindowState) return;
-    const bounds = compactActive && compactRestoreBounds
-      ? compactRestoreBounds
-      : immersiveActive && immersiveRestoreBounds
-        ? immersiveRestoreBounds
-        : windowNormalBounds(mainWindow);
-    fs.writeFileSync(windowStatePath(), JSON.stringify({ ...bounds, maximized: (compactActive ? false : mainWindow.isMaximized()) }));
+    fs.writeFileSync(windowStatePath(), JSON.stringify(windowState.persisted(windowSnapshot(mainWindow))));
   });
 }
 
@@ -1206,8 +1189,8 @@ app.whenReady().then(async () => {
     windowResize.end();
     if (!mainWindow) return;
     if (enabled && !immersiveActive) {
+      windowState.enterMode("immersive", windowSnapshot(mainWindow));
       immersiveActive = true;
-      immersiveRestoreBounds = windowNormalBounds(mainWindow);
       mainWindow.setMinimumSize(640, 360);
       syncWindowFit();
       return;
@@ -1215,8 +1198,8 @@ app.whenReady().then(async () => {
     if (!enabled && immersiveActive) {
       immersiveActive = false;
       mainWindow.setMinimumSize(640, 400);
-      if (!mainWindow.isMaximized() && immersiveRestoreBounds) mainWindow.setBounds(immersiveRestoreBounds, true);
-      immersiveRestoreBounds = null;
+      const restore = windowState.leaveMode("immersive");
+      if (!mainWindow.isMaximized() && restore) mainWindow.setBounds(restore, true);
       syncWindowFit(true);
     }
   });
@@ -1629,8 +1612,8 @@ app.whenReady().then(async () => {
     windowResize.end();
     if (!mainWindow) return;
     if (enabled) {
+      windowState.enterMode("compact", windowSnapshot(mainWindow));
       compactActive = true;
-      compactRestoreBounds = windowNormalBounds(mainWindow);
       compactPreviousTop = mainWindow.isAlwaysOnTop();
       if (mainWindow.isMaximized()) mainWindow.unmaximize();
       mainWindow.setMinimumSize(380, 110);
@@ -1643,9 +1626,9 @@ app.whenReady().then(async () => {
       compactActive = false;
       mainWindow.setResizable(true);
       mainWindow.setMinimumSize(640, 400);
-      if (compactRestoreBounds) mainWindow.setBounds(compactRestoreBounds, true);
+      const restore = windowState.leaveMode("compact");
+      if (restore) mainWindow.setBounds(restore, true);
       mainWindow.setAlwaysOnTop(compactPreviousTop);
-      compactRestoreBounds = null;
     }
     syncWindowFit(true);
   });

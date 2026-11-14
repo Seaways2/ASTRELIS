@@ -1,3 +1,4 @@
+const { ffmpeg: ffmpegExecutable } = require("./helpers/ffmpeg.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -162,7 +163,7 @@ test("bundled FFmpeg streams a real WAV into the fixed-size peak response", asyn
   wave.writeUInt16LE(4, 32); wave.writeUInt16LE(32, 34); wave.write("data", 36); wave.writeUInt32LE(frames * 4, 40);
   for (let frame = 0; frame < frames; frame++) wave.writeFloatLE(frame < frames / 2 ? 0 : Math.sin(frame * Math.PI / 40), 44 + frame * 4);
   fs.writeFileSync(source, wave);
-  const executable = path.resolve(__dirname, "../../ffmpeg/ffmpeg.exe");
+  const executable = ffmpegExecutable;
   const values = await streamWaveform(executable, source, 1, new AbortController().signal);
   assert.equal(values.length, 720); assert.equal(values[0], 0); assert.ok(values.at(-1) > 0.8);
   await assert.rejects(streamWaveform(path.join(path.dirname(source), "missing.exe"), source, 1, new AbortController().signal));

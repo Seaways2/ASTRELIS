@@ -1,3 +1,4 @@
+const { ffmpeg: ffmpegExecutable } = require("./helpers/ffmpeg.cjs");
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,7 +8,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { DirectAudioCache, directFormatFromReport, validateDirectFile } = require('../../dist-electron/library/media/DirectAudioCache');
 const exec = promisify(execFile);
-const ffmpeg = path.resolve(__dirname, '../../ffmpeg/ffmpeg.exe');
+const ffmpeg = ffmpegExecutable;
 const report = text => 'Stream #0:0: Audio: ' + text;
 
 test('direct policy preserves precision/layout and rejects unsupported HD/DSD rather than dropping extensions', () => {

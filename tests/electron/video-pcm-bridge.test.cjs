@@ -1,10 +1,11 @@
+const { ffmpeg: ffmpegExecutable } = require("./helpers/ffmpeg.cjs");
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {execFileSync}=require('node:child_process');
 const {VideoPcmBridge,videoPcmArguments}=require('../../dist-electron/videoPcmBridge.js');
 const {videoArguments,VideoPlayer}=require('../../dist-electron/videoPlayer.js');
-const root=path.resolve(__dirname,'../..'),ffmpeg=path.join(root,'ffmpeg/ffmpeg.exe');
+const root=path.resolve(__dirname,'../..'),ffmpeg=ffmpegExecutable;
 
 test('video rack isolates mpv output and rejects encoded passthrough',async()=>{
   const args=videoArguments('pipe',false,'log',undefined,true);

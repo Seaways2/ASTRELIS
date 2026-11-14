@@ -1,3 +1,4 @@
+const { ffmpeg: ffmpegExecutable } = require("./helpers/ffmpeg.cjs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -83,7 +84,7 @@ test("the actual FFmpeg float-WAV output passes cache completion validation", as
   fs.writeFileSync(source, wave());
   const execute = require("node:util").promisify(require("node:child_process").execFile);
   const cache = new DecodedAudioCache(path.join(directory, "decoded"), (_source, output) => execute(
-    path.resolve(__dirname, "../../ffmpeg/ffmpeg.exe"), ["-v", "error", "-nostdin", "-y", "-i", _source,
+    ffmpegExecutable, ["-v", "error", "-nostdin", "-y", "-i", _source,
       "-map", "0:a:0", "-c:a", "pcm_f32le", "-rf64", "auto", "-f", "wav", output],
     { windowsHide: true, timeout: 5000 }));
   const output = await cache.prepare(source);

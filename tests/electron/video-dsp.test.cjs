@@ -1,3 +1,4 @@
+const { ffmpeg: ffmpegExecutable } = require("./helpers/ffmpeg.cjs");
 const {test}=require('node:test');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {spawnSync}=require('node:child_process');
@@ -14,7 +15,7 @@ test('DSP validation, passthrough and legacy settings migration',()=>{
 });
 function render(input, channels, dsp, rate=48000) {
  const f=videoDspFilter(dsp,false,2),graph=f.slice(f.indexOf('[')+1,-1);
- const r=spawnSync(path.resolve('ffmpeg/ffmpeg.exe'),['-v','error','-f','f32le','-ar',String(rate),'-ac',String(channels),'-i','pipe:0','-af',graph,'-f','f32le','pipe:1'],{input,maxBuffer:8*1024*1024});
+ const r=spawnSync(ffmpegExecutable,['-v','error','-f','f32le','-ar',String(rate),'-ac',String(channels),'-i','pipe:0','-af',graph,'-f','f32le','pipe:1'],{input,maxBuffer:8*1024*1024});
  assert.equal(r.status,0,r.stderr.toString());assert.equal(r.stdout.length,input.length/channels*2);return r.stdout;
 }
 function signal(channels, sample, rate=48000) {

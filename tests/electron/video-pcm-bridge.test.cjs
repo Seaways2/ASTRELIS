@@ -20,12 +20,15 @@ test('video rack isolates mpv output and rejects encoded passthrough',async()=>{
 test('ffmpeg stereo packets reach the native PCM contract; stop and restart discard the old stream',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'astrelis-video-pcm-'));
   const file=path.join(dir,'测试 音频.wav'),commands=[],packets=[],failures=[];
-  let startedAt=Date.now(),sessionPackets=0,sessionCount=0;
+  let startedAt=Date.now(),sessionPackets=0,sessionCount=0,lastConsumedFrames=0;
   execFileSync(ffmpeg,['-y','-v','error','-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-ac','2',file],{windowsHide:true});
   const bridge=new VideoPcmBridge(ffmpeg,async command=>{
     commands.push(command);
     if(command.type==='pcm-start'){startedAt=Date.now();sessionPackets=0;sessionCount++;}
-    if(command.type==='status')return {ok:true,captureConsumedFrames:Math.min(sessionPackets*1024,Math.floor((Date.now()-startedAt)*48)),pluginLatencySamples:sessionCount===2?4800:0,sampleRate:48000};
+    if(command.type==='status'){
+      lastConsumedFrames=Math.min(sessionPackets*1024,Math.floor((Date.now()-startedAt)*48));
+      return {ok:true,captureConsumedFrames:lastConsumedFrames,pluginLatencySamples:sessionCount===2?4800:0,sampleRate:48000};
+    }
     return {ok:true};
   },packet=>{
     assert.equal(packet.sampleRate,48000);assert.equal(packet.channels,2);assert.equal(packet.frames,1024);
@@ -53,7 +56,10 @@ test('ffmpeg stereo packets reach the native PCM contract; stop and restart disc
     await bridge.stop();assert.equal(bridge.running,false);
     const firstSession=packets[0].mediaSessionId;
     await bridge.start(file,0,1.5,0.7);
-    assert.ok(bridge.clock>=1.5&&bridge.clock<1.7,`VST latency compensated clock: ${bridge.clock}`);
+    // The clock is start + consumed audio - plugin latency (4800 samples = 0.1 s). How much audio the
+    // fake host has consumed by now depends on machine load, so compare against what it reported.
+    const expectedClock=1.5+lastConsumedFrames/48000-0.1;
+    assert.ok(Math.abs(bridge.clock-expectedClock)<1e-6&&bridge.clock>=1.5,`VST latency compensated clock: ${bridge.clock}, expected ${expectedClock}`);
     assert.ok(packets.some(packet=>packet.mediaSessionId!==firstSession&&packet.sequence===1));
     await bridge.stop();assert.equal(failures.length,0);
     assert.equal(commands.filter(command=>command.type==='pcm-stop').length,2);

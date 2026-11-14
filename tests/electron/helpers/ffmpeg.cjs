@@ -12,14 +12,14 @@ function findFfmpeg() {
   const candidates = [
     process.env.ASTRELIS_FFMPEG,
     path.join(root, "ffmpeg", "ffmpeg.exe"),
-    "C:\Program Files\ffmpeg\bin\ffmpeg.exe"
+    path.join(process.env.ProgramFiles || "C:/Program Files", "ffmpeg", "bin", "ffmpeg.exe")
   ].filter(Boolean);
   const found = candidates.find(candidate => fs.existsSync(candidate));
   if (found) return found;
   const probe = spawnSync(process.platform === "win32" ? "where" : "which", ["ffmpeg"], { encoding: "utf8" });
   const fromPath = probe.status === 0 ? probe.stdout.split(/\r?\n/).find(Boolean) : undefined;
   if (fromPath) return fromPath.trim();
-  throw new Error("FFmpeg not found: put ffmpeg.exe in ffmpeg/, install it under C:\Program Files\ffmpeg\bin, add it to PATH or set ASTRELIS_FFMPEG");
+  throw new Error("FFmpeg not found: put ffmpeg.exe in ffmpeg/, install it under C:/Program Files/ffmpeg/bin, add it to PATH or set ASTRELIS_FFMPEG");
 }
 
 module.exports = { ffmpeg: findFfmpeg() };

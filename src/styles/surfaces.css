@@ -81,7 +81,6 @@
   --surface-glass-fill: rgba(238, 246, 249, .86);
 }
 /* A grouping container is not a second sheet of glass. */
-.app-shell:not(.obs-mode):not(.immersive-mode) .settings-list,
 .app-shell:not(.obs-mode):not(.immersive-mode) :is(.panel, .setting-card, .device-card, .theme-card, .settings-list > label, .appearance-controls > label, .appearance-animation-module, .gpu-render-module, .atmosphere-settings, .playlist-table, .library-command, .library-summary > div, .library-stat, .library-search, .library-card, .library-entry, .folder-card, .online-browser, .vst-browser, .vst-chain, .channel-strip-popover) :is(.panel, .setting-card, .device-card, .theme-card, .settings-list > label, .appearance-controls > label, .appearance-animation-module, .gpu-render-module, .atmosphere-settings, .playlist-table, .library-command, .library-summary > div, .library-stat, .library-search, .library-card, .library-entry, .folder-card, .online-browser, .vst-browser, .vst-chain, .channel-strip-popover) {
   background: transparent;
   box-shadow: none;

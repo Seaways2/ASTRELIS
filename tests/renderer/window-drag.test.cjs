@@ -21,8 +21,12 @@ test('resize bridge transmits intent only and handles lost capture and released 
   assert.match(app, /onLostPointerCapture=\{\(\) => window.desktop\?\.endResize\(\)\}/);
   assert.match(app, /event.buttons & 1/);
   assert.match(main, /screen.getCursorScreenPoint\(\)/);
-  for (const event of ["blur", "minimize", "maximize", "unmaximize", "close", "closed"])
+  for (const event of ["blur", "minimize", "close", "closed"])
     assert.ok(main.includes(`mainWindow.on("${event}", () => windowResize.end())`));
+  // Maximize and restore end a gesture inside their shared handler.
+  assert.match(main, /const maximizedChanged = \(maximized: boolean\) => \{\s*windowResize\.end\(\);/);
+  assert.match(main, /mainWindow\.on\("maximize", \(\) => maximizedChanged\(true\)\);/);
+  assert.match(main, /mainWindow\.on\("unmaximize", \(\) => maximizedChanged\(false\)\);/);
   assert.match(main, /render-process-gone/);
 });
 

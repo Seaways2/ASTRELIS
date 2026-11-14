@@ -118,7 +118,7 @@ async function main() {
       atmosphere.getState().update({ glassEdges: mode !== 'off', intensity: mode === 'off' ? 0 : .3 });
     }, theme, mode);
     await pause(200);
-    for (const [page, selector] of [['appearance', '.appearance-section.panel'], ['settings', '.settings-list > label'], ['playlist', '.playlist-table'], ['nowPlaying', '.cd-deck.panel']]) {
+    for (const [page, selector] of [['appearance', '.appearance-section.panel'], ['settings', '.settings-section.panel'], ['playlist', '.playlist-table'], ['nowPlaying', '.cd-deck.panel']]) {
       await goPage(page, selector);
       await evaluate(() => document.querySelector('.volume-popover-trigger').click());
       await waitFor(() => !!document.querySelector('.channel-strip-popover'), 'ChannelStrip open');

@@ -102,9 +102,6 @@
    share the secondary row. Advanced explanations remain available on demand. */
 .device-page-grid { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; padding-bottom: 20px; }
 .device-page-grid .unified-output-config { grid-column: 1 / -1; gap: 20px; }
-.chromium-device-setting label { font-size: 13px; font-weight: 600; }
-.chromium-device-setting small { display: block; margin-top: 6px; color: var(--module-muted); font-size: 12px; line-height: 1.65; }
-.chromium-device-setting .error-text { grid-column: 1 / -1; }
 .device-page-grid .native-output-overview { grid-column: 1 / -1; gap: 16px; }
 .device-page-grid .unified-output-section { border: 0; padding-top: 0; grid-template-columns: minmax(160px,.65fr) minmax(0,1.35fr); }
 .device-page-grid .native-advanced-settings { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 20px; }
@@ -192,7 +189,6 @@
 .app-shell .library-header .library-command { min-height: 44px; padding: 0; gap: 12px; margin: 0; }
 .app-shell .library-header .library-command h3 { margin: 0 0 2px; font-size: 14px; }
 .app-shell .library-header .library-command p { margin: 0; }
-.app-shell .library-header .library-telemetry { margin: 10px 0; gap: 8px; }
 .app-shell .library-header .library-stat { padding: 4px 8px; gap: 7px; }
 .app-shell .library-header .library-stat > div { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
 .app-shell .library-header .library-stat b { font-size: 14px; }
@@ -203,7 +199,6 @@
 .app-shell .library-header .library-view-toolbar { gap: 8px; }
 @media (max-width: 1100px) {
   .app-shell .library-header .library-controls { grid-template-columns: minmax(0,1fr); }
-  .app-shell .library-header .library-telemetry { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
 
 /* Library results stay visually static while the surrounding workspace reacts. */
@@ -251,8 +246,6 @@
 .app-shell .library-header .library-command .library-pulse { width: 28px; height: 28px; }
 .app-shell .library-header .library-command h3 { font-size: 12px; }
 .app-shell .library-header .library-command p { font-size: 10px; line-height: 1.2; }
-.library-statistics { margin: 2px 0 4px 36px; color: var(--module-muted); font-size: 11px; }
-.library-statistics summary { cursor: pointer; width: fit-content; }
 .app-shell .library-header .library-browse { padding-top: 6px; gap: 6px; }
 .app-shell .library-header .library-controls { grid-template-columns: minmax(160px,1fr) auto; gap: 8px; }
 .app-shell .library-header .library-search { height: 34px; }

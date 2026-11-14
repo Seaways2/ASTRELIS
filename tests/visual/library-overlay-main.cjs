@@ -42,9 +42,12 @@ const openMenu=async()=>{await toolsOpen();await click('.library-management .lib
   await openMenu();await click('.library-management .icon-action');await until(()=>js(`!document.querySelector('.scan-action').disabled`),'rescan');
   await openMenu();await click('.library-batch-trigger');await until(()=>js(`Boolean(document.querySelector('.batch-match-dialog,.music-match-dialog'))`),'batch');
   await click('.batch-match-dialog header button, .music-match-dialog header button');
+  // Cover flow has no sort menu; the grid views keep it.
+  if (view !== 'flow') {
   await toolsOpen();await click('.library-sort-controls .library-menu-trigger');await click('.library-sort-controls .library-menu-popup button');
   await js(`document.querySelector('.library-sort-controls .library-menu-popup').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
   assert.equal(await js(`document.querySelector('.library-sort-controls .library-menu-popup').matches(':popover-open')`),false);
+  }
   fs.writeFileSync(path.join(profile,'overlay-'+view+'-'+w+'.png'),(await win.webContents.capturePage()).toPNG());
  }
  console.log('PASS: populated library, six roots, real mouse hit targets, folder modal, rescan/batch/sort, equal button sizes, flow/grid/list');app.exit(0);

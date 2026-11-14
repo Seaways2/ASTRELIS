@@ -679,10 +679,11 @@ export const MusicLibrary = memo(function MusicLibrary() {
       <div className="facet-tabs">{facets.filter(item => previewFullscreen ? item === "文件夹" || item === "收藏" : mediaFilter !== "video" || item === "文件夹" || item === "收藏").map(item => <button className={facet === item ? "active" : ""} key={item} onClick={() => { setFacet(item); setValue("全部"); setCategoryId(""); if (item !== "文件夹") setFolderPath(""); }}>{item === "文件夹" ? <FolderOpen /> : item === "收藏" ? <Heart /> : item === "艺术家" ? <UserRound /> : <Album />}<span>{t(`library.${facetTranslationKey(item)}`)}</span></button>)}</div>
       <LibrarySelect className="library-view-select" label={t("library.viewMode")} value={libraryView} options={libraryViews.map(view => ({ value: view.id, label: t(view.labelKey) }))} onChange={setLibraryView} />
       <button type="button" className="library-mosaic-preview-toggle" title={t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")} aria-label={t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")} aria-pressed={previewFullscreen} onClick={() => void toggleMosaicFullscreen()}>{previewFullscreen ? <X /> : <Expand />}<span>{t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")}</span></button>
-      <LibraryMenu className="library-sort-controls" label={`${t("library.sort" + librarySort[0].toUpperCase() + librarySort.slice(1))} ${sortAscending ? "↑" : "↓"}`}>
+      {/* Cover flow browses by position; the sort menu only matters in the grid views. */}
+      {libraryView !== "flow" && <LibraryMenu className="library-sort-controls" label={`${t("library.sort" + librarySort[0].toUpperCase() + librarySort.slice(1))} ${sortAscending ? "↑" : "↓"}`}>
         {["title", "artist", "album", "format", "size"].map(sort => <button key={sort} aria-pressed={librarySort === sort} onClick={() => setLibrarySort(sort as LibrarySort)}>{t("library.sort" + sort[0].toUpperCase() + sort.slice(1))}</button>)}
         <button className="library-sort-direction" onClick={toggleSortDirection}><ArrowUpDown />{t(sortAscending ? "library.sortAscending" : "library.sortDescending")}</button>
-      </LibraryMenu>
+      </LibraryMenu>}
       {previewFullscreen && (libraryView === "mosaic" || libraryView === "flow") && <label className="library-preview-zoom" title={t("library.zoom")}>
         <ZoomOut aria-hidden="true" />
         <input type="range" min={MIN_PREVIEW_ZOOM * 100} max={100} step={5} value={Math.round(previewZoom * 100)} aria-label={t("library.zoom")} onChange={event => updatePreviewZoom(Number(event.target.value))} />

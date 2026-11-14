@@ -90,3 +90,8 @@ test("settings use compact, aligned rows and fill wide windows", () => {
   assert.doesNotMatch(read("src/components/AtmosphereSettings.tsx"), /atmosphere-note/);
   assert.match(read("src/components/WorkspacePage.tsx"), /hint=\{t\("fx\.motionHint"\)\}/);
 });
+
+test("cover flow hides the sort menu", () => {
+  const library = read("src/components/MusicLibrary.tsx");
+  assert.match(library, /\{libraryView !== "flow" && <LibraryMenu className="library-sort-controls"/);
+});

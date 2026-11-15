@@ -147,10 +147,9 @@ test("Galaxy Spiral adds crisp jewel stars, coloured stars, glints and core diff
   assert.match(canvas, /layerContext\.globalAlpha = \(jewel \? \.9 : brightNode \? \.34/);
   // Live stars are drawn per colour group, four fill-style changes per frame.
   assert.match(canvas, /galaxyLiveStarGroups\.forEach\(group => \{ context\.fillStyle = group\.color;/);
-  assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0 : 14;/);
-  // The strongest glints win, and each fades in from the threshold.
-  assert.match(canvas, /if \(glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0\)/);
-  assert.match(canvas, /glints\.sort\(\(a, b\) => b\.strength - a\.strength\);\s*glints\.length = glintLimit;/);
-  assert.match(canvas, /const visibility = Math\.min\(1, \(glint\.strength - GLINT_THRESHOLD\) \/ \(1 - GLINT_THRESHOLD\)\);/);
+  assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0 : mode === "waveform" \? 14 :/);
+  // Stars are offered per frame; the shared drawGlints keeps eased states.
+  assert.match(canvas, /if \(glintLimit && galaxyGlow > 0 && offersGlint\(star, glintStrength\)\)/);
+  assert.match(canvas, /drawGlints\(glints, galaxyGlow, deltaSeconds\);/);
   assert.match(canvas, /const spikeLength = coreRadius \* \(3\.6 \+ galaxyLow \* 1\.6 \+ galaxySceneFlash \* 2\.4\) \* \(\.7 \+ galaxyGlow \* \.3\);/);
 });

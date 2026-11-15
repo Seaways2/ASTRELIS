@@ -164,8 +164,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   z-index: 6;
   grid-row: 1;
   top: 50%;
-  width: 18px;
-  height: 140px;
+  width: 28px;
+  height: 220px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -177,8 +177,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   filter: drop-shadow(0 0 calc(4px * var(--glow-strength, 1)) color-mix(in srgb, var(--accent) 55%, transparent));
   transition: opacity .18s ease;
 }
-.meter-edge-toggle.expanded { grid-column: 3; left: -9px; }
-.meter-edge-toggle.collapsed { grid-column: 2; right: 0; }
+.meter-edge-toggle.expanded { grid-column: 3; left: -14px; }
+/* Folded, the triangle sits a little in from the edge, inside its wider strip. */
+.meter-edge-toggle.collapsed { grid-column: 2; right: 0; place-items: center end; padding-right: 7px; }
 .meter-edge-toggle i {
   width: 8px;
   height: 14px;

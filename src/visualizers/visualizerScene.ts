@@ -97,8 +97,7 @@ export function createVisualizerScene(
   type GalaxyTint = "warm" | "ice" | "accent";
   const galaxyTints: readonly GalaxyTint[] = ["warm", "ice", "accent"];
   // Old warm stars crowd the inner disk; young blue-white ones light the arms.
-  const pickGalaxyTint = (normalizedRadius: number): GalaxyTint => {
-    const roll = Math.random();
+  const pickGalaxyTint = (normalizedRadius: number, roll = Math.random()): GalaxyTint => {
     const warmShare = Math.max(0, Math.min(.6, 1 - normalizedRadius * 2.2));
     if (roll < warmShare) return "warm";
     const rest = (roll - warmShare) / Math.max(.001, 1 - warmShare);
@@ -212,24 +211,34 @@ export function createVisualizerScene(
   const starTintColors: Record<StarTint, string> = {
     warm: rgba(palette.warm, 1), ice: rgba(palette.ice, 1), accent, jewel: rgba(palette.nebula, 1)
   };
-  const fieldTints = particles.map((star): StarTint => {
-    if (mode === "pulse") {
-      const radius = Math.hypot(star.x / 1.1, star.y / .725);
-      return radius > .45 && Math.random() < .02 ? "jewel" : pickGalaxyTint(radius * .85);
-    }
-    const roll = Math.random();
-    return roll < .03 ? "jewel" : roll < .23 ? "warm" : roll < .55 ? "accent" : "ice";
-  });
-  const moteTints = coreMotes.map((mote): StarTint => mote.radius < .72
-    ? (Math.random() < .65 ? "warm" : "accent")
-    : (Math.random() < .6 ? "accent" : "ice"));
+  const tintedField = mode === "particles" || mode === "pulse";
+  // Fixed per star, so a black-hole star keeps its colour when the window
+  // (and with it the star's distance from the hole) changes size.
+  const fieldRolls = tintedField ? particles.map(() => [Math.random(), Math.random()] as const) : [];
   // Drawn one colour at a time, like the galaxy's live stars.
-  const fieldTintGroups = starTints.map(tint => ({
-    tint, color: starTintColors[tint], stars: particles.filter((_, index) => fieldTints[index] === tint)
-  }));
-  const moteTintGroups = starTints.map(tint => ({
-    tint, color: starTintColors[tint], motes: coreMotes.filter((_, index) => moteTints[index] === tint)
-  }));
+  const fieldTintGroups = starTints.map(tint => ({ tint, color: starTintColors[tint], stars: [] as typeof particles }));
+  const assignFieldTints = () => {
+    fieldTintGroups.forEach(group => { group.stars.length = 0; });
+    // Measured against the black hole's orbit as drawn, so the warm zone hugs
+    // the hole at any window shape; it fades out about 1.3 orbits out.
+    const warmReach = Math.max(1, Math.min(size.width, size.height) * .35 * (.72 + settings.lineWidth * .19) * 2.8);
+    fieldRolls.forEach(([jewelRoll, tintRoll], index) => {
+      const star = particles[index];
+      let tint: StarTint;
+      if (mode === "pulse") {
+        const radius = Math.hypot(star.x * size.width * .46, star.y * size.height * .66) / warmReach;
+        tint = radius > .45 && jewelRoll < .02 ? "jewel" : pickGalaxyTint(radius, tintRoll);
+      } else tint = tintRoll < .03 ? "jewel" : tintRoll < .23 ? "warm" : tintRoll < .55 ? "accent" : "ice";
+      fieldTintGroups[starTints.indexOf(tint)].stars.push(star);
+    });
+  };
+  const moteTintGroups = starTints.map(tint => ({ tint, color: starTintColors[tint], motes: [] as typeof coreMotes }));
+  if (mode === "pulse") coreMotes.forEach(mote => {
+    const tint: StarTint = mote.radius < .72
+      ? (Math.random() < .65 ? "warm" : "accent")
+      : (Math.random() < .6 ? "accent" : "ice");
+    moteTintGroups[starTints.indexOf(tint)].motes.push(mote);
+  });
   const galaxyLayers = Array.from({ length: 3 }, createLayer);
   const galaxyFogLayer = createLayer();
   let galaxyLayerSize = 0;
@@ -411,6 +420,7 @@ export function createVisualizerScene(
     });
   };
 
+  let fieldTintsAssigned = false;
   const resize = (next: VisualizerLayout) => {
     layout = next;
     size.width = next.width;
@@ -419,6 +429,7 @@ export function createVisualizerScene(
     if (canvas.width !== size.width) canvas.width = size.width;
     if (canvas.height !== size.height) canvas.height = size.height;
     if (changed || galaxyLayerSize === 0) rebuildGalaxyLayers();
+    if (changed || !fieldTintsAssigned) { assignFieldTints(); fieldTintsAssigned = true; }
   };
 
   const draw = (now: number, audio: VisualizerAudioSource) => {

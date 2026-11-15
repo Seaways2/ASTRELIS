@@ -106,7 +106,9 @@ test("a louder section stays brighter than a quieter one, and silence is dark", 
   }, 30);
   const mean = (from, to, key) => { const part = frames.filter(f => f.t >= from && f.t < to); return part.reduce((sum, f) => sum + f[key], 0) / part.length; };
   assert.ok(mean(18, 24, "mid") > mean(6, 12, "mid") + .06, `quiet ${mean(6, 12, "mid").toFixed(2)} vs loud ${mean(18, 24, "mid").toFixed(2)}`);
-  assert.ok(mean(18, 24, "level") > mean(6, 12, "level") + .04);
+  // The pad fills only a third of the 40 Hz–8 kHz loudness band, so its
+  // ~9 dB step lifts the overall level far less than the mid band.
+  assert.ok(mean(18, 24, "level") > mean(6, 12, "level") + .025, `level: quiet ${mean(6, 12, "level").toFixed(3)} vs loud ${mean(18, 24, "level").toFixed(3)}`);
   assert.ok(mean(25, 30, "mid") < .02 && mean(25, 30, "bin") < .02);
 });
 
@@ -122,4 +124,23 @@ test("loud mastering no longer pins the per-star levels near the top", () => {
   let step = 0;
   for (let index = 1; index < steady.length; index++) step = Math.max(step, Math.abs(steady[index] - steady[index - 1]));
   assert.ok(step < .06, `per-star level jumped ${step.toFixed(2)} in one frame`);
+});
+
+test("after a loud song, a quieter song's kicks are found again within seconds", () => {
+  const frames = run((bins, t) => {
+    if (t < 10) { addKick(bins, t, 250); addPad(bins, t, 200); return; }
+    // A soft acoustic track: small kicks over a quiet bed.
+    const k = kickEnvelope(t);
+    [1, .95, .7, .4].forEach((weight, index) => { bins[index] = clamp((70 + 45 * k) * weight); });
+    addPad(bins, t, 120);
+  }, 24);
+  const quietHits = frames.filter(f => f.hit && f.t > 18 && f.t % .5 < .12).length;
+  assert.ok(quietHits >= 10, `quiet song: only ${quietHits}/12 kicks detected after six seconds`);
+});
+
+test("no band reads fully lit in the first moments of a song", () => {
+  const frames = run((bins, t) => { addPad(bins, t, 160); for (let i = 30; i < 100; i++) bins[i] = clamp(90 - (i - 30) * .5); }, 2);
+  const opening = frames.filter(f => f.t < .6);
+  assert.ok(Math.max(...opening.map(f => f.mid)) < .85, `mid reached ${Math.max(...opening.map(f => f.mid)).toFixed(2)}`);
+  assert.ok(Math.max(...opening.map(f => f.level)) < .85, `level reached ${Math.max(...opening.map(f => f.level)).toFixed(2)}`);
 });

@@ -32,7 +32,7 @@ const names = {
   [palette.rgba(colours.nebula, 1)]: "jewel"
 };
 
-function fills(mode) {
+function fills(mode, width = 1600, height = 900) {
   const drawn = [];
   let circle = null;
   const state = {};
@@ -51,7 +51,7 @@ function fills(mode) {
   globalThis.Path2D = class { moveTo() {} lineTo() {} arc() {} };
   const settings = { smoothing: .76, sensitivity: 1, barCount: 90, barOpacity: 1, lineWidth: 1.5, animationSpeed: 1, decaySpeed: 1, peakHoldMs: 650, lowPerformance: false };
   const scene = createVisualizerScene({ width: 300, height: 150, getContext: () => context }, { mode, accent, settings, glowStrength: 0, playbackActive: true, backgroundBrightness: 1, backgroundOpacity: 1 });
-  scene.resize({ width: 1600, height: 900, ratio: 1, left: 0, top: 0, cssWidth: 1600, cssHeight: 900, viewportWidth: 1600, viewportHeight: 900 });
+  scene.resize({ width, height, ratio: 1, left: 0, top: 0, cssWidth: width, cssHeight: height, viewportWidth: width, viewportHeight: height });
   const silence = new Uint8Array(256);
   scene.draw(10000, { getFrequencyData: () => silence, meters: () => ({ sampleRate: 48000 }) });
   return drawn;
@@ -75,4 +75,17 @@ test("Starfield Motion spreads the galaxy palette in fixed shares", () => {
   const expected = { ice: .45, accent: .32, warm: .2, jewel: .03 };
   for (const [tint, target] of Object.entries(expected))
     assert.ok(Math.abs(share(drawn, tint) - target) < .07, `${tint}: ${(share(drawn, tint) * 100).toFixed(0)}%, expected ~${target * 100}%`);
+});
+
+test("Black Hole Pulse keeps its warm stars around the hole at any window shape", () => {
+  for (const [width, height] of [[1600, 900], [600, 1000], [1600, 500]]) {
+    const drawn = fills("pulse", width, height);
+    // The orbit the warm zone is measured against, at silence and default line width.
+    const orbit = Math.min(width, height) * .35 * (.72 + 1.5 * .19);
+    const warm = drawn.filter(star => star.tint === "warm");
+    const inside = warm.filter(star => Math.hypot(star.x - width / 2, star.y - height / 2) < orbit * 1.45).length;
+    assert.ok(warm.length > 10, `${width}x${height}: only ${warm.length} warm stars`);
+    assert.ok(inside / warm.length > .95, `${width}x${height}: ${warm.length - inside} of ${warm.length} warm stars stray beyond the hole`);
+    assert.ok(drawn.some(star => star.tint === "ice" && Math.hypot(star.x - width / 2, star.y - height / 2) > orbit * 1.5), `${width}x${height}: no cool stars outside`);
+  }
 });

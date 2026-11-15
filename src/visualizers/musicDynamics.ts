@@ -24,11 +24,13 @@ const ATTACK_WINDOW_SECONDS = .09;
 /** The flash swells in over about twice this and fades with this time constant. */
 const BEAT_SWELL_SECONDS = .045;
 const BEAT_RELEASE_SECONDS = .22;
+/** Without a beat for this long, the expected kick size starts to relax... */
+const BEAT_DROUGHT_SECONDS = 1.2;
+/** ...towards this floor, so a quieter song's kicks are found again. */
+const TYPICAL_ONSET_FLOOR = .05;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const audible = (value: number) => clamp01((value - SILENCE) / (AUDIBLE - SILENCE));
-const approach = (value: number, target: number, dt: number, seconds: number) =>
-  value + (target - value) * Math.min(1, dt / seconds);
 /** Exponential approach, the same at any frame rate. */
 const ease = (value: number, target: number, dt: number, seconds: number) =>
   value + (target - value) * (1 - Math.exp(-dt / seconds));
@@ -57,12 +59,15 @@ class RelativeLevel {
 
   update(value: number, dt: number) {
     const loudness = audible(value);
-    const relative = clamp01(.5 + (value - this.mean) * this.gain) * loudness;
     const target = loudness > 0 ? value - (value - this.typical) * this.anchor : value;
     if (this.mean < AUDIBLE && value > AUDIBLE) this.catchingUp = true;
     if (target <= this.mean || this.mean >= target * .95) this.catchingUp = false;
+    // While catching up the average still lags far behind; measured against
+    // it every band read as fully lit for the first fraction of a second.
+    const reference = this.catchingUp ? target : this.mean;
+    const relative = clamp01(.5 + (value - reference) * this.gain) * loudness;
     const seconds = target <= this.mean ? this.fallSeconds : this.catchingUp ? .25 : this.riseSeconds;
-    this.mean = approach(this.mean, target, dt, seconds);
+    this.mean = ease(this.mean, target, dt, seconds);
     return relative;
   }
 }
@@ -84,8 +89,9 @@ export class MusicDynamics {
   private readonly bins = new Float32Array(TRACKED_BINS);
   // Per-bin levels are fully relative (spectral tilt differs per song); the
   // bands keep 30% of their distance from a typical mastered level, read off
-  // the analyser's -90…-10 dB byte scale.
-  private readonly binLevels = Array.from({ length: TRACKED_BINS }, () => new RelativeLevel(3.2, 2.5, 5));
+  // the analyser's -90…-10 dB byte scale. Bin trackers are made on first use:
+  // every scene owns a MusicDynamics, but only the particle scenes update it.
+  private readonly binLevels: RelativeLevel[] = [];
   private readonly lowLevel = new RelativeLevel(3.6, 2, 4, .7, .3);
   private readonly midLevel = new RelativeLevel(4, 3, 6, .55, .3);
   private readonly highLevel = new RelativeLevel(4, 3, 6, .38, .3);
@@ -116,6 +122,7 @@ export class MusicDynamics {
     this.high = this.highLevel.update(average(2000, 8000), dt);
     this.level = this.loudness.update(average(40, 8000), dt);
     const tracked = Math.min(TRACKED_BINS, data.length);
+    while (this.binLevels.length < tracked) this.binLevels.push(new RelativeLevel(3.2, 2.5, 5));
     for (let index = 0; index < tracked; index++) {
       // A star brightens quickly with its band and fades out gently, rather
       // than flickering with every frame-to-frame wobble of the spectrum.
@@ -136,7 +143,7 @@ export class MusicDynamics {
       before += baseline * weight;
       // Rise above a short running baseline: a held note lifts the baseline
       // with it, so only a fresh attack counts.
-      this.kickBaselines[index] = approach(baseline, value, dt, .2);
+      this.kickBaselines[index] = ease(baseline, value, dt, .2);
     }
     // Sound rising out of silence is the song starting, not a kick; counting
     // it opened every song with a full-strength flash.
@@ -176,6 +183,11 @@ export class MusicDynamics {
       const decaySeconds = BEAT_RELEASE_SECONDS / Math.max(.5, Math.min(2, this.settings.decaySpeed));
       this.beatTarget *= Math.exp(-dt / decaySeconds);
     }
+    // The expected kick size only learns from detected beats. After a loud
+    // song a quieter one's kicks could stay under the threshold for good, so
+    // during a stretch without beats it relaxes towards a floor.
+    if (now - this.lastBeatAt > BEAT_DROUGHT_SECONDS)
+      this.typicalOnset = ease(this.typicalOnset, Math.min(this.typicalOnset, TYPICAL_ONSET_FLOOR), dt, 2.5);
     this.previousOnset = onset;
     // The visible flash eases towards the target: it swells over ~100 ms
     // instead of jumping in one frame, and rounds off the start of the fade.

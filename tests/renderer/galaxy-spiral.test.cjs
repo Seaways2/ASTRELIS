@@ -122,7 +122,7 @@ test("Galaxy Spiral reduces the broad fog disk and selectively lifts the existin
   assert.match(canvas, /\(\.85 - normalizedRadius\) \/ \.05/);
   assert.match(canvas, /const ridgeCenter = Math\.max\(0, 1 - Math\.abs\(armScatter\)/);
   assert.match(canvas, /const ridgeLift = 1 \+ ridgeBand \* ridgeCenter \* \.16/);
-  assert.match(canvas, /layerContext\.globalAlpha = \(brightNode \? \.34 : \.065 \+ Math\.random\(\) \* \.13\) \* ridgeLift/);
+  assert.match(canvas, /brightNode \? \.34 : \.065 \+ Math\.random\(\) \* \.13\) \* ridgeLift/);
   assert.match(canvas, /sharedBeatFlash\) \* barOpacity \* star\.ridgeLift/);
 });
 
@@ -132,22 +132,22 @@ test("Galaxy Spiral fog uses four continuous cached paths with two-axis falloff"
   assert.match(canvas, /const armPath = \(arm: number, angleOffset = 0\) => \{\s*const path = new Path2D\(\);/);
   assert.match(canvas, /for \(let sample = 0; sample <= 96; sample\+\+\)/);
   assert.match(canvas, /fogLayerContext\.lineCap = "round"/);
-  // Three tones of haze, a nebula leading edge and dust lanes cut along each arm.
-  assert.match(canvas, /\{ width: \.24, blur: \.065, color: galaxyAccent\(\.085\) \}/);
-  assert.match(canvas, /\{ width: \.14, blur: \.04, color: rgba\(palette\.analog, \.09\) \}/);
-  assert.match(canvas, /\{ width: \.05, blur: \.016, color: rgba\(palette\.ice, \.11\) \}/);
+  // Two clean tones only: a narrow accent haze and a blue-white spine. Extra
+  // hues, nebula edges and cut-out dust lanes made the arms look dirty.
+  assert.match(canvas, /\{ width: \.16, blur: \.055, color: galaxyAccent\(\.09\) \}/);
+  assert.match(canvas, /\{ width: \.045, blur: \.014, color: rgba\(palette\.ice, \.1\) \}/);
   assert.match(canvas, /fogLayerContext\.stroke\(armFogPath\)/);
-  assert.match(canvas, /fogLayerContext\.stroke\(armPath\(arm, \.11\)\)/);
-  assert.match(canvas, /fogLayerContext\.globalCompositeOperation = "destination-out";[\s\S]*?fogLayerContext\.stroke\(armPath\(arm, -\.085\)\)/);
+  assert.doesNotMatch(canvas, /destination-out|palette\.analog|knotCount/);
   assert.match(canvas, /fogLayerContext\.globalCompositeOperation = "destination-in"/);
   assert.match(canvas, /fogLengthFade\.addColorStop\(\.12, "rgba\(255,255,255,\.08\)"\)/);
   assert.match(canvas, /fogLengthFade\.addColorStop\(\.88, "rgba\(255,255,255,\.24\)"\)/);
   assert.match(canvas, /context\.drawImage\(galaxyFogLayer, -galaxyLayerSize \/ 2/);
 });
 
-test("Galaxy Spiral adds nebula knots, coloured stars, glints and core diffraction spikes", () => {
-  assert.match(canvas, /const knotCount = layerIndex === 0 \? 0 : Math\.round\(count \* \(settings\.lowPerformance \? \.02 : \.045\)\);/);
-  assert.match(canvas, /glow\.addColorStop\(0, rgba\(palette\.nebula, \.5\)\)/);
+test("Galaxy Spiral adds crisp jewel stars, coloured stars, glints and core diffraction spikes", () => {
+  // Jewel stars in the opposite hue are crisp points with a small halo, never soft blotches.
+  assert.match(canvas, /const jewelShare = layerIndex === 0 \? 0 : settings\.lowPerformance \? \.008 : \.016;/);
+  assert.match(canvas, /layerContext\.globalAlpha = \(jewel \? \.9 : brightNode \? \.34/);
   // Live stars are drawn per colour group, four fill-style changes per frame.
   assert.match(canvas, /galaxyLiveStarGroups\.forEach\(group => \{ context\.fillStyle = group\.color;/);
   assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0 : 14;/);

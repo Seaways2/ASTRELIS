@@ -87,18 +87,18 @@ export function createVisualizerScene(
   const accentGreen = Number.isFinite(parsedAccent) ? (parsedAccent >> 8) & 255 : 211;
   const accentBlue = Number.isFinite(parsedAccent) ? parsedAccent & 255 : 225;
   const galaxyAccent = (alpha: number) => `rgba(${accentRed},${accentGreen},${accentBlue},${alpha})`;
-  // Galaxy colours: blue-white arms, a warm bulge, a neighbouring and an
+  // Galaxy colours: blue-white arms, a warm bulge and a few jewel stars in the
   // opposite hue, all derived from the accent (see galaxyPalette).
   const palette = galaxyPalette([accentRed, accentGreen, accentBlue]);
-  type GalaxyTint = "warm" | "ice" | "accent" | "analog";
-  const galaxyTints: readonly GalaxyTint[] = ["warm", "ice", "accent", "analog"];
+  type GalaxyTint = "warm" | "ice" | "accent";
+  const galaxyTints: readonly GalaxyTint[] = ["warm", "ice", "accent"];
   // Old warm stars crowd the inner disk; young blue-white ones light the arms.
   const pickGalaxyTint = (normalizedRadius: number): GalaxyTint => {
     const roll = Math.random();
     const warmShare = Math.max(0, Math.min(.6, 1 - normalizedRadius * 2.2));
     if (roll < warmShare) return "warm";
     const rest = (roll - warmShare) / Math.max(.001, 1 - warmShare);
-    return rest < .5 ? "ice" : rest < .82 ? "accent" : "analog";
+    return rest < .6 ? "ice" : "accent";
   };
   const starsPerEffectUnit = settings.lowPerformance ? 4 : 8;
   // Particle populations follow the bar setting only up to the default. The
@@ -262,12 +262,11 @@ export function createVisualizerScene(
       }
       return path;
     };
-    // Broad, heavily blurred passes in three tones: accent haze, a neighbouring
-    // hue and a blue-white spine. A narrow opaque stroke would read as a tube.
+    // Two clean, heavily blurred tones: a narrow accent haze and a blue-white
+    // spine. Extra hues, nebula edges and cut-out dust lanes muddied the arms.
     const fogPasses = [
-      { width: .24, blur: .065, color: galaxyAccent(.085) },
-      { width: .14, blur: .04, color: rgba(palette.analog, .09) },
-      { width: .05, blur: .016, color: rgba(palette.ice, .11) }
+      { width: .16, blur: .055, color: galaxyAccent(.09) },
+      { width: .045, blur: .014, color: rgba(palette.ice, .1) }
     ];
     for (let arm = 0; arm < 4; arm++) {
       const armFogPath = armPath(arm);
@@ -277,20 +276,7 @@ export function createVisualizerScene(
         fogLayerContext.strokeStyle = pass.color;
         fogLayerContext.stroke(armFogPath);
       });
-      // Star-forming leading edge in the opposite hue.
-      fogLayerContext.filter = `blur(${Math.max(.7, maximumRadius * .028)}px)`;
-      fogLayerContext.lineWidth = maximumRadius * .05;
-      fogLayerContext.strokeStyle = rgba(palette.nebula, .085);
-      fogLayerContext.stroke(armPath(arm, .11));
     }
-    // Dust lanes along the inner side of each arm carve the haze into
-    // structure instead of one soft smear.
-    fogLayerContext.globalCompositeOperation = "destination-out";
-    fogLayerContext.filter = `blur(${Math.max(.6, maximumRadius * .011)}px)`;
-    fogLayerContext.lineWidth = maximumRadius * .032;
-    fogLayerContext.strokeStyle = "rgba(0,0,0,.6)";
-    for (let arm = 0; arm < 4; arm++) fogLayerContext.stroke(armPath(arm, -.085));
-    fogLayerContext.globalCompositeOperation = "lighter";
     fogLayerContext.filter = "none";
     // Fade the continuous ribbons along their length as well as across their
     // width. This removes visible round caps and lets the haze grow out of
@@ -329,36 +315,11 @@ export function createVisualizerScene(
       layerContext.fillStyle = accent;
       const [fromRadius, toRadius] = layerRanges[layerIndex];
       const count = Math.round(galaxyDustCount * layerWeights[layerIndex]);
-      // Glowing nebula knots strung along the middle and outer arms, each with
-      // a few young blue-white stars inside.
-      const knotCount = layerIndex === 0 ? 0 : Math.round(count * (settings.lowPerformance ? .02 : .045));
-      for (let knot = 0; knot < knotCount; knot++) {
-        const normalizedRadius = fromRadius + Math.random() * (toRadius - fromRadius) * .92;
-        const arm = knot % 4;
-        const armScatter = (Math.random() - .5) * (.05 + normalizedRadius * .06);
-        const angle = arm * Math.PI / 2 + normalizedRadius * 5.65 + .06 + armScatter;
-        const radius = maximumRadius * normalizedRadius;
-        const x = nextSize / 2 + Math.cos(angle) * radius;
-        const y = nextSize / 2 + Math.sin(angle) * radius;
-        const knotRadius = maximumRadius * (.014 + Math.random() * .03);
-        const glow = layerContext.createRadialGradient(x, y, 0, x, y, knotRadius);
-        glow.addColorStop(0, rgba(palette.nebula, .5));
-        glow.addColorStop(.4, rgba(palette.nebula, .2));
-        glow.addColorStop(1, "transparent");
-        layerContext.globalAlpha = 1;
-        layerContext.fillStyle = glow;
-        layerContext.fillRect(x - knotRadius, y - knotRadius, knotRadius * 2, knotRadius * 2);
-        layerContext.fillStyle = rgba(palette.ice, 1);
-        for (let star = 0; star < 3 + Math.floor(Math.random() * 4); star++) {
-          const spread = knotRadius * .55;
-          const starSize = Math.max(.5, (.45 + Math.random() * .7) * starEffectSize);
-          layerContext.globalAlpha = .28 + Math.random() * .3;
-          layerContext.fillRect(x + (Math.random() - .5) * spread * 2 - starSize / 2, y + (Math.random() - .5) * spread * 2 - starSize / 2, starSize, starSize);
-        }
-      }
-      const tintStyles: Record<GalaxyTint, string> = {
-        warm: rgba(palette.warm, 1), ice: rgba(palette.ice, 1), accent, analog: rgba(palette.analog, 1)
-      };
+      const tintStyles: Record<GalaxyTint, string> = { warm: rgba(palette.warm, 1), ice: rgba(palette.ice, 1), accent };
+      const jewelStyle = rgba(palette.nebula, 1);
+      // A few crisp jewel stars in the opposite hue along the middle and outer
+      // arms, instead of soft coloured blotches.
+      const jewelShare = layerIndex === 0 ? 0 : settings.lowPerformance ? .008 : .016;
       for (let index = 0; index < count; index++) {
         const normalizedRadius = fromRadius + Math.pow(Math.random(), .76) * (toRadius - fromRadius);
         const arm = index % 4;
@@ -371,17 +332,18 @@ export function createVisualizerScene(
         const radius = maximumRadius * (normalizedRadius + (Math.random() - .5) * (.025 + normalizedRadius * .05));
         const x = nextSize / 2 + Math.cos(angle) * radius;
         const y = nextSize / 2 + Math.sin(angle) * radius;
-        const brightNode = Math.random() > .94;
-        const dotSize = Math.max(.45, (.35 + Math.random() * (brightNode ? 1.35 : .62)) * starEffectSize);
+        const jewel = Math.random() < jewelShare;
+        const brightNode = jewel || Math.random() > .94;
+        const dotSize = Math.max(jewel ? 1.1 : .45, (.35 + Math.random() * (brightNode ? 1.35 : .62)) * starEffectSize);
         if (brightNode) {
-          // Bright stars are blue-white with a small soft halo.
-          layerContext.fillStyle = tintStyles.ice;
-          layerContext.globalAlpha = .06 * ridgeLift;
+          // Bright stars, blue-white or jewel-coloured, get a small soft halo.
+          layerContext.fillStyle = jewel ? jewelStyle : tintStyles.ice;
+          layerContext.globalAlpha = (jewel ? .16 : .06) * ridgeLift;
           layerContext.beginPath();
-          layerContext.arc(x, y, dotSize * 2.4, 0, Math.PI * 2);
+          layerContext.arc(x, y, dotSize * (jewel ? 2.6 : 2.4), 0, Math.PI * 2);
           layerContext.fill();
         } else layerContext.fillStyle = tintStyles[pickGalaxyTint(normalizedRadius)];
-        layerContext.globalAlpha = (brightNode ? .34 : .065 + Math.random() * .13) * ridgeLift;
+        layerContext.globalAlpha = (jewel ? .9 : brightNode ? .34 : .065 + Math.random() * .13) * ridgeLift;
         layerContext.fillRect(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
       }
     });
@@ -512,8 +474,8 @@ export function createVisualizerScene(
         context.fill();
       }); });
 
-      // A faint disk: warm inside, accent through the arms, the neighbouring
-      // hue at the rim. The visible fog grows along each cached spiral arm.
+      // A faint disk: warm inside, accent through the arms and out to the rim.
+      // The visible fog grows along each cached spiral arm.
       context.save();
       context.translate(cx, cy);
       context.rotate(-.2);
@@ -522,7 +484,7 @@ export function createVisualizerScene(
       diskGlow.addColorStop(0, rgba(palette.core, .8));
       diskGlow.addColorStop(.12, rgba(palette.warm, 1));
       diskGlow.addColorStop(.38, accent);
-      diskGlow.addColorStop(.7, rgba(palette.analog, .7));
+      diskGlow.addColorStop(.7, galaxyAccent(.45));
       diskGlow.addColorStop(1, "transparent");
       context.fillStyle = diskGlow;
       context.globalAlpha = Math.min(.1, (.07 + galaxyMid * .09 + galaxySceneFlash * .13 + galaxyGlow * .03) * barOpacity * .32);

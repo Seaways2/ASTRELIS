@@ -3,9 +3,9 @@ export type Rgb = readonly [number, number, number];
 /**
  * Colours of the Galaxy Spiral, all derived from the theme accent so the scene
  * still follows the theme while reading like a real spiral galaxy:
- * blue-white young stars along the arms, a warm golden bulge, a neighbouring
- * hue for variation in the arm haze, and the opposite hue for glowing nebula
- * knots. A grey accent keeps the extra hues muted instead of inventing colour.
+ * blue-white young stars along the arms, a warm golden bulge, and the opposite
+ * hue for a few jewel-like stars. A grey accent keeps that hue muted instead
+ * of inventing colour.
  */
 export interface GalaxyPalette {
   accent: Rgb;
@@ -15,13 +15,10 @@ export interface GalaxyPalette {
   warm: Rgb;
   /** Almost white centre of the core. */
   core: Rgb;
-  /** Neighbouring hue for the arm haze. */
-  analog: Rgb;
-  /** Opposite hue for star-forming nebula knots. */
+  /** Opposite hue for a few jewel stars. */
   nebula: Rgb;
 }
 
-const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 const mix = (from: Rgb, to: Rgb, amount: number): Rgb =>
   [0, 1, 2].map(index => Math.round(from[index] + (to[index] - from[index]) * amount)) as unknown as Rgb;
 
@@ -54,7 +51,7 @@ export function hslToRgb(hue: number, saturation: number, lightness: number): Rg
 }
 
 export function galaxyPalette(accent: Rgb): GalaxyPalette {
-  const [hue, saturation, lightness] = rgbToHsl(accent);
+  const [hue, saturation] = rgbToHsl(accent);
   // Vivid accents get vivid companions; a grey accent only gains a hint of hue.
   const companion = saturation >= .12 ? Math.max(saturation, .55) : saturation + .16;
   return {
@@ -62,7 +59,6 @@ export function galaxyPalette(accent: Rgb): GalaxyPalette {
     ice: mix(accent, [255, 255, 255], .58),
     warm: mix(accent, [255, 220, 168], .74),
     core: mix(accent, [255, 247, 232], .9),
-    analog: hslToRgb(hue - 34, companion, clamp(lightness, .52, .66)),
     nebula: hslToRgb(hue + 150, Math.min(1, companion * 1.1), .7)
   };
 }

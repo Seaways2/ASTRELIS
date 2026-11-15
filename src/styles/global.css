@@ -2182,15 +2182,18 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   text-overflow: ellipsis;
   border-top: 1px solid rgba(126,169,176,.08);
 }
+/* Bar width and gap are whole device pixels: at 125% scaling or the app's own UI
+   zoom a plain 3px lands on fractions and the bars render alternately thick and thin. */
 .cd-spectrum {
   height: 20px;
   padding-top: 3px;
   align-items: end;
-  gap: 3px;
+  gap: round(3px, var(--device-px, 1px));
   overflow: hidden;
 }
 .cd-spectrum i {
-  width: 3px;
+  flex: none;
+  width: round(3px, var(--device-px, 1px));
   height: calc(2px + var(--bar) * 16px);
   min-height: 2px;
   transform: none;

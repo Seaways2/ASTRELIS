@@ -201,6 +201,35 @@ export function createVisualizerScene(
     response: .28 + Math.random() * .72,
     frequency: Math.floor(Math.random() * 112)
   }));
+  // Starfield and black hole colours, from the same palette as the galaxy.
+  // Black hole: warm stars crowd the event horizon as the galaxy's crowd its
+  // bulge, blue-white and accent ones fill the field, a few jewel stars sit
+  // further out, and the motes run warm inside and accent outside.
+  // Starfield: there is no centre to measure from, so fixed shares.
+  // Drawn after the galaxy's populations so its layout stays as it was.
+  type StarTint = GalaxyTint | "jewel";
+  const starTints: readonly StarTint[] = ["warm", "ice", "accent", "jewel"];
+  const starTintColors: Record<StarTint, string> = {
+    warm: rgba(palette.warm, 1), ice: rgba(palette.ice, 1), accent, jewel: rgba(palette.nebula, 1)
+  };
+  const fieldTints = particles.map((star): StarTint => {
+    if (mode === "pulse") {
+      const radius = Math.hypot(star.x / 1.1, star.y / .725);
+      return radius > .45 && Math.random() < .02 ? "jewel" : pickGalaxyTint(radius * .85);
+    }
+    const roll = Math.random();
+    return roll < .03 ? "jewel" : roll < .23 ? "warm" : roll < .55 ? "accent" : "ice";
+  });
+  const moteTints = coreMotes.map((mote): StarTint => mote.radius < .72
+    ? (Math.random() < .65 ? "warm" : "accent")
+    : (Math.random() < .6 ? "accent" : "ice"));
+  // Drawn one colour at a time, like the galaxy's live stars.
+  const fieldTintGroups = starTints.map(tint => ({
+    tint, color: starTintColors[tint], stars: particles.filter((_, index) => fieldTints[index] === tint)
+  }));
+  const moteTintGroups = starTints.map(tint => ({
+    tint, color: starTintColors[tint], motes: coreMotes.filter((_, index) => moteTints[index] === tint)
+  }));
   const galaxyLayers = Array.from({ length: 3 }, createLayer);
   const galaxyFogLayer = createLayer();
   let galaxyLayerSize = 0;
@@ -806,7 +835,7 @@ export function createVisualizerScene(
 
       // A dense, inexpensive deep star field surrounds the event horizon.
       const pulseGlints: Glint[] = [];
-      particles.forEach((star) => {
+      fieldTintGroups.forEach(group => { context.fillStyle = group.color; group.stars.forEach((star) => {
         const baseX = star.x * width * .46;
         const baseY = star.y * height * .66;
         const distance = Math.max(1, Math.hypot(baseX, baseY));
@@ -836,8 +865,8 @@ export function createVisualizerScene(
         // The same glints as the galaxy's arms, on the star's own twinkle.
         const glintStrength = sparkle * (.55 + pulseHighLevel * .6) + sharedBeatFlash * .5;
         if (glintStrength > GLINT_THRESHOLD && glintLimit && glow > 0)
-          pulseGlints.push({ x, y, size: starRadius * 2, strength: glintStrength, color: glintColors.ice });
-      });
+          pulseGlints.push({ x, y, size: starRadius * 2, strength: glintStrength, color: group.tint === "warm" ? glintColors.warm : glintColors.ice });
+      }); });
       drawGlints(pulseGlints, glow);
 
       // Low-frequency transients release restrained gravitational waves.
@@ -911,7 +940,7 @@ export function createVisualizerScene(
 
       context.setLineDash([]);
 
-      coreMotes.forEach((mote) => {
+      moteTintGroups.forEach(group => { context.fillStyle = group.color; group.motes.forEach((mote) => {
         mote.angle += deltaSeconds * mote.speed * settings.animationSpeed * (1 + low * 1.25 + pulseMidLevel * .95);
         const orbit = orbitRadius * mote.radius;
         const cos = Math.cos(mote.angle);
@@ -937,13 +966,13 @@ export function createVisualizerScene(
           const sparkLength = orbitRadius * (.008 + sparkEnergy * .018);
           context.globalAlpha = Math.min(.34, sparkEnergy * .42) * pulseOpacity;
           context.lineWidth = Math.max(.45, .62 * ratio * starEffectSize);
-          context.strokeStyle = accent;
+          context.strokeStyle = group.color;
           context.beginPath();
           context.moveTo(x, y);
           context.lineTo(x - sin * sparkLength, y + cos * sparkLength * .45);
           context.stroke();
         }
-      });
+      }); });
 
       // Accretion glow and disk are rendered before the dark core so the
       // event horizon cleanly occludes their rear half.
@@ -1052,7 +1081,8 @@ export function createVisualizerScene(
       context.shadowBlur = 0;
       context.lineCap = "round";
       const starGlints: Glint[] = [];
-      particles.forEach((particle) => {
+      // Each colour group sets its style once; a star's trail matches it.
+      fieldTintGroups.forEach(group => { context.fillStyle = context.strokeStyle = group.color; group.stars.forEach((particle) => {
         const energy = music.bin(particle.frequency);
         particle.previousZ = particle.z;
         // Each star eases towards its own band's speed as well.
@@ -1108,7 +1138,7 @@ export function createVisualizerScene(
         const glintSparkle = Math.pow(Math.max(0, Math.sin(particle.twinkle + particle.frequency)), 8);
         const glintStrength = (glintSparkle * (.55 + energy * .6) + starBeatFlash * .5) * nearness;
         if (glintStrength > GLINT_THRESHOLD && glintLimit && starGlow > 0)
-          starGlints.push({ x, y, size: starRadius * 2, strength: glintStrength, color: glintColors.ice });
+          starGlints.push({ x, y, size: starRadius * 2, strength: glintStrength, color: group.tint === "warm" ? glintColors.warm : glintColors.ice });
         const haloFade = Math.min(1, Math.max((depth - .18) / .1, (musicalFlash - .18) / .2));
         if (starGlow > 0 && haloFade > 0) {
           context.globalAlpha = Math.min(.42, (.035 + depth * .075 + musicalFlash * .14) * starGlow) * haloFade * starfieldOpacity;
@@ -1123,10 +1153,11 @@ export function createVisualizerScene(
           context.arc(x, y, Math.max(1.1, (particle.size + musicalFlash * (1.8 + starGlow * .42)) * ratio * starfieldEffectSize), 0, Math.PI * 2);
           context.fill();
         }
-      });
+      }); });
       drawGlints(starGlints, starGlow);
       context.globalCompositeOperation = "source-over";
       context.globalAlpha = 1;
+      context.fillStyle = context.strokeStyle = accent;
     } else {
       const data = audio.getFrequencyData();
       const bars = Math.max(12, Math.min(settings.barCount, data.length));

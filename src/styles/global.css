@@ -1834,9 +1834,35 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .channel-fader-scale span:first-child,
 .channel-fader-scale span:last-child { transform: translateY(50%); }
 .channel-fader-scale span::after { display: none; }
-.channel-fader-track { width: 34px; margin: 4px 0; border-radius: 0; background: transparent; }
-.channel-fader-track::before { top: 0; bottom: 0; left: 14px; width: 5px; border: 1px solid #293336; border-radius: 1px; background: linear-gradient(90deg, #080b0c, #151b1d 50%, #080b0c); box-shadow: inset 1px 0 2px #000, inset -1px 0 rgba(255,255,255,.07); }
-.channel-fader-fill { left: 14px; width: 5px; opacity: .82; display: block; }
+/* LED fader: two dense columns of cells in a dark frame, lit up to the fader.
+   Cells are 2 device pixels with a 1 device pixel gap (--device-px), so they stay
+   crisp at any display scale; MainVolumeFader stops the lit column on a whole cell. */
+.channel-fader-track {
+  width: 34px; margin: 4px 0; border-radius: 0; background: transparent;
+  --led-cell: calc(var(--device-px, 1px) * 2);
+  --led-pitch: calc(var(--device-px, 1px) * 3);
+  --led-frame: #15191b;
+  --led-on: var(--accent);
+  --led-on-gap: color-mix(in srgb, var(--accent) 34%, #050708);
+  --led-off: color-mix(in srgb, var(--accent) 13%, #0d1112);
+  --led-off-gap: #080b0c;
+}
+.channel-fader-track::before {
+  top: 0; bottom: 0; left: 10px; width: 15px; box-sizing: border-box; padding: 2px;
+  border: 1px solid #263033; border-radius: 1px;
+  background:
+    linear-gradient(90deg, transparent 4px, var(--led-frame) 4px 5px, transparent 5px) content-box,
+    repeating-linear-gradient(to top, var(--led-off) 0 var(--led-cell), var(--led-off-gap) var(--led-cell) var(--led-pitch)) content-box,
+    var(--led-frame);
+  box-shadow: inset 0 0 3px #000;
+}
+.channel-fader-fill {
+  left: 13px; bottom: 3px; width: 9px; opacity: 1; display: block;
+  background:
+    linear-gradient(90deg, transparent 4px, var(--led-frame) 4px 5px, transparent 5px),
+    repeating-linear-gradient(to top, var(--led-on) 0 var(--led-cell), var(--led-on-gap) var(--led-cell) var(--led-pitch));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 28%, transparent);
+}
 .channel-fader-ticks { position: absolute; inset: 0; pointer-events: none; }
 .channel-fader-ticks span { position: absolute; left: -12px; display: block; height: 1px; background: #697477; transform: translateY(50%); }
 .channel-fader-ticks span.minor { left: -6px; width: 6px; opacity: .72; }

@@ -7,6 +7,9 @@ import "./styles/settings.css";
 import "./styles/workspace-modules.css";
 import "./styles/rounded.css";
 import "./styles/menu-theme.css";
+import { trackDevicePixel } from "./utils/devicePixel";
+
+trackDevicePixel();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode><App /></React.StrictMode>

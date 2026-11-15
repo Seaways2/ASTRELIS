@@ -161,6 +161,8 @@ export class PcmDiagnostics {
     ].map(value => String(value ?? 0)).join(",");
     const now = performance.now();
     if (trouble === this.lastReportedTrouble && now - this.lastReportAtMs < PCM_DIAG_HEALTHY_INTERVAL_MS) {
+      // Still counts as flushed: a stream that stops now must not be reported later.
+      this.lastFlushedPacketCount = this.mainPcmPackets;
       this.eventLoop.reset();
       return;
     }

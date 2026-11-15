@@ -18,6 +18,8 @@ function Resolve-Pnpm {
   $onPath = Get-Command pnpm -ErrorAction SilentlyContinue
   if ($onPath) { return @($onPath.Source) }
   if (Get-Command corepack -ErrorAction SilentlyContinue) {
+    # Never stop on corepack's "download pnpm?" prompt; fall through instead.
+    $env:COREPACK_ENABLE_DOWNLOAD_PROMPT = "0"
     & corepack pnpm --version *> $null
     if ($LASTEXITCODE -eq 0) { return @("corepack", "pnpm") }
   }
@@ -38,7 +40,8 @@ function Get-FreeDriveLetter {
   throw "No free drive letter for subst."
 }
 
-$pnpm = Resolve-Pnpm
+# @() keeps a single path an array: PowerShell unrolls one-element results to a string.
+$pnpm = @(Resolve-Pnpm)
 $needsAsciiPath = $repoRoot -match "[^\u0000-\u007F]"
 $mappedDrive = $null
 $workRoot = $repoRoot

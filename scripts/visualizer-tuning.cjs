@@ -13,6 +13,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const { spectrumFrames, writeCapture, readCapture, FRAME_RATE } = require("./lib/analyserEmulation.cjs");
 
 const root = path.resolve(__dirname, "..");
@@ -43,6 +44,8 @@ function findFfmpeg() {
 }
 
 const safeName = text => text.replace(/[\\/:*?"<>|]+/g, "_").slice(0, 120);
+// Same-titled songs from different albums must not overwrite each other.
+const captureName = file => `${safeName(path.basename(file).replace(AUDIO, ""))}-${crypto.createHash("sha1").update(path.resolve(file)).digest("hex").slice(0, 8)}`;
 
 function capture(files, { seconds = "240", out = path.join(root, "tuning", "captures") }) {
   const ffmpeg = findFfmpeg();
@@ -55,7 +58,7 @@ function capture(files, { seconds = "240", out = path.join(root, "tuning", "capt
     const samples = new Float32Array(decoded.stdout.buffer, decoded.stdout.byteOffset, Math.floor(decoded.stdout.byteLength / 4));
     const frames = spectrumFrames(samples, SAMPLE_RATE);
     const title = path.basename(file).replace(AUDIO, "");
-    const target = path.join(out, `${safeName(title)}.spectrum`);
+    const target = path.join(out, `${captureName(file)}.spectrum`);
     writeCapture(target, { title, source: path.basename(file), sampleRate: SAMPLE_RATE, seconds: samples.length / SAMPLE_RATE }, frames);
     console.log(`captured ${title} (${(samples.length / SAMPLE_RATE).toFixed(0)} s) -> ${path.relative(root, target)}`);
   }
@@ -64,7 +67,17 @@ function capture(files, { seconds = "240", out = path.join(root, "tuning", "capt
 const mean = values => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
 const median = values => { const sorted = [...values].sort((a, b) => a - b); return sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0; };
 const quantile = (values, q) => { const sorted = [...values].sort((a, b) => a - b); return sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : 0; };
-const movingAverage = (values, width) => values.map((_, index) => mean(values.slice(Math.max(0, index - width), index + 1)));
+/** Trailing average over `width` + 1 values, in one pass. */
+function movingAverage(values, width) {
+  const averages = new Array(values.length);
+  let sum = 0;
+  for (let index = 0; index < values.length; index++) {
+    sum += values[index];
+    if (index > width) sum -= values[index - width - 1];
+    averages[index] = sum / Math.min(index + 1, width + 1);
+  }
+  return averages;
+}
 function correlation(a, b) {
   const ma = mean(a), mb = mean(b);
   let covariance = 0, va = 0, vb = 0;
@@ -74,7 +87,7 @@ function correlation(a, b) {
 
 // What the behaviour tests require of the synthetic song, applied to real ones.
 const SCENES = {
-  waveform: { label: "银河", swing: .07, jump: .1, colour: "#5ad1e6" },
+  waveform: { label: "银河", swing: .05, jump: .06, colour: "#5ad1e6" },
   particles: { label: "星空", swing: .25, jump: .45, colour: "#f2c46d" },
   pulse: { label: "黑洞", swing: .12, jump: .2, colour: "#e6739f" }
 };
@@ -169,7 +182,7 @@ ${blocks}</html>`;
 }
 
 function report(inputs, { out = path.join(root, "tuning", "report.html"), json }) {
-  const harness = require(path.join(root, "tests", "renderer", "helpers", "sceneHarness.cjs"));
+  const harness = require("./lib/sceneHarness.cjs");
   const files = expand(inputs.length ? inputs : [path.join(root, "tuning", "captures")], /\.spectrum$/i);
   const results = files.map(file => { const result = analyse(file, harness); console.log(summaryLine(result)); return result; });
   fs.mkdirSync(path.dirname(out), { recursive: true });

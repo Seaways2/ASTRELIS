@@ -3,14 +3,20 @@ import react from "@vitejs/plugin-react";
 
 type ModuleInfo = { isEntry: boolean; importers: readonly string[] } | null;
 
+type GetModuleInfo = (id: string) => ModuleInfo;
+/** Modules known to load at startup, per build. Only "yes" is cached: a "no" may be a cycle still being walked. */
+const startupModules = new WeakMap<GetModuleInfo, Set<string>>();
+
 /** Whether a module is loaded at startup: an entry, or statically imported by one that is. */
-function loadedAtStartup(id: string, getModuleInfo: (id: string) => ModuleInfo, seen = new Map<string, boolean>()): boolean {
-  const known = seen.get(id);
-  if (known !== undefined) return known;
-  seen.set(id, false); // cycles resolve through another importer
+function loadedAtStartup(id: string, getModuleInfo: GetModuleInfo, visiting = new Set<string>()): boolean {
+  let known = startupModules.get(getModuleInfo);
+  if (!known) startupModules.set(getModuleInfo, known = new Set());
+  if (known.has(id)) return true;
+  if (visiting.has(id)) return false;
+  visiting.add(id);
   const info = getModuleInfo(id);
-  const eager = Boolean(info && (info.isEntry || info.importers.some(importer => loadedAtStartup(importer, getModuleInfo, seen))));
-  seen.set(id, eager);
+  const eager = Boolean(info && (info.isEntry || info.importers.some(importer => loadedAtStartup(importer, getModuleInfo, visiting))));
+  if (eager) known.add(id);
   return eager;
 }
 

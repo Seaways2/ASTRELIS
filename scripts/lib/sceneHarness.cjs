@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
 
-const root = path.resolve(__dirname, "../../..");
+const root = path.resolve(__dirname, "../..");
 const load = (relative, requireFn = () => ({})) => {
   const exports = {};
   const source = fs.readFileSync(path.join(root, relative), "utf8");
@@ -42,7 +42,7 @@ function lightCanvas(meter) {
     arc(x, y, r) { radius = Math.max(radius, r); },
     fill() { add(Math.PI * radius * radius); },
     fillRect(x, y, w, h) { add(Math.abs(w * h)); },
-    drawImage(image, x, y, w, h) { add((w ?? image.width) * (h ?? image.height) * .08); },
+    drawImage(image, x, y, w, h) { add((w ?? image.width) * (h ?? image.height)); },
     moveTo(x, y) { lastX = x; lastY = y; },
     lineTo(x, y) { pathLength += Math.hypot(x - lastX, y - lastY); lastX = x; lastY = y; },
     stroke() { add(pathLength * state.lineWidth); },

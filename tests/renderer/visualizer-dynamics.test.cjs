@@ -4,16 +4,17 @@
 // sections, and not open with a glare.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { runScene, song, songSections } = require("./helpers/sceneHarness.cjs");
+const { runScene, song, songSections } = require("../../scripts/lib/sceneHarness.cjs");
 
 const second = value => Math.round(value * 60);
 const mean = values => values.reduce((sum, value) => sum + value, 0) / values.length;
 const slice = (lights, from, to) => Array.from(lights.slice(second(from), second(to)));
 
 // Per scene: minimum swing within a beat and the largest allowed one-frame
-// brightening, both relative to the section's mean light.
+// brightening, both relative to the section's mean light. Calibrated so that
+// the 2.18.0 scenes (always lit) and the first rework (strobing) both fail.
 const expectations = {
-  waveform: { swing: .07, jump: .1 },
+  waveform: { swing: .05, jump: .06 },
   particles: { swing: .25, jump: .45 },
   pulse: { swing: .12, jump: .2 }
 };

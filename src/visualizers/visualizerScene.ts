@@ -7,15 +7,7 @@ import { MusicDynamics } from "./musicDynamics";
 export const PARTICLE_EFFECT_UNIT_CAP = 90;
 /** Glints fade in from this strength, so none pops in at full size. */
 const GLINT_THRESHOLD = .5;
-/** Stars are offered from here, so a fading glint keeps following its star. */
-const GLINT_OFFER = .3;
-/** The galaxy core's diffraction cross is tilted this way; star spikes match it. */
-const GLINT_SPIKE_ANGLES = [-.22, Math.PI / 2 - .22];
-/** A shown glint outranks a newcomer this much stronger, so slots don't flip. */
-const GLINT_INCUMBENT_BONUS = .12;
-/** A star offered for a glint this frame; `key` identifies the star across frames. */
-type Glint = { key: object; x: number; y: number; size: number; strength: number; color: string };
-type GlintState = Glint & { target: number; level: number; shown: number; seen: boolean };
+type Glint = { x: number; y: number; size: number; strength: number; color: string };
 
 /** The render settings a scene reads; the options cross to the worker, so they stay plain values. */
 export type VisualizerSceneSettings = Pick<VisualizerRenderSettings,
@@ -355,73 +347,24 @@ export function createVisualizerScene(
     });
   };
 
-  // Four-point glints on the brightest stars of the moment. The galaxy has
-  // many small ones along its arms; the starfield and black hole show a few
-  // long, tilted spikes styled after the galaxy core's diffraction cross.
-  const glintLimit = settings.lowPerformance ? 0 : mode === "waveform" ? 14 : mode === "particles" ? 4 : 3;
-  const glintSpikes = mode !== "waveform";
+  // Four-point glints on the brightest stars of the moment: the galaxy's arms
+  // carry the most, the starfield and black hole somewhat fewer.
+  const glintLimit = settings.lowPerformance ? 0 : mode === "waveform" ? 14 : mode === "particles" ? 10 : 8;
   const glintColors = { ice: rgba(palette.ice, 1), warm: rgba(palette.warm, 1) };
-  const spikeColors = { edge: rgba(palette.ice, .45), core: rgba(palette.core, 1) };
-  const glintStates = new Map<object, GlintState>();
-  const glintRanking: GlintState[] = [];
-  const glintRank = (state: GlintState) => state.level + (state.shown > .5 ? GLINT_INCUMBENT_BONUS : 0);
-  /** Offer a star while it is strong, and while its glint fades so the glint follows it. */
-  const offersGlint = (key: object, strength: number) => strength > GLINT_OFFER || glintStates.has(key);
   /**
-   * Draws the strongest glints, each with its own eased state: a glint swells
-   * in, fades out, and keeps its slot while its star stays strong. Choosing
-   * the strongest stars afresh every frame swapped glints between stars of
-   * near-equal strength several times a second.
+   * Keeps the strongest glints, not the first found: filling the slots in
+   * draw order swapped glints between stars every frame and starved the stars
+   * drawn last. Each fades in from the threshold, so one dropped at the cut is
+   * already nearly invisible.
    */
-  const drawGlints = (candidates: Glint[], glow: number, dt: number) => {
-    for (const candidate of candidates) {
-      const state = glintStates.get(candidate.key);
-      if (state) {
-        state.x = candidate.x; state.y = candidate.y; state.size = candidate.size;
-        state.target = candidate.strength; state.seen = true;
-      } else {
-        glintStates.set(candidate.key, { ...candidate, target: candidate.strength, level: 0, shown: 0, seen: true });
-      }
+  const drawGlints = (glints: Glint[], glow: number) => {
+    if (glints.length > glintLimit) {
+      glints.sort((a, b) => b.strength - a.strength);
+      glints.length = glintLimit;
     }
-    glintRanking.length = 0;
-    for (const [key, state] of glintStates) {
-      const seen = state.seen;
-      const target = seen ? state.target : 0;
-      state.seen = false;
-      state.level += (target - state.level) * (1 - Math.exp(-dt / (target > state.level ? .07 : .2)));
-      if (target < GLINT_OFFER && state.level < GLINT_THRESHOLD * .8 && state.shown < .01) glintStates.delete(key);
-      else glintRanking.push(state);
-    }
-    glintRanking.sort((a, b) => glintRank(b) - glintRank(a));
     const opacity = Math.max(0, Math.min(1, settings.barOpacity));
-    glintRanking.forEach((glint, rank) => {
-      const selected = rank < glintLimit && glint.level > GLINT_THRESHOLD;
-      glint.shown += ((selected ? 1 : 0) - glint.shown) * (1 - Math.exp(-dt / .12));
-      // Spikes are few, so each reaches full strength sooner once chosen.
-      const ramp = glintSpikes ? .25 : 1 - GLINT_THRESHOLD;
-      const visibility = Math.min(1, Math.max(0, (glint.level - GLINT_THRESHOLD) / ramp)) * glint.shown;
-      if (visibility < .01) return;
-      if (glintSpikes) {
-        // Sized to the scene, not the star: these are the few accents.
-        const spikeLength = Math.min(size.width, size.height) * (.025 + visibility * .035) * (.75 + glow * .25);
-        context.globalAlpha = Math.min(.8, visibility * .75 * glow) * opacity;
-        context.lineWidth = Math.max(.6, layout.ratio * .9);
-        for (const angle of GLINT_SPIKE_ANGLES) {
-          const dx = Math.cos(angle) * spikeLength, dy = Math.sin(angle) * spikeLength;
-          const spike = context.createLinearGradient(glint.x - dx, glint.y - dy, glint.x + dx, glint.y + dy);
-          spike.addColorStop(0, "transparent");
-          spike.addColorStop(.44, spikeColors.edge);
-          spike.addColorStop(.5, spikeColors.core);
-          spike.addColorStop(.56, spikeColors.edge);
-          spike.addColorStop(1, "transparent");
-          context.strokeStyle = spike;
-          context.beginPath();
-          context.moveTo(glint.x - dx, glint.y - dy);
-          context.lineTo(glint.x + dx, glint.y + dy);
-          context.stroke();
-        }
-        return;
-      }
+    glints.forEach(glint => {
+      const visibility = Math.min(1, (glint.strength - GLINT_THRESHOLD) / (1 - GLINT_THRESHOLD));
       const length = glint.size * (4.5 + visibility * 5) * (.75 + glow * .25);
       context.globalAlpha = Math.min(.7, visibility * .55 * glow) * opacity;
       context.lineWidth = Math.max(.5, glint.size * .32);
@@ -607,10 +550,10 @@ export function createVisualizerScene(
         context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash) * barOpacity * star.ridgeLift);
         context.fillRect(x - starSize / 2, y - starSize / 2, starSize, starSize);
         const glintStrength = sparkle * (.55 + galaxyHigh * .6) + sharedBeatFlash * .5;
-        if (glintLimit && galaxyGlow > 0 && offersGlint(star, glintStrength))
-          glints.push({ key: star, x, y, size: starSize, strength: glintStrength, color: group.tint === "warm" ? glintColors.warm : glintColors.ice });
+        if (glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0)
+          glints.push({ x, y, size: starSize, strength: glintStrength, color: group.tint === "warm" ? glintColors.warm : glintColors.ice });
       }); });
-      drawGlints(glints, galaxyGlow, deltaSeconds);
+      drawGlints(glints, galaxyGlow);
 
       // Like the Black Hole Pulse motes, these particles orbit independently
       // on softly tilted ellipses. They keep the outer galaxy alive without
@@ -736,7 +679,7 @@ export function createVisualizerScene(
         const spikeLength = coreRadius * (3.6 + galaxyLow * 1.6 + galaxySceneFlash * 2.4) * (.7 + galaxyGlow * .3);
         context.lineWidth = Math.max(.6, coreRadius * .035);
         context.globalAlpha = Math.min(.6, (.22 + galaxyLow * .16 + galaxySceneFlash * .3) * galaxyGlow) * barOpacity;
-        for (const angle of GLINT_SPIKE_ANGLES) {
+        for (const angle of [-.22, Math.PI / 2 - .22]) {
           const dx = Math.cos(angle) * spikeLength, dy = Math.sin(angle) * spikeLength;
           const spike = context.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
           spike.addColorStop(0, "transparent");
@@ -890,14 +833,12 @@ export function createVisualizerScene(
         context.beginPath();
         context.arc(x, y, starRadius, 0, Math.PI * 2);
         context.fill();
-        if (glintLimit && glow > 0) {
-          // A slower twinkle than the star's own, so a glint lingers.
-          const glintSparkle = Math.pow(Math.max(0, Math.sin(time * star.twinkleSpeed * .4 + star.twinkle * 1.7)), 8);
-          const glintStrength = glintSparkle * (.7 + energy * .3) + sharedBeatFlash * .25;
-          if (offersGlint(star, glintStrength)) pulseGlints.push({ key: star, x, y, size: starRadius * 2, strength: glintStrength, color: glintColors.ice });
-        }
+        // The same glints as the galaxy's arms, on the star's own twinkle.
+        const glintStrength = sparkle * (.55 + pulseHighLevel * .6) + sharedBeatFlash * .5;
+        if (glintStrength > GLINT_THRESHOLD && glintLimit && glow > 0)
+          pulseGlints.push({ x, y, size: starRadius * 2, strength: glintStrength, color: glintColors.ice });
       });
-      drawGlints(pulseGlints, glow, deltaSeconds);
+      drawGlints(pulseGlints, glow);
 
       // Low-frequency transients release restrained gravitational waves.
       // Keep their travel independent from coreRadius: a fresh beat briefly
@@ -1120,8 +1061,6 @@ export function createVisualizerScene(
         particle.twinkle += deltaSeconds * Math.min(maximumTwinkleRate,
           particle.twinkleSpeed * (1 + energy * 1.8) * settings.animationSpeed);
         if (particle.z <= .025) {
-          // A star that respawns far away takes its glint with it.
-          glintStates.delete(particle);
           particle.x = (Math.random() - .5) * 2.2;
           particle.y = (Math.random() - .5) * 1.45;
           particle.z = 1;
@@ -1135,7 +1074,6 @@ export function createVisualizerScene(
         const previousX = cx + particle.x / particle.previousZ * perspective;
         const previousY = cy + particle.y / particle.previousZ * perspective;
         if (x < -40 || x > width + 40 || y < -40 || y > height + 40) {
-          glintStates.delete(particle);
           particle.z = 1;
           particle.previousZ = 1;
           particle.x = (Math.random() - .5) * 2.2;
@@ -1165,14 +1103,12 @@ export function createVisualizerScene(
         context.beginPath();
         context.arc(x, y, starRadius, 0, Math.PI * 2);
         context.fill();
-        if (glintLimit && starGlow > 0) {
-          // Only nearer stars glint, on a slower twinkle so a glint lingers;
-          // the very nearest race across the screen and would smear it.
-          const nearness = Math.min(1, Math.max(0, (depth - .35) / .25)) * Math.min(1, Math.max(0, (.88 - depth) / .08));
-          const glintSparkle = Math.pow(Math.max(0, Math.sin(particle.twinkle * .35 + particle.frequency)), 8);
-          const glintStrength = (glintSparkle * (.7 + energy * .3) + starBeatFlash * .25) * nearness;
-          if (offersGlint(particle, glintStrength)) starGlints.push({ key: particle, x, y, size: starRadius * 2, strength: glintStrength, color: glintColors.ice });
-        }
+        // The same glints as the galaxy's arms, on nearer stars as they twinkle.
+        const nearness = Math.min(1, Math.max(0, (depth - .3) / .3));
+        const glintSparkle = Math.pow(Math.max(0, Math.sin(particle.twinkle + particle.frequency)), 8);
+        const glintStrength = (glintSparkle * (.55 + energy * .6) + starBeatFlash * .5) * nearness;
+        if (glintStrength > GLINT_THRESHOLD && glintLimit && starGlow > 0)
+          starGlints.push({ x, y, size: starRadius * 2, strength: glintStrength, color: glintColors.ice });
         const haloFade = Math.min(1, Math.max((depth - .18) / .1, (musicalFlash - .18) / .2));
         if (starGlow > 0 && haloFade > 0) {
           context.globalAlpha = Math.min(.42, (.035 + depth * .075 + musicalFlash * .14) * starGlow) * haloFade * starfieldOpacity;
@@ -1188,7 +1124,7 @@ export function createVisualizerScene(
           context.fill();
         }
       });
-      drawGlints(starGlints, starGlow, deltaSeconds);
+      drawGlints(starGlints, starGlow);
       context.globalCompositeOperation = "source-over";
       context.globalAlpha = 1;
     } else {

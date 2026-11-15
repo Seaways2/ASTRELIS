@@ -1,5 +1,6 @@
 // Runs the real scenes against a context that records glint strokes, and
-// checks how many glints show, that they ease in, and that ECO draws none.
+// checks that the starfield and black hole show galaxy-style glints within
+// their limits, and that ECO draws none.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -22,24 +23,27 @@ const modules = {
 const { createVisualizerScene } = load("src/visualizers/visualizerScene.ts", name => modules[name]);
 const { smoothFrequencyFrame } = load("src/utils/frequencySmoothing.ts");
 
-// Star spikes are the only gradients with a stop at .44; each spike is two
-// strokes, so a glint is counted once per pair, keyed by its centre.
-function spikeCanvas(frame) {
+// A glint is two strokes of a linear gradient with exactly three stops
+// (transparent, colour, transparent); every other gradient in these scenes
+// has more stops or is radial.
+function glintCanvas(frame) {
   const state = { globalAlpha: 1 };
   const context = new Proxy(state, {
     get(target, key) {
       if (key in target) return target[key];
-      if (key === "createLinearGradient") return (x0, y0, x1, y1) => ({
-        addColorStop(offset) { if (offset === .44) frame.spikes.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, alpha: state.globalAlpha }); }
-      });
+      if (key === "createLinearGradient") return () => { const stops = []; return { stops, addColorStop(offset) { stops.push(offset); } }; };
       if (key === "createRadialGradient") return () => ({ addColorStop() {} });
+      if (key === "stroke") return () => {
+        const stops = state.strokeStyle?.stops;
+        if (stops && stops.length === 3 && stops[1] === .5) frame.strokes.push(state.globalAlpha);
+      };
       return () => undefined;
     },
     set(target, key, value) { target[key] = value; return true; }
   });
   return { width: 300, height: 150, getContext: () => context };
 }
-globalThis.OffscreenCanvas = class { constructor(width, height) { Object.assign(this, spikeCanvas({ spikes: [] }), { width, height }); } };
+globalThis.OffscreenCanvas = class { constructor(width, height) { Object.assign(this, glintCanvas({ strokes: [] }), { width, height }); } };
 globalThis.Path2D = class { moveTo() {} lineTo() {} arc() {} };
 
 const settings = { smoothing: .76, sensitivity: 1, barCount: 90, barOpacity: 1, lineWidth: 1.5, animationSpeed: 1, decaySpeed: 1, peakHoldMs: 650, lowPerformance: false };
@@ -57,44 +61,35 @@ const song = t => {
   return bins;
 };
 
-function run(mode, sceneSettings = settings, seconds = 12) {
-  const frame = { spikes: [] };
-  const scene = createVisualizerScene(spikeCanvas(frame), { mode, accent: "#38d3e1", settings: sceneSettings, glowStrength: 1, playbackActive: true, backgroundBrightness: 1, backgroundOpacity: 1 });
+// Glints drawn per frame, as the alpha of each (one entry per glint).
+function run(mode, sceneSettings = settings, seconds = 10) {
+  const frame = { strokes: [] };
+  const scene = createVisualizerScene(glintCanvas(frame), { mode, accent: "#38d3e1", settings: sceneSettings, glowStrength: 1, playbackActive: true, backgroundBrightness: 1, backgroundOpacity: 1 });
   scene.resize(layout);
   const frames = [];
   let smoothed;
   for (let index = 0; index < seconds * 60; index++) {
-    frame.spikes = [];
+    frame.strokes = [];
     smoothed = smoothFrequencyFrame(song(index / 60), smoothed, .76, smoothed ? 1000 / 60 : 0);
     const data = smoothed;
     scene.draw(10000 + index * 1000 / 60, { getFrequencyData: () => data, meters: () => ({ sampleRate: 48000 }) });
-    frames.push(frame.spikes.filter((_, spike) => spike % 2 === 0));
+    frames.push(frame.strokes.filter((_, stroke) => stroke % 2 === 0));
   }
   return frames.slice(120);
 }
 
-for (const [mode, limit] of [["particles", 4], ["pulse", 3]]) {
-  test(`${mode} shows a few star spikes, eased in and out`, () => {
+for (const [mode, limit] of [["waveform", 14], ["particles", 10], ["pulse", 8]]) {
+  test(`${mode} draws up to ${limit} galaxy-style glints`, () => {
     const frames = run(mode);
-    const strong = frames.map(spikes => spikes.filter(spike => spike.alpha > .3).length);
-    const average = strong.reduce((sum, count) => sum + count, 0) / strong.length;
-    assert.ok(average > .5, `${mode}: only ${average.toFixed(2)} visible spikes on average`);
-    assert.ok(average <= limit + .5, `${mode}: ${average.toFixed(2)} visible spikes on average, limit ${limit}`);
-    // Fading ones may overlap a swap, but never a crowd.
-    assert.ok(Math.max(...strong) <= limit * 2, `${mode}: ${Math.max(...strong)} spikes at once`);
-    // A spike swells in: none appears already bright where none was before.
-    // Spikes follow their stars, and nearer starfield stars move tens of
-    // pixels a frame; with only a few spikes on screen 80 px cannot mismatch.
-    for (let index = 1; index < frames.length; index++) {
-      for (const spike of frames[index]) {
-        const before = frames[index - 1].find(other => Math.hypot(other.x - spike.x, other.y - spike.y) < 80);
-        assert.ok(before || spike.alpha < .3, `${mode}: a spike appeared at alpha ${spike.alpha.toFixed(2)}`);
-      }
-    }
+    const counts = frames.map(glints => glints.length);
+    const visible = frames.map(glints => glints.filter(alpha => alpha > .1).length);
+    const average = visible.reduce((sum, count) => sum + count, 0) / visible.length;
+    assert.ok(Math.max(...counts) <= limit, `${mode}: ${Math.max(...counts)} glints in one frame`);
+    assert.ok(average > limit * .4, `${mode}: only ${average.toFixed(1)} visible glints on average`);
   });
 }
 
-test("ECO mode draws no star spikes", () => {
-  for (const mode of ["particles", "pulse"])
-    assert.equal(run(mode, { ...settings, lowPerformance: true }, 6).flat().length, 0);
+test("ECO mode draws no glints", () => {
+  for (const mode of ["waveform", "particles", "pulse"])
+    assert.equal(run(mode, { ...settings, lowPerformance: true }, 4).flat().length, 0);
 });

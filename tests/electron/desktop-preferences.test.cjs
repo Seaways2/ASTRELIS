@@ -197,7 +197,8 @@ test("selected native glass stays enabled through maximize and restore", () => {
     windowResize: { end() {} },
     currentWindowGlass: "none", process: { platform: "win32" },
     mainWindow: { isMaximized: () => maximized, setBackgroundMaterial: value => applied.push(value) },
-    refreshWindowOutline() {}, setNativeAccentAcrylic() {}, writeLog() {}
+    refreshWindowOutline() {}, setNativeAccentAcrylic() {}, writeLog() {},
+    sendToMainWindow() {}
   });
   vm.runInContext(sourceBlock("function setWindowGlass(", "app.whenReady()"), context);
   context.setWindowGlass("mica");
@@ -229,6 +230,7 @@ function windowHarness(t, preferences = {}) {
     isDestroyed() { return false; } isFullScreen() { return false; }
     hookWindowMessage(message, callback) { this.windowMessageHook = { message, callback }; }
     maximize() { this.maximized = true; } unmaximize() { this.maximized = false; }
+    setBounds(bounds) { this.bounds = { ...this.bounds, ...bounds }; }
     setHasShadow(value) { this.shadow = value; } setShape(value) { this.shape = value; }
     setIgnoreMouseEvents() {} setFocusable() {} setSkipTaskbar() {} setOpacity(value) { this.opacity = value; } blur() {}
   }
@@ -243,6 +245,7 @@ function windowHarness(t, preferences = {}) {
     process: { env: {}, platform: "win32" }, desktopPreferences: { get: () => ({ ok: true, preferences: preferencesState }) },
     applyNativeWindowOutline() {},
     windowLog: [], writeLog: (level, message) => context.windowLog.push(`${level} ${message}`),
+    sendToMainWindow: (channel, ...args) => context.mainWindow?.webContents.send(channel, ...args),
     roundedWindowShape: require("../../dist-electron/windowOutline.js").roundedWindowShape,
     windowStatePath: () => stateFile,
     screen: { on() {}, removeListener() {}, getDisplayMatching: () => ({workArea:{x:0,y:0,width:2200,height:1400}}), getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 2200, height: 1400 } }] },
@@ -320,7 +323,8 @@ test("desktop preference IPC rejects other windows and subframes, including the 
   const sender = { mainFrame: frame, send: (...args) => broadcasts.push(args) };
   vm.runInNewContext(sourceBlock("  const trustedPreferencesSender =", '  ipcMain.handle("external-open:ready",'), {
     ipcMain: { handle: (name, handler) => handlers.set(name, handler), on: (name, handler) => handlers.set(name, handler) },
-    mainWindow: { webContents: sender }, desktopPreferences: service, defaultDesktopPreferences, writeLog() {}
+    mainWindow: { webContents: sender }, desktopPreferences: service, defaultDesktopPreferences, writeLog() {},
+    sendToMainWindow: (channel, ...args) => sender.send(channel, ...args)
   });
   const get = handlers.get("desktop-preferences:get"), update = handlers.get("desktop-preferences:update"),
     legacy = handlers.get("window:always-on-top");
@@ -393,6 +397,17 @@ test("transparent native caption SC_MAXIMIZE toggles exactly once and excludes o
   assert.equal((log.match(/toggle maximize \(caption\): maximized=true/g) || []).length, 2);
   assert.match(log, /caption double-click 0xf032 ignored in compact mode/);
   assert.doesNotMatch(log, /0xf012/);
+});
+
+test("a caption SC_RESTORE that Windows has already applied still ends restored", t => {
+  const h = windowHarness(t), hook = h.window.windowMessageHook;
+  const send = value => { const buffer = Buffer.alloc(8); buffer.writeUInt32LE(value); hook.callback(buffer); };
+  send(0xF032); h.quit();
+  assert.equal(h.window.isMaximized(), true);
+  // DefWindowProc restores the window before the deferred handler runs; the
+  // handler must act on the state the gesture saw, not toggle it back.
+  send(0xF122); h.window.unmaximize(); h.quit();
+  assert.equal(h.window.isMaximized(), false);
 });
 
 test("restore after fullscreen-while-maximized returns to the last floating bounds", t => {

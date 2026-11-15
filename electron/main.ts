@@ -38,6 +38,7 @@ import { LibraryMigrator } from "./library/migration/LibraryMigrator";
 import { LibraryDerivedIndexCache } from "./library/derived/LibraryDerivedIndexCache";
 import { parseAbsolutePath } from "./library/validation/LibraryIpcValidator";
 import { LocalMediaAccessPolicy, safeExternalUrl, sameOriginNavigation } from "./security/ElectronSecurity";
+import { RotatingLogFile } from "./logFile";
 import { AuthorizedFileStore } from "./security/AuthorizedFileStore";
 import { DesktopMediaKeys, DesktopPreferenceService, defaultDesktopPreferences } from "./desktopPreferences";
 import { AUDIO_EXTENSIONS, externalAudioPaths } from "./externalOpenPaths";
@@ -129,7 +130,7 @@ let onlineOutputLabel = "default";
 let onlineAnalysisConfig = { enabled: true, fftSize: 2048, sampleRate: 48000 };
 let tray: Tray | null = null;
 let isQuitting = false;
-const desktopMediaKeys = new DesktopMediaKeys(globalShortcut, action => mainWindow?.webContents.send("media-key", action));
+const desktopMediaKeys = new DesktopMediaKeys(globalShortcut, action => sendToMainWindow("media-key", action));
 const desktopPreferences = new DesktopPreferenceService(path.join(app.getPath("userData"), "desktop-preferences.json"), {
   setAlwaysOnTop(enabled) {
     if (compactActive) {
@@ -167,7 +168,7 @@ function flushExternalOpenPaths() {
   pendingExternalOpenPaths = [];
   files.forEach(file => localMediaAccess?.authorizeFile(file));
   writeLog("INFO", `External open dispatched: ${files.length} audio file(s)`);
-  mainWindow.webContents.send("external-open-files", files);
+  sendToMainWindow("external-open-files", files);
 }
 
 function queueExternalOpenPaths(files: string[]) {
@@ -206,16 +207,24 @@ function scheduleOnlineBoundsResync() {
   onlineBoundsSyncTimer = setTimeout(() => {
     onlineBoundsSyncTimer = undefined;
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send("browser:sync-bounds");
+    sendToMainWindow("browser:sync-bounds");
   }, 90);
 }
 
+let logFile: RotatingLogFile | undefined;
 function writeLog(level: string, message: string) {
   try {
+    // userData can be redirected during startup, so the file follows it.
     const directory = path.join(app.getPath("userData"), "logs");
-    fs.mkdirSync(directory, { recursive: true });
-    fs.appendFileSync(path.join(directory, "auralis.log"), `${new Date().toISOString()} [${level}] ${message}\n`);
+    if (logFile?.directory !== directory) logFile = new RotatingLogFile(directory);
+    logFile.write(`${new Date().toISOString()} [${level}] ${message}\n`);
   } catch { /* Logging must never crash the player. */ }
+}
+
+/** Sends to the main window's page unless it is already gone (e.g. while quitting). */
+function sendToMainWindow(channel: string, ...args: unknown[]) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send(channel, ...args);
 }
 
 function currentOnlineWindowState() {
@@ -297,15 +306,22 @@ function windowSnapshot(window: BrowserWindow): WindowSnapshot {
 const describeWindow = (window: BrowserWindow) =>
   `maximized=${window.isMaximized()} fullscreen=${window.isFullScreen()} bounds=${JSON.stringify(window.getBounds())}`;
 
-/** Maximize, or restore to real floating bounds (titlebar button and caption double-click). */
-function toggleMaximize(window: BrowserWindow, source: "button" | "caption") {
+/**
+ * Maximize, or restore to real floating bounds (titlebar button and caption
+ * double-click). `wasMaximized` is the state when the gesture arrived: by the
+ * time a caption gesture is handled Windows may already have acted on it (a
+ * default SC_RESTORE), and toggling the state read then would undo it.
+ */
+function toggleMaximize(window: BrowserWindow, source: "button" | "caption", wasMaximized = window.isMaximized()) {
   const before = describeWindow(window);
-  if (!window.isMaximized()) window.maximize();
-  else {
+  if (!wasMaximized) {
+    if (!window.isMaximized()) window.maximize();
+  } else {
     const restore = windowState.restoreBounds(windowSnapshot(window));
-    window.unmaximize();
-    // unmaximize() resized to the overwritten rectangle and the window still fills the screen.
-    if (window.isMaximized()) window.setBounds(restore, false);
+    if (window.isMaximized()) window.unmaximize();
+    // unmaximize() resized to the overwritten rectangle and the window still
+    // fills the screen, or Windows restored it to a rectangle of its own.
+    window.setBounds(restore, false);
   }
   // Rare user gestures; the before/after pair diagnoses a toggle that changes nothing.
   writeLog("WINDOW", `toggle maximize (${source}): ${before} -> ${describeWindow(window)}`);
@@ -315,7 +331,7 @@ function emitBrowserState() {
   if (!mainWindow || !onlineView || onlineView.webContents.isDestroyed()) return;
   const contents = onlineView.webContents;
 
-  mainWindow.webContents.send("browser:state", {
+  sendToMainWindow("browser:state", {
     url: contents.getURL(),
     title: contents.getTitle(),
     loading: contents.isLoading(),
@@ -485,13 +501,15 @@ function createWindow() {
         writeLog("WINDOW", `caption command 0x${command.toString(16)} not handled`);
       return;
     }
+    // Read before Windows' own handling of the command runs.
+    const wasMaximized = hookedWindow.isMaximized();
     setImmediate(() => {
       if (mainWindow !== hookedWindow || hookedWindow.isDestroyed()) return;
       if (compactActive) {
         writeLog("WINDOW", `caption double-click 0x${command.toString(16)} ignored in compact mode`);
         return;
       }
-      toggleMaximize(hookedWindow, "caption");
+      toggleMaximize(hookedWindow, "caption", wasMaximized);
     });
   });
 
@@ -541,7 +559,7 @@ function createWindow() {
     }, 180);
   };
   const refreshMaximizedAppearance = (maximized: boolean) => {
-    mainWindow?.webContents.send("window:maximized-state", maximized);
+    sendToMainWindow("window:maximized-state", maximized);
     setWindowGlass(currentWindowGlass);
   };
   // Electron fires no maximize/unmaximize event when the emulated state changes
@@ -592,7 +610,7 @@ function createWindow() {
     screen.removeListener("display-metrics-changed",displayChanged);
     screen.removeListener("display-removed",displayChanged);
   });
-  const emitPresentationState = () => mainWindow?.webContents.send("window:presentation-state", {
+  const emitPresentationState = () => sendToMainWindow("window:presentation-state", {
     minimized: Boolean(mainWindow?.isMinimized()),
     trayConcealed
   });
@@ -622,7 +640,7 @@ function createWindow() {
     if (!mainWindow) return;
     // Fit the whole interface in DIP space, without applying Windows DPI twice.
     syncWindowFit(true);
-    mainWindow.webContents.send("window:maximized-state", windowState.fillsScreen);
+    sendToMainWindow("window:maximized-state", windowState.fillsScreen);
     emitPresentationState();
     setWindowGlass(currentWindowGlass);
   });
@@ -647,7 +665,7 @@ function showMainWindow() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send("window:presentation-state", { minimized: false, trayConcealed: false });
+  sendToMainWindow("window:presentation-state", { minimized: false, trayConcealed: false });
 }
 
 function resolveAppIconPath() {
@@ -716,7 +734,7 @@ function setClickThrough(enabled: boolean) {
   windowResize.end();
   clickThrough = enabled;
   mainWindow?.setIgnoreMouseEvents(enabled, { forward: true });
-  mainWindow?.webContents.send("window:click-through-state", enabled);
+  sendToMainWindow("window:click-through-state", enabled);
 }
 
 function refreshWindowOutline() {
@@ -963,7 +981,7 @@ app.whenReady().then(async () => {
         videoRackLastPosition = resumePosition;
         videoRackTransition = false;
         if (videoRackAudio && mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send("video:state", videoPlayer!.state);
+          sendToMainWindow("video:state", videoPlayer!.state);
         videoDetached=detached;
         if (detached) { videoSurface?.hide();mainWindow?.hide(); }
         else { mainWindow?.show();mainWindow?.focus(); }
@@ -1010,7 +1028,7 @@ app.whenReady().then(async () => {
         }
       }
       if (mainWindow && !mainWindow.isDestroyed() && !(videoRackAudio && videoRackTransition))
-        mainWindow.webContents.send("video:state", state);
+        sendToMainWindow("video:state", state);
     }, path.join(app.getPath("userData"), "video-dsp.json"));
   ipcMain.handle("video:choose", async event => {
     if (!trustedCacheRequest(event)) return { ok: false, error: "UNTRUSTED_SENDER" };
@@ -1023,7 +1041,7 @@ app.whenReady().then(async () => {
     } catch (error) { return { ok: false, error: String(error) }; }
   });
   videoPlayer.onInput = input => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("video:input", input);
+    if (mainWindow && !mainWindow.isDestroyed()) sendToMainWindow("video:input", input);
   };
   ipcMain.handle("video:state", event => trustedCacheRequest(event) ? videoPlayer?.state : emptyVideoState());
   ipcMain.handle("video:open", async (event, file: unknown, direct: unknown, playbackToken: unknown, rackPlugins: unknown) => {
@@ -1246,7 +1264,7 @@ app.whenReady().then(async () => {
     mainWindow && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame
   );
   const publishDesktopPreferences = () => {
-    mainWindow?.webContents.send("desktop-preferences:changed", desktopPreferences.get().preferences);
+    sendToMainWindow("desktop-preferences:changed", desktopPreferences.get().preferences);
   };
   ipcMain.handle("desktop-preferences:get", event => trustedPreferencesSender(event)
     ? desktopPreferences.get()
@@ -1298,7 +1316,7 @@ app.whenReady().then(async () => {
     const duration = Number(media.duration);
     const currentTime = Number(media.currentTime);
     const playing = Boolean(media.playing);
-    mainWindow.webContents.send("browser:media", {
+    sendToMainWindow("browser:media", {
       title: typeof media.title === "string" ? media.title : "",
       trackId: typeof media.trackId === "string" ? media.trackId : "",
       artist: typeof media.artist === "string" ? media.artist : "",
@@ -1311,7 +1329,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on("online:play-intent", event => {
     if (!trustedOnlineIpcSender(event) || !mainWindow) return;
-    mainWindow.webContents.send("browser:play-intent");
+    sendToMainWindow("browser:play-intent");
   });
   ipcMain.on("browser:analysis-config", (event, next: Record<string, unknown>) => {
     if (event.sender !== mainWindow?.webContents || !next || typeof next !== "object") return;
@@ -1338,11 +1356,11 @@ app.whenReady().then(async () => {
       || !ArrayBuffer.isView(frequency) || frequency.byteLength !== fftSize / 2
       || !ArrayBuffer.isView(left) || !ArrayBuffer.isView(right)
       || left.byteLength !== 4096 || right.byteLength !== 4096) return;
-    mainWindow.webContents.send("browser:analysis", { sampleRate, fftSize, frequency, left, right });
+    sendToMainWindow("browser:analysis", { sampleRate, fftSize, frequency, left, right });
   });
   ipcMain.on("online:analysis-reset", event => {
     if (!trustedOnlineIpcSender(event) || !mainWindow) return;
-    mainWindow.webContents.send("browser:analysis-reset");
+    sendToMainWindow("browser:analysis-reset");
   });
   ipcMain.on("native-audio:pcm-data", (event, packet) => {
     if (event.sender !== mainWindow?.webContents || !rendererPcmCaptureActive) return;

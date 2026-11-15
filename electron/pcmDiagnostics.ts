@@ -25,6 +25,10 @@ export interface RendererPcmDiagnostics extends PcmPacketMetadata {
   captureMode?: string;
 }
 
+/** A healthy stream is logged this often; trouble is logged as soon as it is sampled. */
+export const PCM_DIAG_HEALTHY_INTERVAL_MS = 30000;
+const PCM_DIAG_SLOW_EVENT_LOOP_MS = 50;
+
 function finiteInteger(value: unknown) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : 0;
@@ -54,6 +58,8 @@ export class PcmDiagnostics {
   private nativeStatusAtMs = 0;
   private lastFlushedPacketCount = 0;
   private lastMainEventLoopP95 = 0;
+  private lastReportAtMs = 0;
+  private lastReportedTrouble = "";
 
   constructor(
     private readonly emit: (message: string) => void,
@@ -146,6 +152,20 @@ export class PcmDiagnostics {
       return;
     }
     this.lastMainEventLoopP95 = this.eventLoopMs(95);
+    // Sampled every 2 s, but a ~2 KB line every 2 s grew the log by ~5 MB an
+    // hour. A healthy stream is reported every 30 s; any new trouble at once.
+    const trouble = [
+      this.mainSequenceGaps, this.stdinWriteBackpressureCount, native.captureUnderruns, native.captureDiscontinuities,
+      native.pcmPacketsRejected, native.nativeSequenceGaps, native.nativeSessionDrops, native.pipeReadFailures,
+      this.lastMainEventLoopP95 > PCM_DIAG_SLOW_EVENT_LOOP_MS
+    ].map(value => String(value ?? 0)).join(",");
+    const now = performance.now();
+    if (trouble === this.lastReportedTrouble && now - this.lastReportAtMs < PCM_DIAG_HEALTHY_INTERVAL_MS) {
+      this.eventLoop.reset();
+      return;
+    }
+    this.lastReportedTrouble = trouble;
+    this.lastReportAtMs = now;
     const report = {
       protocolVersion: 1,
       main: {

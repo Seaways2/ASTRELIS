@@ -151,6 +151,12 @@ function startPlaybackEngine() {
     }
   });
   engine.stderr.on("data", chunk => writeLog("AUDIO", `Native host stderr pid=${engine.pid || "unknown"}: ${String(chunk).trim().slice(0, 800)}`));
+  // A host that is exiting closes its stdin; without a listener the failed
+  // write surfaced as an uncaught "write after end" in the main process.
+  engine.stdin.on("error", error => {
+    writeLog("AUDIO", `Native host stdin closed pid=${engine.pid || "unknown"}: ${error.message}`);
+    rejectPlaybackRequestsForEngine(engine, error);
+  });
   engine.once("exit", (code, signal) => {
     const error = new Error(`JUCE playback engine exited (${code ?? "unknown"})`);
     rejectPlaybackRequestsForEngine(engine, error);
@@ -202,8 +208,17 @@ export async function sendPlaybackCommand(command: Record<string, unknown>) {
         });
       }, nativeCommandTimeoutMs(command.type));
       if (command.type === "editor") writeLog("VST", `Editor requested: id=${String(command.id)}; pid=${engine.pid}; timeout=30000ms`);
+      const fail = (error: Error) => {
+        if (!playbackRequests.has(requestId)) return;
+        clearTimeout(timer);
+        playbackRequests.delete(requestId);
+        reject(error);
+      };
       playbackRequests.set(requestId, { type: String(command.type || "command"), engine, resolve, reject, timer });
-      engine.stdin.write(`${JSON.stringify(requestCommand)}\n`);
+      // The host may be exiting between ensure() and here: fail this request
+      // now rather than writing into a closed pipe and waiting for the timeout.
+      if (!engine.stdin.writable) { fail(new Error(`原生音频引擎已关闭：${String(command.type || "command")}`)); return; }
+      engine.stdin.write(`${JSON.stringify(requestCommand)}\n`, error => { if (error) fail(error); });
     } catch (error) { reject(error); }
   });
 }

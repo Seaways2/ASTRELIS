@@ -294,13 +294,21 @@ function windowSnapshot(window: BrowserWindow): WindowSnapshot {
   };
 }
 
+const describeWindow = (window: BrowserWindow) =>
+  `maximized=${window.isMaximized()} fullscreen=${window.isFullScreen()} bounds=${JSON.stringify(window.getBounds())}`;
+
 /** Maximize, or restore to real floating bounds (titlebar button and caption double-click). */
-function toggleMaximize(window: BrowserWindow) {
-  if (!window.isMaximized()) { window.maximize(); return; }
-  const restore = windowState.restoreBounds(windowSnapshot(window));
-  window.unmaximize();
-  // unmaximize() resized to the overwritten rectangle and the window still fills the screen.
-  if (window.isMaximized()) window.setBounds(restore, false);
+function toggleMaximize(window: BrowserWindow, source: "button" | "caption") {
+  const before = describeWindow(window);
+  if (!window.isMaximized()) window.maximize();
+  else {
+    const restore = windowState.restoreBounds(windowSnapshot(window));
+    window.unmaximize();
+    // unmaximize() resized to the overwritten rectangle and the window still fills the screen.
+    if (window.isMaximized()) window.setBounds(restore, false);
+  }
+  // Rare user gestures; the before/after pair diagnoses a toggle that changes nothing.
+  writeLog("WINDOW", `toggle maximize (${source}): ${before} -> ${describeWindow(window)}`);
 }
 
 function emitBrowserState() {
@@ -461,15 +469,29 @@ function createWindow() {
   });
 
   // Chromium's caption double-click reaches this transparent HWND as
-  // WM_SYSCOMMAND / (SC_MAXIMIZE | HTCAPTION), not WM_NCLBUTTONDBLCLK.
-  // Windows cannot maximize a thickFrame:false transparent window itself;
-  // route only that caption gesture through Electron's transparent-window API.
+  // WM_SYSCOMMAND / (SC_MAXIMIZE | HTCAPTION), not WM_NCLBUTTONDBLCLK; if
+  // Windows ever believes the window is zoomed the same gesture arrives as
+  // SC_RESTORE | HTCAPTION. Windows cannot maximize a thickFrame:false
+  // transparent window itself; route only that caption gesture through
+  // Electron's transparent-window API.
   const hookedWindow = mainWindow;
   mainWindow.hookWindowMessage(0x0112, wParam => {
-    if (wParam.length < 4 || wParam.readUInt32LE(0) !== 0xF032) return;
+    if (wParam.length < 4) return;
+    const command = wParam.readUInt32LE(0);
+    if (command !== 0xF032 && command !== 0xF122) {
+      // Any other caption-originated command except a drag (SC_MOVE) is logged:
+      // it shows what a double-click turned into when it did not toggle.
+      if ((command & 0xF) === 2 && (command & 0xFFF0) !== 0xF010)
+        writeLog("WINDOW", `caption command 0x${command.toString(16)} not handled`);
+      return;
+    }
     setImmediate(() => {
-      if (mainWindow !== hookedWindow || hookedWindow.isDestroyed() || compactActive) return;
-      toggleMaximize(hookedWindow);
+      if (mainWindow !== hookedWindow || hookedWindow.isDestroyed()) return;
+      if (compactActive) {
+        writeLog("WINDOW", `caption double-click 0x${command.toString(16)} ignored in compact mode`);
+        return;
+      }
+      toggleMaximize(hookedWindow, "caption");
     });
   });
 
@@ -1184,7 +1206,7 @@ app.whenReady().then(async () => {
   writeLog("INFO", `ASTRELIS ${app.getVersion()} started`);
   globalShortcut.register("CommandOrControl+Shift+L", () => setClickThrough(!clickThrough));
   ipcMain.on("window:minimize", () => mainWindow?.minimize());
-  ipcMain.on("window:maximize", () => { if (mainWindow) toggleMaximize(mainWindow); });
+  ipcMain.on("window:maximize", () => { if (mainWindow) toggleMaximize(mainWindow, "button"); });
   ipcMain.on("window:immersive", (_, enabled: boolean) => {
     windowResize.end();
     if (!mainWindow) return;

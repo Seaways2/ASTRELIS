@@ -242,6 +242,7 @@ function windowHarness(t, preferences = {}) {
     fs, path, pathToFileURL, __dirname: path.resolve(__dirname, "../../dist-electron"),
     process: { env: {}, platform: "win32" }, desktopPreferences: { get: () => ({ ok: true, preferences: preferencesState }) },
     applyNativeWindowOutline() {},
+    windowLog: [], writeLog: (level, message) => context.windowLog.push(`${level} ${message}`),
     roundedWindowShape: require("../../dist-electron/windowOutline.js").roundedWindowShape,
     windowStatePath: () => stateFile,
     screen: { on() {}, removeListener() {}, getDisplayMatching: () => ({workArea:{x:0,y:0,width:2200,height:1400}}), getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 2200, height: 1400 } }] },
@@ -378,11 +379,20 @@ test("transparent native caption SC_MAXIMIZE toggles exactly once and excludes o
   const h = windowHarness(t), hook = h.window.windowMessageHook;
   assert.equal(hook.message, 0x0112);
   const command = value => { const buffer = Buffer.alloc(8); buffer.writeUInt32LE(value); hook.callback(buffer); h.quit(); };
-  for (const value of [0xF010, 0xF020, 0xF060, 0xF030]) { command(value); assert.equal(h.window.isMaximized(), false); }
+  for (const value of [0xF010, 0xF012, 0xF020, 0xF060, 0xF030, 0xF120]) { command(value); assert.equal(h.window.isMaximized(), false); }
   command(0xF032); assert.equal(h.window.isMaximized(), true);
   command(0xF032); assert.equal(h.window.isMaximized(), false);
+  // The same caption gesture arrives as SC_RESTORE | HTCAPTION when Windows thinks the window is zoomed.
+  command(0xF122); assert.equal(h.window.isMaximized(), true);
+  command(0xF122); assert.equal(h.window.isMaximized(), false);
   h.context.compactActive = true;
   command(0xF032); assert.equal(h.window.isMaximized(), false);
+  // Every caption toggle is logged with the state before and after; drags (SC_MOVE) are not.
+  const log = h.context.windowLog.join("\n");
+  assert.equal((log.match(/toggle maximize \(caption\): maximized=false/g) || []).length, 2);
+  assert.equal((log.match(/toggle maximize \(caption\): maximized=true/g) || []).length, 2);
+  assert.match(log, /caption double-click 0xf032 ignored in compact mode/);
+  assert.doesNotMatch(log, /0xf012/);
 });
 
 test("restore after fullscreen-while-maximized returns to the last floating bounds", t => {

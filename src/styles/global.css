@@ -153,12 +153,48 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .window-actions .window-minimize svg { width: 14px; transform: translateY(3px); }
 .window-actions .window-maximize svg { width: 11px; height: 11px; }
 
-.workspace { z-index: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 184px minmax(520px, 1fr) 286px; }
+.workspace { position: relative; z-index: 1; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 184px minmax(520px, 1fr) 286px; }
 .workspace.workspace-focus { grid-template-columns: 184px minmax(0, 1fr); }
-.meter-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 36px; margin-top: 12px; padding: 6px; color: #a4b5ba; background: transparent; border-radius: 4px; font-size: 12px; }
-.meter-toggle:hover, .meter-toggle[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.meter-toggle svg { width: 17px; flex-shrink: 0; }
-.theme-light .meter-toggle { color: var(--ice-text-secondary); }
+/* Meters fold toggle: a faint triangle on the meters' left edge (fold away) or on
+   the window's right edge once folded (bring back). It shows only while the pointer
+   is near: over the meters, or inside the button's narrow invisible strip. As an
+   absolutely positioned grid child it sits in the meters' (or the page's) grid area. */
+.meter-edge-toggle {
+  position: absolute;
+  z-index: 6;
+  grid-row: 1;
+  top: 50%;
+  width: 18px;
+  height: 140px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  filter: drop-shadow(0 0 calc(4px * var(--glow-strength, 1)) color-mix(in srgb, var(--accent) 55%, transparent));
+  transition: opacity .18s ease;
+}
+.meter-edge-toggle.expanded { grid-column: 3; left: -9px; }
+.meter-edge-toggle.collapsed { grid-column: 2; right: 0; }
+.meter-edge-toggle i {
+  width: 8px;
+  height: 14px;
+  background: color-mix(in srgb, var(--accent) 72%, white);
+  opacity: .5;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.meter-edge-toggle.collapsed i { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
+.workspace:has(> .meters:hover) > .meter-edge-toggle,
+.meter-edge-toggle:hover,
+.meter-edge-toggle:focus-visible { opacity: 1; }
+.meter-edge-toggle:hover i, .meter-edge-toggle:focus-visible i { opacity: .92; }
+.meter-edge-toggle.expanded:hover i { transform: translateX(1px); }
+.meter-edge-toggle.collapsed:hover i { transform: translateX(-1px); }
+.meter-edge-toggle:focus-visible { outline: none; }
 .workspace-page-transition { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; opacity: 1; }
 .workspace-page-transition:is(.page-switch-out, .page-switch-in) {
   will-change: opacity, transform, filter, clip-path;
@@ -1037,7 +1073,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 @media (max-width: 1250px) {
   .workspace { grid-template-columns: 66px minmax(500px,1fr) 262px; }
   .workspace.workspace-focus { grid-template-columns: 66px minmax(0, 1fr); }
-  .meter-toggle span { display: none; }
   .sidebar { padding-inline: 8px; }
   .sidebar nav button { justify-content: center; padding: 0; }
   .sidebar nav span { font-size: 0; }
@@ -3345,8 +3380,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   .controls button,
   .volume-control button,
   .queue-button,
-  .mode-tabs button,
-  .meter-toggle
+  .mode-tabs button
 ) { color: var(--ice-text-secondary); }
 .theme-light:not(.obs-mode):not(.immersive-mode) :is(
   .brand span,
@@ -3397,7 +3431,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
    accent. Their child icons inherit the restored color. */
 .app-shell.theme-light :is(
   .window-actions button.active,
-  .meter-toggle:hover, .meter-toggle[aria-pressed="true"],
   .sidebar nav button.active, .import-button,
   .mode-tabs button:hover, .mode-tabs button.active,
   .visual-tune-toggle:hover, .visual-tune-toggle.active,

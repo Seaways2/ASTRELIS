@@ -9,7 +9,7 @@ import { prefetchTarget } from "./utils/playbackResources";
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from "react";
 import {
   Blend, Blocks, CircleStop, Copy, Disc3, Expand, Import, ListMusic, Lock, Minus,
-  MonitorSpeaker, Pause, PictureInPicture2, Play, Power, Repeat, Repeat1, Square,
+  Pause, PictureInPicture2, Play, Power, Repeat, Repeat1, Square,
   Shuffle, SkipBack, SkipForward, SlidersHorizontal,
   Film, Volume2, X, Zap
 } from "lucide-react";
@@ -1291,9 +1291,6 @@ export default function App() {
           }}><Film /> {t("video.title")}</button>
           <button className="import-button file-import-button" onClick={() => fileRef.current?.click()}><Import /> {t("common.importFiles")}</button>
           <input ref={fileRef} type="file" multiple accept="audio/*,video/*,.mp4,.mkv,.mov,.m4v,.webm,.avi,.ts,.m2ts,.mpg,.mpeg,.wmv,.asf,.flv,.ogv,.3gp,.3g2,.f4v,.vob,.mxf,.rm,.rmvb,.mts,.m2t,.m1v,.m2v,.divx,.mpe,.m2p,.qt,.tp,.trp,.vro,.mpv,.flac,.m4a,.ape,.dsf,.aiff,.aif,.opus,.wma,.dts,.ac3,.eac3" hidden onChange={(event) => { void importFiles(Array.from(event.target.files || [])); event.target.value = ""; }} />
-          {renderedPage !== "nowPlaying" && <button className="meter-toggle" aria-pressed={metersExpanded}
-            title={t(metersExpanded ? "layout.hideMeters" : "layout.showMeters")}
-            onClick={() => setMetersExpanded(value => !value)}><MonitorSpeaker /><span>{t(metersExpanded ? "layout.hideMeters" : "layout.showMeters")}</span></button>}
         </div>
       </aside>
 
@@ -1402,6 +1399,14 @@ export default function App() {
       </div>
 
       {showMeters && <MeterPanel visible={pageVisible && !windowBackgrounded} lowPerformance={lowPerformanceMode} format={onlineSession ? "STREAM" : current?.format || ""} device={deviceName} coverUrl={displayCover} name={displayName || ""} playbackState={playbackState} />}
+      {/* A faint triangle on the meters' edge, shown only when the pointer comes near:
+          it folds the meters away, and from the window's right edge brings them back. */}
+      {renderedPage !== "nowPlaying" && <button type="button"
+        className={`meter-edge-toggle ${metersExpanded ? "expanded" : "collapsed"}`}
+        aria-pressed={metersExpanded}
+        aria-label={t(metersExpanded ? "layout.hideMeters" : "layout.showMeters")}
+        title={t(metersExpanded ? "layout.hideMeters" : "layout.showMeters")}
+        onClick={() => setMetersExpanded(value => !value)}><i aria-hidden="true" /></button>}
     </div>
 
     <footer className="transport">

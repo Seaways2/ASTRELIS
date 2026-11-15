@@ -61,10 +61,13 @@ test("Galaxy Spiral separates musical bands and reinforces a traveling density r
 
 test("Galaxy Spiral derives luminous layers from the active accent", () => {
   const galaxyBlock = canvas.match(/if \(mode === "waveform"\) \{[\s\S]*?\} else if \(mode === "pulse"\)/)?.[0] || "";
+  // Every galaxy colour comes from the accent through galaxyPalette.
+  assert.match(canvas, /const palette = galaxyPalette\(\[accentRed, accentGreen, accentBlue\]\);/);
   assert.match(canvas, /layerContext\.fillStyle = accent/);
-  assert.match(canvas, /diskGlow\.addColorStop\(\.12, accent\)/);
-  assert.match(canvas, /core\.addColorStop\(\.24, galaxyAccent\(\.62\)\)/);
+  assert.match(canvas, /diskGlow\.addColorStop\(\.38, accent\)/);
+  assert.match(canvas, /core\.addColorStop\(\.46, galaxyAccent\(\.36\)\)/);
   assert.doesNotMatch(galaxyBlock, /#[0-9a-f]{6}/i);
+  assert.doesNotMatch(read("src/visualizers/galaxyPalette.ts"), /#[0-9a-f]{6}/i);
 });
 
 test("Galaxy Spiral borrows independently rotating elliptical motes from Black Hole Pulse", () => {
@@ -95,9 +98,10 @@ test("Galaxy Spiral shares one softened scene flash across dust, stars, motes, a
 test("Galaxy Spiral core brightens gradually from its transparent rim to a tiny center", () => {
   assert.match(canvas, /const galaxyAccent = \(alpha: number\)/);
   assert.match(canvas, /const coreBreath = \.5 \+ Math\.sin/);
-  assert.match(canvas, /core\.addColorStop\(0, "rgba\(250,255,255,\.9\)"\)/);
-  assert.match(canvas, /core\.addColorStop\(\.08, "rgba\(250,255,255,\.66\)"\)/);
-  assert.match(canvas, /core\.addColorStop\(\.24, galaxyAccent\(\.62\)\)/);
+  // Near-white centre, warm bulge, then the accent out to a clear rim.
+  assert.match(canvas, /core\.addColorStop\(0, rgba\(palette\.core, \.95\)\)/);
+  assert.match(canvas, /core\.addColorStop\(\.08, rgba\(palette\.core, \.72\)\)/);
+  assert.match(canvas, /core\.addColorStop\(\.24, rgba\(palette\.warm, \.62\)\)/);
   assert.match(canvas, /core\.addColorStop\(\.82, galaxyAccent\(\.07\)\)/);
   assert.match(canvas, /core\.addColorStop\(1, "transparent"\)/);
   assert.match(canvas, /galaxySceneFlash \* \.24 \+ coreBreath \* \.025/);
@@ -113,26 +117,40 @@ test("Galaxy Spiral renders a full-frame twinkling background star field", () =>
 });
 
 test("Galaxy Spiral reduces the broad fog disk and selectively lifts the existing arm spine", () => {
-  assert.match(canvas, /Math\.min\(\.065, \(\.055 \+ galaxyMid \* \.085 \+ galaxySceneFlash \* \.12 \+ galaxyGlow \* \.025\) \* barOpacity \* \.28\)/);
+  assert.match(canvas, /Math\.min\(\.1, \(\.07 \+ galaxyMid \* \.09 \+ galaxySceneFlash \* \.13 \+ galaxyGlow \* \.03\) \* barOpacity \* \.32\)/);
   assert.match(canvas, /normalizedRadius - \.2\) \/ \.05/);
   assert.match(canvas, /\(\.85 - normalizedRadius\) \/ \.05/);
   assert.match(canvas, /const ridgeCenter = Math\.max\(0, 1 - Math\.abs\(armScatter\)/);
   assert.match(canvas, /const ridgeLift = 1 \+ ridgeBand \* ridgeCenter \* \.16/);
-  assert.match(canvas, /layerContext\.globalAlpha = \(brightNode \? \.24 : \.045 \+ Math\.random\(\) \* \.105\) \* ridgeLift/);
+  assert.match(canvas, /layerContext\.globalAlpha = \(brightNode \? \.34 : \.065 \+ Math\.random\(\) \* \.13\) \* ridgeLift/);
   assert.match(canvas, /sharedBeatFlash\) \* barOpacity \* star\.ridgeLift/);
 });
 
 test("Galaxy Spiral fog uses four continuous cached paths with two-axis falloff", () => {
   assert.match(canvas, /galaxyFogLayer = createLayer\(\)/);
   assert.match(canvas, /for \(let arm = 0; arm < 4; arm\+\+\)/);
-  assert.match(canvas, /const armFogPath = new Path2D\(\)/);
+  assert.match(canvas, /const armPath = \(arm: number, angleOffset = 0\) => \{\s*const path = new Path2D\(\);/);
   assert.match(canvas, /for \(let sample = 0; sample <= 96; sample\+\+\)/);
   assert.match(canvas, /fogLayerContext\.lineCap = "round"/);
-  assert.match(canvas, /\{ width: \.24, blur: \.065, color: galaxyAccent\(\.062\) \}/);
-  assert.match(canvas, /\{ width: \.14, blur: \.042, color: galaxyAccent\(\.052\) \}/);
+  // Three tones of haze, a nebula leading edge and dust lanes cut along each arm.
+  assert.match(canvas, /\{ width: \.24, blur: \.065, color: galaxyAccent\(\.085\) \}/);
+  assert.match(canvas, /\{ width: \.14, blur: \.04, color: rgba\(palette\.analog, \.09\) \}/);
+  assert.match(canvas, /\{ width: \.05, blur: \.016, color: rgba\(palette\.ice, \.11\) \}/);
   assert.match(canvas, /fogLayerContext\.stroke\(armFogPath\)/);
+  assert.match(canvas, /fogLayerContext\.stroke\(armPath\(arm, \.11\)\)/);
+  assert.match(canvas, /fogLayerContext\.globalCompositeOperation = "destination-out";[\s\S]*?fogLayerContext\.stroke\(armPath\(arm, -\.085\)\)/);
   assert.match(canvas, /fogLayerContext\.globalCompositeOperation = "destination-in"/);
   assert.match(canvas, /fogLengthFade\.addColorStop\(\.12, "rgba\(255,255,255,\.08\)"\)/);
   assert.match(canvas, /fogLengthFade\.addColorStop\(\.88, "rgba\(255,255,255,\.24\)"\)/);
   assert.match(canvas, /context\.drawImage\(galaxyFogLayer, -galaxyLayerSize \/ 2/);
+});
+
+test("Galaxy Spiral adds nebula knots, coloured stars, glints and core diffraction spikes", () => {
+  assert.match(canvas, /const knotCount = layerIndex === 0 \? 0 : Math\.round\(count \* \(settings\.lowPerformance \? \.02 : \.045\)\);/);
+  assert.match(canvas, /glow\.addColorStop\(0, rgba\(palette\.nebula, \.5\)\)/);
+  // Live stars are drawn per colour group, four fill-style changes per frame.
+  assert.match(canvas, /galaxyLiveStarGroups\.forEach\(group => \{ context\.fillStyle = group\.color;/);
+  assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0 : 14;/);
+  assert.match(canvas, /if \(glintStrength > \.5 && glints\.length < glintLimit && galaxyGlow > 0\)/);
+  assert.match(canvas, /const spikeLength = coreRadius \* \(3\.6 \+ galaxyLow \* 1\.6 \+ galaxySceneFlash \* 2\.4\) \* \(\.7 \+ galaxyGlow \* \.3\);/);
 });

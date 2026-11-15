@@ -14,8 +14,11 @@ const load = (relative, requireFn = () => ({})) => {
   Function("exports", "require", output)(exports, requireFn);
   return exports;
 };
-const pacing = load("src/visualizers/framePacing.ts");
-const { createVisualizerScene, visualizerTargetFps } = load("src/visualizers/visualizerScene.ts", () => pacing);
+const modules = {
+  "./framePacing": load("src/visualizers/framePacing.ts"),
+  "./galaxyPalette": load("src/visualizers/galaxyPalette.ts")
+};
+const { createVisualizerScene, visualizerTargetFps } = load("src/visualizers/visualizerScene.ts", name => modules[name]);
 
 // Every property read is a no-op function or a settable slot; gradient and
 // pattern factories return objects that accept color stops. Calls are counted.

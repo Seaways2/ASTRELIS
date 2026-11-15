@@ -1,5 +1,6 @@
 import type { MeterSnapshot, VisualizerMode, VisualizerRenderSettings } from "../types/audio";
 import { frameIsDue, nextFrameDue } from "./framePacing";
+import { galaxyPalette, rgba } from "./galaxyPalette";
 
 // Bar count above which particle effects stop growing (the default bar count).
 export const PARTICLE_EFFECT_UNIT_CAP = 90;
@@ -86,6 +87,19 @@ export function createVisualizerScene(
   const accentGreen = Number.isFinite(parsedAccent) ? (parsedAccent >> 8) & 255 : 211;
   const accentBlue = Number.isFinite(parsedAccent) ? parsedAccent & 255 : 225;
   const galaxyAccent = (alpha: number) => `rgba(${accentRed},${accentGreen},${accentBlue},${alpha})`;
+  // Galaxy colours: blue-white arms, a warm bulge, a neighbouring and an
+  // opposite hue, all derived from the accent (see galaxyPalette).
+  const palette = galaxyPalette([accentRed, accentGreen, accentBlue]);
+  type GalaxyTint = "warm" | "ice" | "accent" | "analog";
+  const galaxyTints: readonly GalaxyTint[] = ["warm", "ice", "accent", "analog"];
+  // Old warm stars crowd the inner disk; young blue-white ones light the arms.
+  const pickGalaxyTint = (normalizedRadius: number): GalaxyTint => {
+    const roll = Math.random();
+    const warmShare = Math.max(0, Math.min(.6, 1 - normalizedRadius * 2.2));
+    if (roll < warmShare) return "warm";
+    const rest = (roll - warmShare) / Math.max(.001, 1 - warmShare);
+    return rest < .5 ? "ice" : rest < .82 ? "accent" : "analog";
+  };
   const starsPerEffectUnit = settings.lowPerformance ? 4 : 8;
   // Particle populations follow the bar setting only up to the default. The
   // spectrum may use up to 160 bars, but at that setting the starfield,
@@ -126,7 +140,7 @@ export function createVisualizerScene(
     const radius = .06 + Math.pow(Math.random(), .72) * .92;
     const layer = radius < .36 ? 0 : radius < .68 ? 1 : 2;
     const arm = index % 4;
-    const armScatter = (Math.random() + Math.random() + Math.random() - 1.5) * (.12 + radius * .14);
+    const armScatter = (Math.random() + Math.random() + Math.random() - 1.5) * (.09 + radius * .11);
     const ridgeBand = Math.min(1, Math.max(0, (radius - .2) / .05))
       * Math.min(1, Math.max(0, (.85 - radius) / .05));
     const ridgeCenter = Math.max(0, 1 - Math.abs(armScatter) / (.05 + radius * .045));
@@ -140,9 +154,21 @@ export function createVisualizerScene(
       twinkleSpeed: .65 + Math.random() * 2.8,
       response: .25 + Math.random() * .75,
       frequency: Math.floor(Math.random() * 112),
-      ridgeLift: 1 + ridgeBand * ridgeCenter * .16
+      ridgeLift: 1 + ridgeBand * ridgeCenter * .16,
+      tint: pickGalaxyTint(radius)
     };
   });
+  // Drawn one colour at a time: four fill-style changes per frame, not one per star.
+  const galaxyLiveStarGroups = galaxyTints.map(tint => ({
+    tint,
+    color: rgba(palette[tint], 1),
+    stars: galaxyLiveStars.filter(star => star.tint === tint)
+  }));
+  const galaxyBackgroundGroups = [
+    { color: rgba(palette.ice, 1), stars: particles.filter((_, index) => index % 10 < 6) },
+    { color: rgba(palette.warm, 1), stars: particles.filter((_, index) => index % 10 >= 6 && index % 10 < 9) },
+    { color: accent, stars: particles.filter((_, index) => index % 10 === 9) }
+  ];
   const galaxyOrbitMoteCount = settings.lowPerformance
     ? Math.max(42, Math.round(particleUnits * .9))
     : Math.max(84, Math.round(particleUnits * 1.7));
@@ -222,30 +248,49 @@ export function createVisualizerScene(
     fogLayerContext.globalCompositeOperation = "lighter";
     fogLayerContext.lineCap = "round";
     fogLayerContext.lineJoin = "round";
-    // Each arm is one continuous curve. Only broad, heavily blurred passes
-    // remain here; a narrow center stroke reads as a painted tube instead of
-    // diffuse galactic haze.
-    for (let arm = 0; arm < 4; arm++) {
-      const armFogPath = new Path2D();
+    // Each arm is one continuous curve, offset slightly to trace its glowing
+    // leading edge and its darker inner dust lane.
+    const armPath = (arm: number, angleOffset = 0) => {
+      const path = new Path2D();
       for (let sample = 0; sample <= 96; sample++) {
         const normalizedRadius = .055 + sample / 96 * .925;
-        const angle = arm * Math.PI / 2 + normalizedRadius * 5.65;
+        const angle = arm * Math.PI / 2 + normalizedRadius * 5.65 + angleOffset;
         const radius = maximumRadius * normalizedRadius;
         const cloudX = nextSize / 2 + Math.cos(angle) * radius;
         const cloudY = nextSize / 2 + Math.sin(angle) * radius;
-        sample ? armFogPath.lineTo(cloudX, cloudY) : armFogPath.moveTo(cloudX, cloudY);
+        sample ? path.lineTo(cloudX, cloudY) : path.moveTo(cloudX, cloudY);
       }
-      const fogPasses = [
-        { width: .24, blur: .065, color: galaxyAccent(.062) },
-        { width: .14, blur: .042, color: galaxyAccent(.052) }
-      ];
+      return path;
+    };
+    // Broad, heavily blurred passes in three tones: accent haze, a neighbouring
+    // hue and a blue-white spine. A narrow opaque stroke would read as a tube.
+    const fogPasses = [
+      { width: .24, blur: .065, color: galaxyAccent(.085) },
+      { width: .14, blur: .04, color: rgba(palette.analog, .09) },
+      { width: .05, blur: .016, color: rgba(palette.ice, .11) }
+    ];
+    for (let arm = 0; arm < 4; arm++) {
+      const armFogPath = armPath(arm);
       fogPasses.forEach((pass) => {
         fogLayerContext.filter = `blur(${Math.max(.7, maximumRadius * pass.blur)}px)`;
         fogLayerContext.lineWidth = maximumRadius * pass.width;
         fogLayerContext.strokeStyle = pass.color;
         fogLayerContext.stroke(armFogPath);
       });
+      // Star-forming leading edge in the opposite hue.
+      fogLayerContext.filter = `blur(${Math.max(.7, maximumRadius * .028)}px)`;
+      fogLayerContext.lineWidth = maximumRadius * .05;
+      fogLayerContext.strokeStyle = rgba(palette.nebula, .085);
+      fogLayerContext.stroke(armPath(arm, .11));
     }
+    // Dust lanes along the inner side of each arm carve the haze into
+    // structure instead of one soft smear.
+    fogLayerContext.globalCompositeOperation = "destination-out";
+    fogLayerContext.filter = `blur(${Math.max(.6, maximumRadius * .011)}px)`;
+    fogLayerContext.lineWidth = maximumRadius * .032;
+    fogLayerContext.strokeStyle = "rgba(0,0,0,.6)";
+    for (let arm = 0; arm < 4; arm++) fogLayerContext.stroke(armPath(arm, -.085));
+    fogLayerContext.globalCompositeOperation = "lighter";
     fogLayerContext.filter = "none";
     // Fade the continuous ribbons along their length as well as across their
     // width. This removes visible round caps and lets the haze grow out of
@@ -265,6 +310,15 @@ export function createVisualizerScene(
     fogLengthFade.addColorStop(1, "transparent");
     fogLayerContext.fillStyle = fogLengthFade;
     fogLayerContext.fillRect(0, 0, nextSize, nextSize);
+    // The warm bulge light the arms grow out of.
+    fogLayerContext.globalCompositeOperation = "lighter";
+    const bulge = fogLayerContext.createRadialGradient(nextSize / 2, nextSize / 2, 0, nextSize / 2, nextSize / 2, maximumRadius * .34);
+    bulge.addColorStop(0, rgba(palette.core, .34));
+    bulge.addColorStop(.35, rgba(palette.warm, .16));
+    bulge.addColorStop(.7, galaxyAccent(.05));
+    bulge.addColorStop(1, "transparent");
+    fogLayerContext.fillStyle = bulge;
+    fogLayerContext.fillRect(0, 0, nextSize, nextSize);
     fogLayerContext.globalCompositeOperation = "source-over";
     galaxyLayers.forEach((layer, layerIndex) => {
       layer.width = nextSize;
@@ -275,10 +329,40 @@ export function createVisualizerScene(
       layerContext.fillStyle = accent;
       const [fromRadius, toRadius] = layerRanges[layerIndex];
       const count = Math.round(galaxyDustCount * layerWeights[layerIndex]);
+      // Glowing nebula knots strung along the middle and outer arms, each with
+      // a few young blue-white stars inside.
+      const knotCount = layerIndex === 0 ? 0 : Math.round(count * (settings.lowPerformance ? .02 : .045));
+      for (let knot = 0; knot < knotCount; knot++) {
+        const normalizedRadius = fromRadius + Math.random() * (toRadius - fromRadius) * .92;
+        const arm = knot % 4;
+        const armScatter = (Math.random() - .5) * (.05 + normalizedRadius * .06);
+        const angle = arm * Math.PI / 2 + normalizedRadius * 5.65 + .06 + armScatter;
+        const radius = maximumRadius * normalizedRadius;
+        const x = nextSize / 2 + Math.cos(angle) * radius;
+        const y = nextSize / 2 + Math.sin(angle) * radius;
+        const knotRadius = maximumRadius * (.014 + Math.random() * .03);
+        const glow = layerContext.createRadialGradient(x, y, 0, x, y, knotRadius);
+        glow.addColorStop(0, rgba(palette.nebula, .5));
+        glow.addColorStop(.4, rgba(palette.nebula, .2));
+        glow.addColorStop(1, "transparent");
+        layerContext.globalAlpha = 1;
+        layerContext.fillStyle = glow;
+        layerContext.fillRect(x - knotRadius, y - knotRadius, knotRadius * 2, knotRadius * 2);
+        layerContext.fillStyle = rgba(palette.ice, 1);
+        for (let star = 0; star < 3 + Math.floor(Math.random() * 4); star++) {
+          const spread = knotRadius * .55;
+          const starSize = Math.max(.5, (.45 + Math.random() * .7) * starEffectSize);
+          layerContext.globalAlpha = .28 + Math.random() * .3;
+          layerContext.fillRect(x + (Math.random() - .5) * spread * 2 - starSize / 2, y + (Math.random() - .5) * spread * 2 - starSize / 2, starSize, starSize);
+        }
+      }
+      const tintStyles: Record<GalaxyTint, string> = {
+        warm: rgba(palette.warm, 1), ice: rgba(palette.ice, 1), accent, analog: rgba(palette.analog, 1)
+      };
       for (let index = 0; index < count; index++) {
         const normalizedRadius = fromRadius + Math.pow(Math.random(), .76) * (toRadius - fromRadius);
         const arm = index % 4;
-        const armScatter = (Math.random() + Math.random() + Math.random() - 1.5) * (.14 + normalizedRadius * .22);
+        const armScatter = (Math.random() + Math.random() + Math.random() - 1.5) * (.1 + normalizedRadius * .16);
         const ridgeBand = Math.min(1, Math.max(0, (normalizedRadius - .2) / .05))
           * Math.min(1, Math.max(0, (.85 - normalizedRadius) / .05));
         const ridgeCenter = Math.max(0, 1 - Math.abs(armScatter) / (.05 + normalizedRadius * .045));
@@ -289,7 +373,15 @@ export function createVisualizerScene(
         const y = nextSize / 2 + Math.sin(angle) * radius;
         const brightNode = Math.random() > .94;
         const dotSize = Math.max(.45, (.35 + Math.random() * (brightNode ? 1.35 : .62)) * starEffectSize);
-        layerContext.globalAlpha = (brightNode ? .24 : .045 + Math.random() * .105) * ridgeLift;
+        if (brightNode) {
+          // Bright stars are blue-white with a small soft halo.
+          layerContext.fillStyle = tintStyles.ice;
+          layerContext.globalAlpha = .06 * ridgeLift;
+          layerContext.beginPath();
+          layerContext.arc(x, y, dotSize * 2.4, 0, Math.PI * 2);
+          layerContext.fill();
+        } else layerContext.fillStyle = tintStyles[pickGalaxyTint(normalizedRadius)];
+        layerContext.globalAlpha = (brightNode ? .34 : .065 + Math.random() * .13) * ridgeLift;
         layerContext.fillRect(x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
       }
     });
@@ -392,8 +484,9 @@ export function createVisualizerScene(
 
       // Reuse the Black Hole Pulse star-field layout behind the galaxy. It
       // covers the whole frame while remaining dim enough to preserve the
-      // spiral silhouette and shares the same softened scene flash.
-      particles.forEach((star) => {
+      // spiral silhouette and shares the same softened scene flash. Mostly
+      // blue-white, some warm, a few in the accent.
+      galaxyBackgroundGroups.forEach(group => { context.fillStyle = group.color; group.stars.forEach((star) => {
         const x = cx + star.x * width * .49;
         const y = cy + star.y * height * .72;
         if (x < 0 || x > width || y < 0 || y > height) return;
@@ -417,21 +510,22 @@ export function createVisualizerScene(
         context.beginPath();
         context.arc(x, y, backgroundStarRadius, 0, Math.PI * 2);
         context.fill();
-      });
+      }); });
 
-      // Only a trace of central haze remains; the visible fog now grows
-      // along each cached spiral arm instead of filling a uniform disk.
+      // A faint disk: warm inside, accent through the arms, the neighbouring
+      // hue at the rim. The visible fog grows along each cached spiral arm.
       context.save();
       context.translate(cx, cy);
       context.rotate(-.2);
       context.scale(1, .68);
       const diskGlow = context.createRadialGradient(0, 0, scale * .025, 0, 0, maximumRadius * 1.08);
-      diskGlow.addColorStop(0, "rgba(245,255,255,.76)");
-      diskGlow.addColorStop(.12, accent);
-      diskGlow.addColorStop(.58, accent);
+      diskGlow.addColorStop(0, rgba(palette.core, .8));
+      diskGlow.addColorStop(.12, rgba(palette.warm, 1));
+      diskGlow.addColorStop(.38, accent);
+      diskGlow.addColorStop(.7, rgba(palette.analog, .7));
       diskGlow.addColorStop(1, "transparent");
       context.fillStyle = diskGlow;
-      context.globalAlpha = Math.min(.065, (.055 + galaxyMid * .085 + galaxySceneFlash * .12 + galaxyGlow * .025) * barOpacity * .28);
+      context.globalAlpha = Math.min(.1, (.07 + galaxyMid * .09 + galaxySceneFlash * .13 + galaxyGlow * .03) * barOpacity * .32);
       context.beginPath();
       context.arc(0, 0, maximumRadius * 1.08, 0, Math.PI * 2);
       context.fill();
@@ -443,7 +537,7 @@ export function createVisualizerScene(
         context.scale(1, .68);
         context.rotate(galaxyLayerAngles[1]);
         context.globalAlpha = Math.min(.46,
-          (.22 + galaxyMid * .11 + galaxySceneFlash * .075 + galaxyGlow * .018) * barOpacity);
+          (.34 + galaxyMid * .13 + galaxySceneFlash * .09 + galaxyGlow * .022) * barOpacity);
         context.drawImage(galaxyFogLayer, -galaxyLayerSize / 2, -galaxyLayerSize / 2);
         context.restore();
       }
@@ -462,9 +556,11 @@ export function createVisualizerScene(
       });
 
       // A smaller live layer gives every visible arm musical sparkle without
-      // paying the cost of updating all cached dust particles each frame.
-      context.fillStyle = accent;
-      galaxyLiveStars.forEach((star) => {
+      // paying the cost of updating all cached dust particles each frame. The
+      // brightest twinkles of the moment get four-point glints afterwards.
+      const glints: Array<{ x: number; y: number; size: number; strength: number; color: string }> = [];
+      const glintLimit = settings.lowPerformance ? 0 : 14;
+      galaxyLiveStarGroups.forEach(group => { context.fillStyle = group.color; group.stars.forEach((star) => {
         const radius = maximumRadius * Math.max(.02, star.radius + star.radialScatter);
         const angle = star.angle + galaxyLayerAngles[star.layer];
         const x = cx + Math.cos(angle) * radius;
@@ -480,6 +576,25 @@ export function createVisualizerScene(
         }
         context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash) * barOpacity * star.ridgeLift);
         context.fillRect(x - starSize / 2, y - starSize / 2, starSize, starSize);
+        const glintStrength = sparkle * (.55 + galaxyHigh * .6) + sharedBeatFlash * .5;
+        if (glintStrength > .5 && glints.length < glintLimit && galaxyGlow > 0)
+          glints.push({ x, y, size: starSize, strength: Math.min(1, glintStrength), color: group.tint === "warm" ? rgba(palette.warm, 1) : rgba(palette.ice, 1) });
+      }); });
+      glints.forEach(glint => {
+        const length = glint.size * (4.5 + glint.strength * 5) * (.75 + galaxyGlow * .25);
+        context.globalAlpha = Math.min(.7, glint.strength * .55 * galaxyGlow) * barOpacity;
+        context.lineWidth = Math.max(.5, glint.size * .32);
+        for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+          const spike = context.createLinearGradient(glint.x - dx * length, glint.y - dy * length, glint.x + dx * length, glint.y + dy * length);
+          spike.addColorStop(0, "transparent");
+          spike.addColorStop(.5, glint.color);
+          spike.addColorStop(1, "transparent");
+          context.strokeStyle = spike;
+          context.beginPath();
+          context.moveTo(glint.x - dx * length, glint.y - dy * length);
+          context.lineTo(glint.x + dx * length, glint.y + dy * length);
+          context.stroke();
+        }
       });
 
       // Like the Black Hole Pulse motes, these particles orbit independently
@@ -520,7 +635,12 @@ export function createVisualizerScene(
           context.stroke();
         }
       };
-      [galaxyInnerOrbitMotes, galaxyOrbitMotes].forEach((moteLayer) => moteLayer.forEach(drawGalaxyOrbitMote));
+      // Inner motes glow blue-white, the outer ones carry the accent.
+      [galaxyInnerOrbitMotes, galaxyOrbitMotes].forEach((moteLayer, layerIndex) => {
+        context.fillStyle = layerIndex === 0 ? rgba(palette.ice, 1) : accent;
+        moteLayer.forEach(drawGalaxyOrbitMote);
+      });
+      context.fillStyle = rgba(palette.ice, 1);
 
       // A beat launches one soft density ridge along all four arms. New
       // beats reinforce an active ridge instead of resetting its position.
@@ -553,6 +673,8 @@ export function createVisualizerScene(
       context.scale(1, .46);
       if (galaxyGlow > 0) {
         const coreBloomRadius = coreRadius * (2.2 + galaxyGlow * .24);
+        // Wide accent bloom, then a tighter warm one: the bulge glows gold
+        // inside a halo in the theme colour.
         const coreBloom = context.createRadialGradient(0, 0, coreRadius * .22, 0, 0, coreBloomRadius);
         coreBloom.addColorStop(0, accent);
         coreBloom.addColorStop(.42, accent);
@@ -562,24 +684,55 @@ export function createVisualizerScene(
         context.beginPath();
         context.arc(0, 0, coreBloomRadius, 0, Math.PI * 2);
         context.fill();
+        const warmBloomRadius = coreRadius * (1.55 + galaxyGlow * .12);
+        const warmBloom = context.createRadialGradient(0, 0, 0, 0, 0, warmBloomRadius);
+        warmBloom.addColorStop(0, rgba(palette.warm, .9));
+        warmBloom.addColorStop(.5, rgba(palette.warm, .35));
+        warmBloom.addColorStop(1, "transparent");
+        context.fillStyle = warmBloom;
+        context.globalAlpha = Math.min(.55, (.18 + galaxyLow * .14 + galaxySceneFlash * .2) * galaxyGlow) * barOpacity;
+        context.beginPath();
+        context.arc(0, 0, warmBloomRadius, 0, Math.PI * 2);
+        context.fill();
       }
-      // Keep the white center extremely small. Several translucent,
-      // theme-derived stops make the light build gradually from the clear
-      // outer rim instead of reading as a static, flat white ellipse.
+      // Keep the white center extremely small. Several translucent stops make
+      // the light build gradually from the clear outer rim: a near-white
+      // centre, the warm bulge, then the accent.
       const core = context.createRadialGradient(-coreRadius * .12, -coreRadius * .08, 0, 0, 0, coreRadius * 1.46);
-      core.addColorStop(0, "rgba(250,255,255,.9)");
-      core.addColorStop(.08, "rgba(250,255,255,.66)");
-      core.addColorStop(.24, galaxyAccent(.62));
-      core.addColorStop(.46, galaxyAccent(.34));
+      core.addColorStop(0, rgba(palette.core, .95));
+      core.addColorStop(.08, rgba(palette.core, .72));
+      core.addColorStop(.24, rgba(palette.warm, .62));
+      core.addColorStop(.46, galaxyAccent(.36));
       core.addColorStop(.66, galaxyAccent(.16));
       core.addColorStop(.82, galaxyAccent(.07));
       core.addColorStop(1, "transparent");
       context.fillStyle = core;
-      context.globalAlpha = Math.min(.9, (.48 + galaxyLow * .18 + galaxySceneFlash * .24 + coreBreath * .025) * barOpacity);
+      context.globalAlpha = Math.min(.92, (.5 + galaxyLow * .18 + galaxySceneFlash * .24 + coreBreath * .025) * barOpacity);
       context.beginPath();
       context.arc(0, 0, coreRadius * 1.46, 0, Math.PI * 2);
       context.fill();
       context.restore();
+      // Diffraction spikes across the core, longer and brighter with the bass
+      // and the beat, scaled by the theme glow.
+      if (galaxyGlow > 0) {
+        const spikeLength = coreRadius * (3.6 + galaxyLow * 1.6 + galaxySceneFlash * 2.4) * (.7 + galaxyGlow * .3);
+        context.lineWidth = Math.max(.6, coreRadius * .035);
+        context.globalAlpha = Math.min(.6, (.22 + galaxyLow * .16 + galaxySceneFlash * .3) * galaxyGlow) * barOpacity;
+        for (const angle of [-.22, Math.PI / 2 - .22]) {
+          const dx = Math.cos(angle) * spikeLength, dy = Math.sin(angle) * spikeLength;
+          const spike = context.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+          spike.addColorStop(0, "transparent");
+          spike.addColorStop(.42, rgba(palette.ice, .5));
+          spike.addColorStop(.5, rgba(palette.core, 1));
+          spike.addColorStop(.58, rgba(palette.ice, .5));
+          spike.addColorStop(1, "transparent");
+          context.strokeStyle = spike;
+          context.beginPath();
+          context.moveTo(cx - dx, cy - dy);
+          context.lineTo(cx + dx, cy + dy);
+          context.stroke();
+        }
+      }
       context.globalCompositeOperation = "source-over";
       context.globalAlpha = 1;
     } else if (mode === "pulse") {

@@ -204,6 +204,7 @@ function NeteaseSurface() {
     void poll();
     const timer = window.setInterval(() => void poll(), 1800);
     return () => { stopped = true; window.clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one poll loop per QR code; the rest of qr only changes as the poll reports
   }, [qr?.key]);
 
   const startLogin = async () => {
@@ -311,6 +312,7 @@ function NeteaseSurface() {
 
   useEffect(() => {
     if (account.loggedIn && !playlists.length) void loadPlaylists();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loads playlists once after logging in, not again whenever the list changes
   }, [account.loggedIn]);
 
   if (accountLoading) return <div className="online-provider-content netease-provider netease-login-gate"><LoaderCircle className="spinning" /><b>正在恢复网易云登录状态</b></div>;

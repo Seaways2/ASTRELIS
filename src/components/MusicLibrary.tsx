@@ -212,7 +212,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
   }
   const { stats: libraryStats } = viewModel;
   const visibleMediaCount = useMemo(() => state.libraryTracks.reduce((count, track) => count + Number(!hiddenByFolders(track.sourcePath, hiddenFolders)), 0), [state.libraryTracks, hiddenFolders]);
-  const progress = useMemo(() => state.libraryScanProgress && hiddenFolders.length ? {...state.libraryScanProgress,current:t("media.indexUpdating")} : state.libraryScanProgress, [state.libraryScanProgress,hiddenFolders,resolvedLanguage]);
+  const progress = useMemo(() => state.libraryScanProgress && hiddenFolders.length ? {...state.libraryScanProgress,current:t("media.indexUpdating")} : state.libraryScanProgress, [state.libraryScanProgress,hiddenFolders,t]);
   const progressPercent = progress?.total ? Math.round(progress.completed / progress.total * 100) : 0;
   const parentFolder = useMemo(() => {
     return parentFolderPath(folderPath);

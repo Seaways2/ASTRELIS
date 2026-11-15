@@ -29,6 +29,7 @@ export const QueuePanel = memo(function QueuePanel({ onClose, video = false }: {
   const { t, tm } = useI18n();
   const rowHeight = 56;
   const virtual = useVirtualQueueRows(tracks.length, rowHeight, ".queue-list");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- scrolls to the top when the viewed list changes; the container ref is stable
   useLayoutEffect(() => { const scroller = virtual.containerRef.current?.closest<HTMLElement>(".queue-list"); if (scroller) scroller.scrollTop = 0; }, [viewedKind]);
   return <div className={`queue-drawer media-queue-drawer panel ${video ? "video-queue-drawer" : ""}`}>
     <div className="queue-title"><div><ListMusic size={18} /> {t("queue.title")} <span>{tracks.length}</span></div><button title={t("common.close")} onClick={onClose}><X size={18} /></button></div>

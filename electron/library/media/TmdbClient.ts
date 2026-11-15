@@ -1,3 +1,4 @@
+import type { ExternalJson } from "../../externalJson";
 import { filmSearchQueries } from "./filmSearchQuery";
 export interface FilmMetadata {
   provider: "tmdb"; id: number; mediaType: "movie" | "tv"; title: string;
@@ -32,16 +33,16 @@ export class TmdbClient {
     for (const [key, value] of Object.entries({ language: "zh-CN", ...params })) url.searchParams.set(key, value);
     return JSON.parse((await this.bytes(url)).toString("utf8"));
   }
-  private normalize(v: any, type: "movie" | "tv"): FilmMetadata {
+  private normalize(v: ExternalJson, type: "movie" | "tv"): FilmMetadata {
     const text = (s: unknown) => typeof s === "string" ? s.slice(0, 20000) : "";
     const year = Number(text(v.release_date || v.first_air_date).slice(0, 4));
-    return { provider: "tmdb", id: v.id, mediaType: type, title: text(v.title || v.name), originalTitle: text(v.original_title || v.original_name), overview: text(v.overview), ...(year ? { year } : {}), ...(/^\/[a-zA-Z0-9_-]+\.(jpg|png)$/.test(v.poster_path) ? { posterPath: v.poster_path } : {}), genres: (v.genres || []).slice(0, 30).map((g: any) => text(g.name).slice(0,300)), cast: (v.credits?.cast || []).slice(0, 12).map((g: any) => text(g.name).slice(0,300)), matchedAt: new Date().toISOString() };
+    return { provider: "tmdb", id: v.id, mediaType: type, title: text(v.title || v.name), originalTitle: text(v.original_title || v.original_name), overview: text(v.overview), ...(year ? { year } : {}), ...(/^\/[a-zA-Z0-9_-]+\.(jpg|png)$/.test(v.poster_path) ? { posterPath: v.poster_path } : {}), genres: (v.genres || []).slice(0, 30).map((g: ExternalJson) => text(g.name).slice(0,300)), cast: (v.credits?.cast || []).slice(0, 12).map((g: ExternalJson) => text(g.name).slice(0,300)), matchedAt: new Date().toISOString() };
   }
   async search(query: string, type: "movie" | "tv", year = "") {
     if (!["movie", "tv"].includes(type) || !query.trim() || query.length > 200 || (year && !/^\d{4}$/.test(year))) throw new Error("请输入有效片名与四位年份");
     for (const variant of filmSearchQueries(query)) {
       const data = await this.json(`search/${type}`, { query: variant, include_adult: "false", ...(year ? { [type === "movie" ? "primary_release_year" : "first_air_date_year"]: year } : {}) });
-      const results = (data.results || []).slice(0, 20).map((v: any) => this.normalize(v, type)).filter(validFilmMetadata);
+      const results = (data.results || []).slice(0, 20).map((v: ExternalJson) => this.normalize(v, type)).filter(validFilmMetadata);
       // Only broaden an empty result. Ambiguous results remain available for review.
       if (results.length) return results;
     }

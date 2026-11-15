@@ -57,6 +57,7 @@ export function ChannelStripPopover({
   const panelRef = useRef<HTMLDivElement>(null);
   const draggingSlotRef = useRef<number | null>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- initialises the rack once on mount; the store's actions are stable
   useEffect(() => { void vst.initialize(); }, []);
 
   useEffect(() => {

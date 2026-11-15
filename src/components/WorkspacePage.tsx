@@ -1,6 +1,6 @@
 import { SectionHeading } from "./SectionHeading";
 import { Hint } from "./Hint";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines, Blocks, Check, FileAudio, Globe2, ImagePlus, Import, ListMusic, MonitorSpeaker,
   Palette, RefreshCw, Settings, ShieldAlert, Trash2, Layers, Music2, Sparkles, Cable, SlidersHorizontal
@@ -9,15 +9,17 @@ import { usePlayerStore } from "../stores/playerStore";
 import { PlaylistTable } from "./PlaylistTable";
 import { QueueTabs } from "./QueueTabs";
 import type { OutputDevice } from "../types/audio";
-import { OnlineBrowser } from "./OnlineBrowser";
 import { VstRack } from "./VstRack";
 import { MusicLibrary } from "./MusicLibrary";
 import { useI18n } from "../i18n";
-import { SystemSettings } from "./SystemSettings";
 import type { PageId } from "../types/audio";
 import { audioEngine } from "../audio/AudioEngine";
 import { AtmosphereSettings } from "./AtmosphereSettings";
 import { probeGpuVisualCapabilities, type GpuVisualQuality } from "../visualizers/gpuVisualRuntime";
+
+// Pages off the startup path load on first visit, keeping them out of the main bundle.
+const OnlineBrowser = lazy(() => import("./OnlineBrowser").then(module => ({ default: module.OnlineBrowser })));
+const SystemSettings = lazy(() => import("./SystemSettings").then(module => ({ default: module.SystemSettings })));
 
 interface Props {
   page: PageId;
@@ -172,6 +174,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
     };
     void inspectNativeOutput();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-inspects on page entry or an explicit refresh, reading the current endpoint and language
   }, [page, nativeDeviceRefresh]);
 
   useEffect(() => {
@@ -203,6 +206,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
       });
     });
     return () => window.cancelAnimationFrame(frame);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the guide is requested or output toggles, reading the current animation settings
   }, [page, state.nativeOutputGuideRequest, state.uiSettings.nativeOutputEnabled]);
 
   useEffect(() => {
@@ -328,7 +332,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
   };
 
   if (page === "online") return <Page title={t("page.online")} code="SECURE WEB PLAYER" icon={<Globe2 />}>
-    <OnlineBrowser />
+    <Suspense fallback={null}><OnlineBrowser /></Suspense>
   </Page>;
 
   if (page === "playlist") return <Page title={t("page.playlist")} code="PLAY QUEUE" icon={<ListMusic />}>
@@ -520,7 +524,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
   </Page>;
 
   return <Page title={t("page.settings")} code="APPLICATION" icon={<Settings />}>
-    <SystemSettings />
+    <Suspense fallback={null}><SystemSettings /></Suspense>
   </Page>;
 }
 

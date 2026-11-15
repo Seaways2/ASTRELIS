@@ -34,6 +34,7 @@ export function VstRack() {
     setStatusSlot(page?.querySelector<HTMLElement>(":scope > header > .page-header-aside") ?? null);
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- initialises the rack once on mount; the store's actions are stable
   useEffect(() => { void vst.initialize(); }, []);
 
   const filtered = useVstPluginSearch(vst.plugins, query, showUnavailable);

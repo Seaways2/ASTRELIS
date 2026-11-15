@@ -1,3 +1,4 @@
+import type { ExternalJson } from "../../externalJson";
 export interface MusicCoverCandidate {
   id: string; kind: "release" | "release-group"; title: string; artist: string; year: string; artistNames?: string[]; artistCredits?: string[][]; titleNames?: string[];
 }
@@ -80,11 +81,11 @@ export class MusicBrainzClient {
       releaseUrl.searchParams.set("fmt","json"); releaseUrl.searchParams.set("limit","15");
       const releases = await this.json(releaseUrl);
       data = {"release-groups":(Array.isArray(releases.releases) ? releases.releases : []).slice(0,15)
-        .filter((release:any)=>validMusicId(release["release-group"]?.id))
-        .map((release:any)=>({...release["release-group"], titleNames:[text(release.title)], "artist-credit":release["artist-credit"], date:release.date}))};
+        .filter((release: ExternalJson)=>validMusicId(release["release-group"]?.id))
+        .map((release: ExternalJson)=>({...release["release-group"], titleNames:[text(release.title)], "artist-credit":release["artist-credit"], date:release.date}))};
     }
     const results: MusicCoverCandidate[] = [];
-    const add = (item: any, kind: MusicCoverCandidate["kind"], credits: any) => {
+    const add = (item: ExternalJson, kind: MusicCoverCandidate["kind"], credits: ExternalJson) => {
       if (!validMusicId(item?.id) || !text(item.title)) return;
       const names = Array.isArray(credits) ? credits.map(c=>text(c.name || c.artist?.name)).filter(Boolean).join(" / ") : "";
       // Aliases belong to the credited artist identity. A member's alias alone must
@@ -100,7 +101,7 @@ export class MusicBrainzClient {
       const artistCredits = (Array.isArray(credits) ? credits : []).slice(0,32).map(credit =>
         [...new Set([text(credit.name), text(credit.artist?.name),
           ...(Array.isArray(credit.artist?.aliases) ? credit.artist.aliases : []).slice(0,64)
-            .filter((alias:any) => !alias.type || alias.type === "Artist name").map((alias:any) => text(alias.name))].filter(Boolean))]);
+            .filter((alias: ExternalJson) => !alias.type || alias.type === "Artist name").map((alias: ExternalJson) => text(alias.name))].filter(Boolean))]);
       if (!results.some(v=>v.id===item.id)) results.push({id:item.id,kind,title:text(item.title),artist:names,
         artistNames:[...new Set(artistNames.filter(Boolean))],artistCredits,titleNames:Array.isArray(item.titleNames)?item.titleNames.map(text):[],year:text(item["first-release-date"] || item.date).slice(0,4)});
     };

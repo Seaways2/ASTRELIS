@@ -1,3 +1,4 @@
+import type { ExternalJson } from "./externalJson";
 import nodeNet from "node:net";
 import fs from "node:fs";
 import os from "node:os";
@@ -35,8 +36,8 @@ const { register_anonimous: registerAnonymous } = require("@neteasecloudmusicapi
   register_anonimous(options: Record<string, unknown>): Promise<{ body?: { cookie?: string } }>;
 };
 const { song_url_v1: getSongUrlV1, song_url: getSongUrl } = require("@neteasecloudmusicapienhanced/api/main") as {
-  song_url_v1(options: Record<string, unknown>): Promise<{ status?: number; body?: any }>;
-  song_url(options: Record<string, unknown>): Promise<{ status?: number; body?: any }>;
+  song_url_v1(options: Record<string, unknown>): Promise<{ status?: number; body?: ExternalJson }>;
+  song_url(options: Record<string, unknown>): Promise<{ status?: number; body?: ExternalJson }>;
 };
 const generateNeteaseConfig = require("@neteasecloudmusicapienhanced/api/generateConfig") as () => Promise<void>;
 
@@ -109,7 +110,7 @@ const requestJson = async (route: string, includeCookie = true) => {
     headers: cookieHeader ? { Cookie: cookieHeader } : undefined
   });
   if (!response.ok) throw new Error(`网易云接口请求失败 (${response.status})`);
-  return response.json() as Promise<any>;
+  return response.json() as Promise<ExternalJson>;
 };
 
 export const createNeteaseQr = async () => {
@@ -167,10 +168,10 @@ export const logoutNetease = async () => {
   return { loggedOut: true };
 };
 
-const normalizeSong = (song: any): NeteaseSearchItem => ({
+const normalizeSong = (song: ExternalJson): NeteaseSearchItem => ({
   id: Number(song?.id),
   name: String(song?.name || "未知曲目"),
-  artist: (Array.isArray(song?.ar) ? song.ar : song?.artists || []).map((artist: any) => artist?.name).filter(Boolean).join(" / ") || "未知艺术家",
+  artist: (Array.isArray(song?.ar) ? song.ar : song?.artists || []).map((artist: ExternalJson) => artist?.name).filter(Boolean).join(" / ") || "未知艺术家",
   album: String(song?.al?.name || song?.album?.name || "未知专辑"),
   coverUrl: String(song?.al?.picUrl || song?.album?.picUrl || "").replace(/^http:/, "https:"),
   duration: Math.max(0, Number(song?.dt || song?.duration || 0) / 1000)
@@ -189,7 +190,7 @@ export const getNeteasePlaylists = async (): Promise<NeteasePlaylistItem[]> => {
   if (!status.loggedIn || !status.userId) throw new Error("请先登录网易云音乐");
   const payload = await requestJson(`/user/playlist?uid=${status.userId}&limit=100&offset=0&timestamp=${Date.now()}`);
   const playlists = Array.isArray(payload?.playlist) ? payload.playlist : [];
-  return playlists.map((playlist: any, index: number) => ({
+  return playlists.map((playlist: ExternalJson, index: number) => ({
     id: Number(playlist?.id),
     name: String(playlist?.name || "未命名歌单"),
     coverUrl: String(playlist?.coverImgUrl || "").replace(/^http:/, "https:"),

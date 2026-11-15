@@ -83,6 +83,7 @@ export default function App() {
   const onlinePlaybackSession = Boolean(state.onlineMedia && (state.onlineMedia.playing
     || (!state.playing && (state.activePage === "online" || audioEngine.analysisMode === "online"))));
   const videoActive = isVideoTrack(current) && !onlinePlaybackSession;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed to the track id and play request: the track object changes identity on unrelated metadata updates
   useEffect(() => { if (current || onlinePlaybackSession) setVideoLanding(false); }, [current?.id, state.localPlayRequest, onlinePlaybackSession]);
   videoActiveRef.current = videoActive;
   const [backgroundMenu,setBackgroundMenu]=useState<{x:number;y:number}|null>(null);
@@ -208,6 +209,7 @@ export default function App() {
         if (visualSwitchGeneration.current === generation) setVisualSwitchPhase("idle");
       }, timing.in);
     }, timing.out);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [state.setVisualizer, motionEnabled, state.uiSettings.visualTransition, state.visualizer, visualSwitchPhase]);
   const handleVisualizerWheel = useCallback((event: ReactWheelEvent<HTMLElement>) => {
     if (event.ctrlKey || event.metaKey || (event.target as Element).closest(".visual-settings-panel")) return;
@@ -242,6 +244,7 @@ export default function App() {
       setVisualSwitchPhase("idle");
     }
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- a generation counter, not a DOM node: cleanup must bump its latest value
       visualSwitchGeneration.current++;
       window.clearTimeout(visualSwitchTimer.current);
       window.clearTimeout(visualWheelResetTimer.current);
@@ -361,6 +364,7 @@ export default function App() {
     }
     if (!state.requestNativeOutputForVst()) return;
     void useVstRackStore.getState().toggleNativeEngine();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [videoActive, videoRackEnabled, videoDirect, hdmiDirect, onlineDirectSource, lowPerformanceMode, state.requestNativeOutputForVst, t]);
   const playbackExclusion = useRef(new PlaybackExclusion());
   const playExclusive = useCallback((native: boolean, routeSessionId = "") => {
@@ -434,6 +438,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     if ((state.activePage as string) === "均衡器") state.setActivePage("plugins");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a one-off redirect when the page changes
   }, [state.activePage]);
   const toggleMaximize = () => window.desktop?.maximize();
 
@@ -504,6 +509,7 @@ export default function App() {
         localPlaybackEndLatch.current.release(token);
       }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
   }, []);
 
   const rememberedOutputLabel = (id: string) => {
@@ -687,6 +693,7 @@ export default function App() {
     }
   // Preparing APE/DSF/WMA keeps the track id but replaces its playable URL and
   // native path. Listen to both so the decoded cache file is actually loaded.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [current?.id, current?.url, current?.nativePath, state.localPlayRequest, nativePlayback, onlinePlaybackSession, hdmiDirect, state.uiSettings.hdmiEndpointId, videoActive, videoDirect, videoRackEnabled]);
 
   useEffect(() => {
@@ -734,6 +741,7 @@ export default function App() {
       playExclusive(false).catch(() => state.setPlaying(false));
     } else audioEngine.pause();
     previousLocalPlaying.current = state.playing;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [state.playing, nativePlayback, state.onlineMedia?.playing, videoActive, videoState?.ready, videoPreparing]);
 
   useEffect(() => window.desktop?.video.onState(next => {
@@ -862,6 +870,7 @@ export default function App() {
       audioEngine.on("pause", () => state.setPlaybackObserved(false))
     ];
     return () => cleanups.forEach((cleanup) => cleanup());
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [handleLocalEnded, nativePlayback, state.localPlayRequest, current?.id, metadataDuration, hdmiDirect, analysisNeeded, videoActive]);
 
   const onlineAction = async (action: "toggle" | "stop" | "previous" | "next" | "seek" | "shuffle" | "repeat", value?: number) => {
@@ -959,6 +968,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleWindowModeKeyDown);
     return () => window.removeEventListener("keydown", handleWindowModeKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [state.obsMode, immersiveMode, setImmersiveMode, exitImmersiveMode, detachVideo]);
   useEffect(() => {
     void useVstRackStore.getState().setPerformanceSuspended(lowPerformanceMode);
@@ -1039,6 +1049,7 @@ export default function App() {
       audioEngine.clearOnlineAnalysis();
     }
     previousOnlinePlaying.current = onlinePlayingNow;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
   }, [state.onlineMedia?.playing, stopLocalSourceForOnline]);
 
   useEffect(() => {
@@ -1052,6 +1063,7 @@ export default function App() {
         webDirectRouteSession.current = sessionId;
         void window.desktop?.audioRoute.claim("web-direct", sessionId);
       }).catch(error => setDeviceError(error instanceof Error ? error.message : "Web Direct 路由切换失败"));
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- a generation counter, not a DOM node: cleanup must bump its latest value
       return () => { webDirectRouteGeneration.current++; };
     }
     if (!shouldOwnDirectRoute && webDirectRouteSession.current) {
@@ -1125,6 +1137,7 @@ export default function App() {
       }, 2500);
     }
     return () => window.clearTimeout(outputFallbackTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed to the device list and selection; selectDevice is recreated every render
   }, [devices, deviceId]);
 
   const activeError = deviceError || state.libraryError;
@@ -1319,26 +1332,6 @@ export default function App() {
             <label><span>{t("visual.speed")} <b>{state.visualSettings.animationSpeed.toFixed(2)}×</b></span><input type="range" min=".25" max="2" step=".05" value={state.visualSettings.animationSpeed} onDoubleClick={() => state.setVisualSetting("animationSpeed", 1)} onChange={(e) => state.setVisualSetting("animationSpeed", Number(e.target.value))} /></label>
             <label><span>{t("visual.decay")} <b>{state.visualSettings.decaySpeed.toFixed(2).replace(/0$/, "")}/s</b></span><input type="range" min=".05" max="1" step=".05" value={state.visualSettings.decaySpeed} onDoubleClick={() => state.setVisualSetting("decaySpeed", 1)} onChange={(e) => state.setVisualSetting("decaySpeed", Number(e.target.value))} /></label>
             <label><span>{t("visual.peakHold")} <b>{state.visualSettings.peakHoldMs} ms</b></span><input type="range" min="0" max="2000" step="50" value={state.visualSettings.peakHoldMs} onDoubleClick={() => state.setVisualSetting("peakHoldMs", 650)} onChange={(e) => state.setVisualSetting("peakHoldMs", Number(e.target.value))} /></label>
-            {false && <>
-              <label><span>{t("visual.particleCount")}<b>{state.visualSettings.torusParticleCount.toLocaleString()}</b></span><input type="range" min="20000" max="120000" step="5000" value={state.visualSettings.torusParticleCount} onDoubleClick={() => state.setVisualSetting("torusParticleCount", 80000)} onChange={(e) => state.setVisualSetting("torusParticleCount", Number(e.target.value))} /></label>
-              <label><span>{t("visual.torusSize")}<b>{state.visualSettings.torusRadius.toFixed(2)}</b></span><input type="range" min=".42" max=".78" step=".01" value={state.visualSettings.torusRadius} onDoubleClick={() => state.setVisualSetting("torusRadius", .61)} onChange={(e) => state.setVisualSetting("torusRadius", Number(e.target.value))} /></label>
-              <label><span>{t("visual.torusThickness")}<b>{state.visualSettings.torusThickness.toFixed(2)}</b></span><input type="range" min=".08" max=".34" step=".005" value={state.visualSettings.torusThickness} onDoubleClick={() => state.setVisualSetting("torusThickness", .205)} onChange={(e) => state.setVisualSetting("torusThickness", Number(e.target.value))} /></label>
-              <label><span>tangentialFlowSpeed <b>{state.visualSettings.tangentialFlowSpeed.toFixed(2)}×</b></span><input type="range" min=".2" max="2.5" step=".05" value={state.visualSettings.tangentialFlowSpeed} onDoubleClick={() => state.setVisualSetting("tangentialFlowSpeed", 1)} onChange={(e) => state.setVisualSetting("tangentialFlowSpeed", Number(e.target.value))} /></label>
-              <label><span>curlNoiseStrength <b>{state.visualSettings.curlNoiseStrength.toFixed(2)}×</b></span><input type="range" min="0" max="2.5" step=".05" value={state.visualSettings.curlNoiseStrength} onDoubleClick={() => state.setVisualSetting("curlNoiseStrength", 1)} onChange={(e) => state.setVisualSetting("curlNoiseStrength", Number(e.target.value))} /></label>
-              <label><span>{t("visual.lowResponse")}<b>{state.visualSettings.torusLowResponse.toFixed(2)}×</b></span><input type="range" min="0" max="2" step=".05" value={state.visualSettings.torusLowResponse} onDoubleClick={() => state.setVisualSetting("torusLowResponse", 1)} onChange={(e) => state.setVisualSetting("torusLowResponse", Number(e.target.value))} /></label>
-              <label><span>{t("visual.midResponse")}<b>{state.visualSettings.torusMidResponse.toFixed(2)}×</b></span><input type="range" min="0" max="2" step=".05" value={state.visualSettings.torusMidResponse} onDoubleClick={() => state.setVisualSetting("torusMidResponse", 1)} onChange={(e) => state.setVisualSetting("torusMidResponse", Number(e.target.value))} /></label>
-              <label><span>{t("visual.highResponse")}<b>{state.visualSettings.torusHighResponse.toFixed(2)}×</b></span><input type="range" min="0" max="2" step=".05" value={state.visualSettings.torusHighResponse} onDoubleClick={() => state.setVisualSetting("torusHighResponse", 1)} onChange={(e) => state.setVisualSetting("torusHighResponse", Number(e.target.value))} /></label>
-              <label><span>impulsePropagationSpeed <b>{state.visualSettings.impulsePropagationSpeed.toFixed(2)}×</b></span><input type="range" min=".25" max="2.5" step=".05" value={state.visualSettings.impulsePropagationSpeed} onDoubleClick={() => state.setVisualSetting("impulsePropagationSpeed", 1)} onChange={(e) => state.setVisualSetting("impulsePropagationSpeed", Number(e.target.value))} /></label>
-              <label><span>{t("visual.trail")}<b>{state.visualSettings.torusTrailStrength.toFixed(2)}</b></span><input type="range" min="0" max="1" step=".05" value={state.visualSettings.torusTrailStrength} onDoubleClick={() => state.setVisualSetting("torusTrailStrength", .35)} onChange={(e) => state.setVisualSetting("torusTrailStrength", Number(e.target.value))} /></label>
-              <label><span>ringTilt <b>{state.visualSettings.ringTilt.toFixed(2)}</b></span><input type="range" min=".25" max="1.3" step=".025" value={state.visualSettings.ringTilt} onDoubleClick={() => state.setVisualSetting("ringTilt", .82)} onChange={(e) => state.setVisualSetting("ringTilt", Number(e.target.value))} /></label>
-              <label><span>holeSize <b>{state.visualSettings.holeSize.toFixed(2)}</b></span><input type="range" min=".25" max=".7" step=".01" value={state.visualSettings.holeSize} onDoubleClick={() => state.setVisualSetting("holeSize", .48)} onChange={(e) => state.setVisualSetting("holeSize", Number(e.target.value))} /></label>
-              <label><span>ringThicknessVariation <b>{state.visualSettings.ringThicknessVariation.toFixed(2)}</b></span><input type="range" min="0" max="1.5" step=".05" value={state.visualSettings.ringThicknessVariation} onDoubleClick={() => state.setVisualSetting("ringThicknessVariation", .55)} onChange={(e) => state.setVisualSetting("ringThicknessVariation", Number(e.target.value))} /></label>
-              <label><span>particleStretch <b>{state.visualSettings.particleStretch.toFixed(2)}</b></span><input type="range" min="0" max="1.5" step=".05" value={state.visualSettings.particleStretch} onDoubleClick={() => state.setVisualSetting("particleStretch", .72)} onChange={(e) => state.setVisualSetting("particleStretch", Number(e.target.value))} /></label>
-              <label><span>densityFalloff <b>{state.visualSettings.densityFalloff.toFixed(2)}</b></span><input type="range" min=".5" max="3" step=".05" value={state.visualSettings.densityFalloff} onDoubleClick={() => state.setVisualSetting("densityFalloff", 1.7)} onChange={(e) => state.setVisualSetting("densityFalloff", Number(e.target.value))} /></label>
-              <label><span>asymmetry <b>{state.visualSettings.asymmetry.toFixed(2)}</b></span><input type="range" min="0" max="1.5" step=".05" value={state.visualSettings.asymmetry} onDoubleClick={() => state.setVisualSetting("asymmetry", .55)} onChange={(e) => state.setVisualSetting("asymmetry", Number(e.target.value))} /></label>
-              <label><span>bloomThreshold <b>{state.visualSettings.bloomThreshold.toFixed(2)}</b></span><input type="range" min=".2" max=".95" step=".025" value={state.visualSettings.bloomThreshold} onDoubleClick={() => state.setVisualSetting("bloomThreshold", .68)} onChange={(e) => state.setVisualSetting("bloomThreshold", Number(e.target.value))} /></label>
-              <label><span>{t("visual.colors")}</span><select value={state.visualSettings.torusColorScheme} onChange={(e) => state.setVisualSetting("torusColorScheme", e.target.value as "ice" | "cyan" | "violet")}><option value="ice">{t("visual.ice")}</option><option value="cyan">{t("visual.cyan")}</option><option value="violet">{t("visual.violet")}</option></select></label>
-            </>}
             <button className="visual-reset" onClick={state.resetVisualSettings}>{t("visual.reset")}</button>
           </div>}
           {immersiveMode && <div

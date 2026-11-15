@@ -24,6 +24,7 @@ export const VideoChannelStrip = memo(function VideoChannelStrip({ direct, rackA
   const loaded = rackAudio ? plugins : [];
   const enabledCount = loaded.filter(item => item.enabled).length;
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- initialises the rack when rack audio turns on; the store's actions are stable
   useEffect(() => { if (rackAudio) void vst.initialize(true); }, [rackAudio]);
 
   const toggleMute = () => {

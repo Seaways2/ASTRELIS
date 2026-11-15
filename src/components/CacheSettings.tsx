@@ -22,6 +22,7 @@ export function CacheSettings() {
     } catch (error) { setMessage(String(error)); }
     finally { setBusy(false); }
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loads the cache usage once on mount
   useEffect(() => { void refresh(); }, []);
   const clear = async () => {
     if (!api || busy) return;

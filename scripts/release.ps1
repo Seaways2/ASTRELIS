@@ -17,19 +17,24 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 function Resolve-Pnpm {
   $onPath = Get-Command pnpm -ErrorAction SilentlyContinue
   if ($onPath) { return @($onPath.Source) }
-  if (Get-Command corepack -ErrorAction SilentlyContinue) {
-    # Never stop on corepack's "download pnpm?" prompt; fall through instead.
-    $env:COREPACK_ENABLE_DOWNLOAD_PROMPT = "0"
-    & corepack pnpm --version *> $null
-    if ($LASTEXITCODE -eq 0) { return @("corepack", "pnpm") }
-  }
   $candidates = @(
     (Join-Path $env:APPDATA "npm\pnpm.cmd"),
     (Join-Path $env:LOCALAPPDATA "pnpm\pnpm.exe"),
     (Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd")
   )
   foreach ($candidate in $candidates) { if (Test-Path -LiteralPath $candidate) { return @($candidate) } }
-  throw "pnpm not found: install it (npm i -g pnpm) or enable corepack."
+  if (Get-Command corepack -ErrorAction SilentlyContinue) {
+    # Only a pnpm corepack already has: never download one or wait on its
+    # prompt. Its progress text on stderr must not stop the script either.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $env:COREPACK_ENABLE_NETWORK = "0"
+    $env:COREPACK_ENABLE_DOWNLOAD_PROMPT = "0"
+    try { & corepack pnpm --version *> $null; $ok = $LASTEXITCODE -eq 0 } catch { $ok = $false }
+    finally { $ErrorActionPreference = $previous }
+    if ($ok) { return @("corepack", "pnpm") }
+  }
+  throw "pnpm not found: install it (npm i -g pnpm) or enable corepack with a cached pnpm."
 }
 
 function Get-FreeDriveLetter {
@@ -42,6 +47,12 @@ function Get-FreeDriveLetter {
 
 # @() keeps a single path an array: PowerShell unrolls one-element results to a string.
 $pnpm = @(Resolve-Pnpm)
+# The package scripts call pnpm themselves (dist:win runs "pnpm verify"), so
+# a pnpm found off PATH must be on PATH for the build's child processes.
+if ($pnpm.Count -eq 1) {
+  $pnpmDirectory = Split-Path -Parent $pnpm[0]
+  if (($env:PATH -split ";") -notcontains $pnpmDirectory) { $env:PATH = "$pnpmDirectory;$env:PATH" }
+}
 $needsAsciiPath = $repoRoot -match "[^\u0000-\u007F]"
 $mappedDrive = $null
 $workRoot = $repoRoot

@@ -84,12 +84,9 @@ test("Galaxy Spiral borrows independently rotating elliptical motes from Black H
 test("Galaxy Spiral shares one beat flash across dust, stars, motes, and core", () => {
   // Straight from the shared beat envelope: a second smoothing stage lagged
   // the kick by ~200 ms and kept the scene lit between beats.
-  assert.match(canvas, /const galaxySceneFlash = music\.beat \* \.6;/);
+  assert.match(canvas, /const galaxySceneFlash = music\.beat \* [\d.]+;/);
+  // Flash amounts and fades are tuned against behaviour in visualizer-dynamics.test.cjs, not pinned here.
   assert.doesNotMatch(canvas, /galaxySceneGlow|galaxyBeatTarget/);
-  assert.match(canvas, /sharedBeatFlash = galaxySceneFlash \* \(\.4 \+ star\.response \* \.22\)/);
-  assert.match(canvas, /moteBeatFlash = galaxySceneFlash \* \(\.4 \+ mote\.response \* \.22\)/);
-  assert.match(canvas, /galaxyMid \* \.22 \+ galaxySceneFlash \* \.16/);
-  assert.match(canvas, /galaxyLow \* \.18 \+ galaxySceneFlash \* \.24/);
 });
 
 test("Galaxy Spiral core brightens gradually from its transparent rim to a tiny center", () => {
@@ -101,20 +98,17 @@ test("Galaxy Spiral core brightens gradually from its transparent rim to a tiny 
   assert.match(canvas, /core\.addColorStop\(\.24, rgba\(palette\.warm, \.62\)\)/);
   assert.match(canvas, /core\.addColorStop\(\.82, galaxyAccent\(\.07\)\)/);
   assert.match(canvas, /core\.addColorStop\(1, "transparent"\)/);
-  assert.match(canvas, /galaxySceneFlash \* \.24 \+ coreBreath \* \.025/);
 });
 
 test("Galaxy Spiral renders a full-frame twinkling background star field", () => {
-  assert.match(canvas, /const backgroundBeatFlash = galaxySceneFlash \* \(\.4 \+ star\.response \* \.22\)/);
+  assert.match(canvas, /const backgroundBeatFlash = galaxySceneFlash \*/);
   assert.match(canvas, /const backgroundStarRadius = Math\.max/);
   assert.match(canvas, /galaxyBackgroundGlow = Math\.min\(\.11/);
-  assert.match(canvas, /backgroundBeatFlash \* \.62/);
   assert.match(canvas, /star\.x \* width \* \.49/);
   assert.match(canvas, /star\.y \* height \* \.72/);
 });
 
 test("Galaxy Spiral reduces the broad fog disk and selectively lifts the existing arm spine", () => {
-  assert.match(canvas, /Math\.min\(\.1, \(\.07 \+ galaxyMid \* \.09 \+ galaxySceneFlash \* \.13 \+ galaxyGlow \* \.03\) \* barOpacity \* \.32\)/);
   assert.match(canvas, /normalizedRadius - \.2\) \/ \.05/);
   assert.match(canvas, /\(\.85 - normalizedRadius\) \/ \.05/);
   assert.match(canvas, /const ridgeCenter = Math\.max\(0, 1 - Math\.abs\(armScatter\)/);
@@ -153,5 +147,5 @@ test("Galaxy Spiral adds crisp jewel stars, coloured stars, glints and core diff
   assert.match(canvas, /glints\.sort\(\(a, b\) => b\.strength - a\.strength\);\s*glints\.length = glintLimit;/);
   assert.match(canvas, /const visibility = Math\.min\(1, \(glint\.strength - GLINT_THRESHOLD\) \/ \(1 - GLINT_THRESHOLD\)\);/);
   assert.match(canvas, /drawGlints\(glints, galaxyGlow\);/);
-  assert.match(canvas, /const spikeLength = coreRadius \* \(3\.6 \+ galaxyLow \* 1\.6 \+ galaxySceneFlash \* 2\.4\) \* \(\.7 \+ galaxyGlow \* \.3\);/);
+  assert.match(canvas, /const spikeLength = coreRadius \*/);
 });

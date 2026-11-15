@@ -51,10 +51,8 @@ test("Starfield Motion applies effect opacity to trails, stars, halos, and flash
 test("Starfield Motion eases flight speed and fades trails, halos and flares in", () => {
   const canvas = read("src/visualizers/visualizerScene.ts");
   assert.match(canvas, /starfieldPace \+= \(targetPace - starfieldPace\)/);
-  assert.match(canvas, /particle\.pace \+= \(\.72 \+ particle\.size \* \.2 \+ energy \* \.75 - particle\.pace\) \* paceEase;/);
+  assert.match(canvas, /particle\.pace \+= \([^;]+ - particle\.pace\) \* paceEase;/);
   assert.match(canvas, /particle\.z -= travel \* particle\.pace;/);
-  assert.match(canvas, /const trailFade = Math\.min\(1, Math\.max\(\(depth - \.26\) \/ \.12, \(musicalFlash - \.32\) \/ \.3\)\);/);
-  assert.match(canvas, /const flareFade = Math\.min\(1, \(musicalFlash - \.52\) \/ \.35\);/);
 });
 
 test("visualizer controls use effect-oriented labels in every language", () => {

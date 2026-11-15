@@ -79,10 +79,8 @@ test("Black Hole Pulse shares a softened beat flash across its body and backgrou
   assert.match(source, /if \(music\.beatHit\)/);
   assert.match(source, /if \(music\.beatRising\)/);
   assert.match(source, /pulseSceneFlash = pulseBeat/);
-  assert.match(source, /sharedBeatFlash = pulseSceneFlash \* \(\.4 \+ star\.response \* \.22\)/);
-  assert.match(source, /moteBeatFlash = pulseSceneFlash \* \(\.4 \+ mote\.response \* \.22\)/);
+  // Flash amounts and fades are tuned against behaviour in visualizer-dynamics.test.cjs, not pinned here.
   assert.doesNotMatch(source, /pulseBeatGlow/);
-  assert.match(source, /low \* \.24 \+ pulseSceneFlash \* \.16 \+ glow \* \.08/);
 });
 
 test("Black Hole Pulse maps glow strength across stars, motes, halo, and disk", () => {

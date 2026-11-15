@@ -8,17 +8,16 @@ const root = path.resolve(__dirname, "../..");
 const source = fs.readFileSync(path.join(root, "src/visualizers/visualizerScene.ts"), "utf8");
 
 test("Black Hole Pulse separates bass, mid, and high-frequency responses", () => {
-  assert.match(source, /averageHz\(40, 180\)/);
-  assert.match(source, /averageHz\(180, 2000\)/);
-  assert.match(source, /averageHz\(2000, 8000\)/);
-  assert.match(source, /pulseMidLevel/);
-  assert.match(source, /pulseHighLevel/);
+  assert.match(source, /music\.update\(data, audio\.meters\(\)\.sampleRate, currentTime, deltaSeconds\)/);
+  assert.match(source, /displayedPulseEnergy \+= \(music\.low - displayedPulseEnergy\)/);
+  assert.match(source, /pulseMidLevel \+= \(music\.mid - pulseMidLevel\)/);
+  assert.match(source, /pulseHighLevel \+= \(music\.high - pulseHighLevel\)/);
 });
 
-test("Black Hole Pulse uses a softened beat envelope and continuous body rebound", () => {
-  assert.match(source, /pulseBeatTarget = beatStrength/);
-  assert.match(source, /beatFadeSpeed = pulseBeatTarget > pulseBeat \? 12 : 3\.2/);
-  assert.match(source, /pulseCoreVelocity = Math\.max\(-\.04, pulseCoreVelocity - beatStrength \* \.026\)/);
+test("Black Hole Pulse follows the shared beat envelope with a continuous body rebound", () => {
+  assert.match(source, /const pulseBeat = music\.beat \* \.9/);
+  // Only the strength a beat gains during its attack becomes an impulse.
+  assert.match(source, /pulseCoreVelocity = Math\.max\(-\.04, pulseCoreVelocity - \(beatStrength - pulseBeatApplied\) \* \.026\)/);
   assert.match(source, /pulseCoreVelocity \+= \(-pulseCoreMotion \* 30 - pulseCoreVelocity \* 7\.5\) \* springStep/);
   assert.match(source, /pulseCoreMotion \+= pulseCoreVelocity \* springStep/);
   assert.doesNotMatch(source, /Math\.sin\(beatAge \* 14 - Math\.PI \/ 2\)/);
@@ -77,9 +76,8 @@ test("Black Hole Pulse shockwaves stay subdued", () => {
 });
 
 test("Black Hole Pulse shares a softened beat flash across its body and background stars", () => {
-  assert.match(source, /pulseBassLevel[\s\S]*rawLow > pulseBassLevel \? 9 : 2\.2/);
-  assert.match(source, /currentTime - lastPulseBeatAt > \.16/);
-  assert.match(source, /beatStrength = Math\.min\(\.9, \.42 \+ onset \* 4\.5\)/);
+  assert.match(source, /if \(music\.beatHit\)/);
+  assert.match(source, /if \(music\.beatRising\)/);
   assert.match(source, /pulseSceneFlash = pulseBeat/);
   assert.match(source, /sharedBeatFlash = pulseSceneFlash \* \(\.4 \+ star\.response \* \.22\)/);
   assert.match(source, /moteBeatFlash = pulseSceneFlash \* \(\.4 \+ mote\.response \* \.22\)/);

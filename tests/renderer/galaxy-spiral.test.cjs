@@ -51,12 +51,12 @@ test("Galaxy Spiral maps the existing tuning controls to its renderer", () => {
 });
 
 test("Galaxy Spiral separates musical bands and reinforces a traveling density ridge", () => {
-  assert.match(canvas, /averageHz\(40, 180\)/);
-  assert.match(canvas, /averageHz\(180, 2000\)/);
-  assert.match(canvas, /averageHz\(2000, 8000\)/);
+  assert.match(canvas, /galaxyLow \+= \(music\.low - galaxyLow\)/);
+  assert.match(canvas, /galaxyMid \+= \(music\.mid - galaxyMid\)/);
+  assert.match(canvas, /galaxyHigh \+= \(music\.high - galaxyHigh\)/);
   assert.match(canvas, /galaxyRotationVelocity/);
-  assert.match(canvas, /if \(galaxyWaveProgress >= 1\) galaxyWaveProgress = 0/);
-  assert.match(canvas, /galaxyWaveStrength = Math\.max\(galaxyWaveStrength, beatStrength\)/);
+  assert.match(canvas, /if \(music\.beatHit && galaxyWaveProgress >= 1\) galaxyWaveProgress = 0/);
+  assert.match(canvas, /if \(music\.beatRising\) galaxyWaveStrength = Math\.max\(galaxyWaveStrength, music\.beatStrength\)/);
 });
 
 test("Galaxy Spiral derives luminous layers from the active accent", () => {
@@ -81,14 +81,11 @@ test("Galaxy Spiral borrows independently rotating elliptical motes from Black H
   assert.match(canvas, /context\.arc\(x, y, moteRadius/);
 });
 
-test("Galaxy Spiral shares one softened scene flash across dust, stars, motes, and core", () => {
-  assert.match(canvas, /galaxyBassLevel[\s\S]*rawLow > galaxyBassLevel \? 9 : 2\.2/);
-  assert.match(canvas, /currentTime - lastGalaxyBeatAt > \.16/);
-  assert.match(canvas, /galaxyBeatFadeSpeed = galaxyBeatTarget > galaxyBeatFlash \? 12 : 3\.2/);
-  assert.match(canvas, /galaxySceneFadeSpeed = galaxyBeatFlash > galaxySceneGlow/);
-  assert.match(canvas, /\? 9\.2 \+ \(1 - smoothing\) \* 1\.8/);
-  assert.match(canvas, /: 2\.7 \+ \(1 - smoothing\) \* \.5/);
-  assert.match(canvas, /galaxySceneFlash = Math\.min\(\.74, galaxySceneGlow \* \.86\)/);
+test("Galaxy Spiral shares one beat flash across dust, stars, motes, and core", () => {
+  // Straight from the shared beat envelope: a second smoothing stage lagged
+  // the kick by ~200 ms and kept the scene lit between beats.
+  assert.match(canvas, /const galaxySceneFlash = music\.beat \* \.74;/);
+  assert.doesNotMatch(canvas, /galaxySceneGlow|galaxyBeatTarget/);
   assert.match(canvas, /sharedBeatFlash = galaxySceneFlash \* \(\.4 \+ star\.response \* \.22\)/);
   assert.match(canvas, /moteBeatFlash = galaxySceneFlash \* \(\.4 \+ mote\.response \* \.22\)/);
   assert.match(canvas, /galaxyMid \* \.22 \+ galaxySceneFlash \* \.16/);
@@ -151,6 +148,9 @@ test("Galaxy Spiral adds crisp jewel stars, coloured stars, glints and core diff
   // Live stars are drawn per colour group, four fill-style changes per frame.
   assert.match(canvas, /galaxyLiveStarGroups\.forEach\(group => \{ context\.fillStyle = group\.color;/);
   assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0 : 14;/);
-  assert.match(canvas, /if \(glintStrength > \.5 && glints\.length < glintLimit && galaxyGlow > 0\)/);
+  // The strongest glints win, and each fades in from the threshold.
+  assert.match(canvas, /if \(glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0\)/);
+  assert.match(canvas, /glints\.sort\(\(a, b\) => b\.strength - a\.strength\);\s*glints\.length = glintLimit;/);
+  assert.match(canvas, /const visibility = Math\.min\(1, \(glint\.strength - GLINT_THRESHOLD\) \/ \(1 - GLINT_THRESHOLD\)\);/);
   assert.match(canvas, /const spikeLength = coreRadius \* \(3\.6 \+ galaxyLow \* 1\.6 \+ galaxySceneFlash \* 2\.4\) \* \(\.7 \+ galaxyGlow \* \.3\);/);
 });

@@ -1,9 +1,12 @@
 import type { MeterSnapshot, VisualizerMode, VisualizerRenderSettings } from "../types/audio";
 import { frameIsDue, nextFrameDue } from "./framePacing";
 import { galaxyPalette, rgba } from "./galaxyPalette";
+import { MusicDynamics } from "./musicDynamics";
 
 // Bar count above which particle effects stop growing (the default bar count).
 export const PARTICLE_EFFECT_UNIT_CAP = 90;
+/** Galaxy glints fade in from this strength, so none pops in at full size. */
+const GLINT_THRESHOLD = .5;
 
 /** The render settings a scene reads; the options cross to the worker, so they stay plain values. */
 export type VisualizerSceneSettings = Pick<VisualizerRenderSettings,
@@ -204,32 +207,23 @@ export function createVisualizerScene(
   let fpsStarted = performance.now();
   let fpsFrames = 0;
   const displayedBars: number[] = [];
+  // Beat, band and per-bin levels for the galaxy, starfield and black hole.
+  const music = new MusicDynamics(settings);
   let displayedPulseEnergy = 0;
-  let pulseBassLevel = 0;
-  let pulseBeatTarget = 0;
-  let pulseBeat = 0;
   let pulseMidLevel = 0;
   let pulseHighLevel = 0;
   let pulseCoreMotion = 0;
   let pulseCoreVelocity = 0;
-  let lastPulseBeatAt = -10;
+  let pulseBeatApplied = 0;
   const pulseShockwaves: Array<{ progress: number; strength: number; tilt: number; radius: number }> = [];
-  let starBassLevel = 0;
-  let starBeatTarget = 0;
-  let starBeatFlash = 0;
-  let lastStarBeatAt = -10;
   let galaxyLow = 0;
-  let galaxyBassLevel = 0;
   let galaxyMid = 0;
   let galaxyHigh = 0;
-  let galaxyBeatTarget = 0;
-  let galaxyBeatFlash = 0;
-  let galaxySceneGlow = 0;
+  let galaxyCorePhase = 0;
   let galaxyRotationVelocity = .055 * settings.animationSpeed;
   const galaxyLayerAngles = [0, .73, 1.41];
   let galaxyWaveProgress = 2;
   let galaxyWaveStrength = 0;
-  let lastGalaxyBeatAt = -10;
   const peakBars: number[] = [];
   const peakTimes: number[] = [];
 
@@ -385,44 +379,24 @@ export function createVisualizerScene(
 
     if (mode === "waveform") {
       const data = audio.getFrequencyData();
-      const sampleRate = audio.meters().sampleRate || 48000;
-      const hzPerBin = sampleRate / Math.max(2, data.length * 2);
-      const averageHz = (fromHz: number, toHz: number) => {
-        const start = Math.max(1, Math.min(data.length - 1, Math.floor(fromHz / hzPerBin)));
-        const end = Math.max(start + 1, Math.min(data.length, Math.ceil(toHz / hzPerBin)));
-        let sum = 0;
-        for (let index = start; index < end; index++) sum += data[index];
-        return Math.min(1, sum / Math.max(1, end - start) / 255 * settings.sensitivity);
-      };
-      const rawLow = averageHz(40, 180);
-      const rawMid = averageHz(180, 2000);
-      const rawHigh = averageHz(2000, 8000);
-      const onset = Math.max(0, rawLow - galaxyBassLevel);
       const currentTime = now / 1000;
+      const twinkleTime = currentTime * settings.animationSpeed;
       const smoothing = Math.max(0, Math.min(.98, settings.smoothing));
-      galaxyBassLevel += (rawLow - galaxyBassLevel)
-        * Math.min(1, deltaSeconds * (rawLow > galaxyBassLevel ? 9 : 2.2));
+      music.update(data, audio.meters().sampleRate, currentTime, deltaSeconds);
+      // Bands are relative to the song's own level (see MusicDynamics); the
+      // smoothing here only keeps the core size and arm opacity from jittering.
       const lowAttack = 3.2 + (1 - smoothing) * 6;
       const lowRelease = 1.05 + settings.decaySpeed * .42;
-      galaxyLow += (rawLow - galaxyLow) * Math.min(1, deltaSeconds * (rawLow > galaxyLow ? lowAttack : lowRelease));
-      galaxyMid += (rawMid - galaxyMid) * Math.min(1, deltaSeconds * (rawMid > galaxyMid ? 4.1 : 1.2 + settings.decaySpeed * .48));
-      galaxyHigh += (rawHigh - galaxyHigh) * Math.min(1, deltaSeconds * (rawHigh > galaxyHigh ? 6.4 : 1.6 + settings.decaySpeed * .62));
-      if (onset > .035 && currentTime - lastGalaxyBeatAt > .16) {
-        const beatStrength = Math.min(.9, .42 + onset * 4.5);
-        galaxyBeatTarget = beatStrength;
-        galaxyWaveStrength = Math.max(galaxyWaveStrength, beatStrength);
-        if (galaxyWaveProgress >= 1) galaxyWaveProgress = 0;
-        lastGalaxyBeatAt = currentTime;
-      } else galaxyBeatTarget = Math.max(0, galaxyBeatTarget - deltaSeconds * 2.2);
-      const galaxyBeatFadeSpeed = galaxyBeatTarget > galaxyBeatFlash ? 12 : 3.2;
-      galaxyBeatFlash += (galaxyBeatTarget - galaxyBeatFlash)
-        * Math.min(1, deltaSeconds * galaxyBeatFadeSpeed);
-      const galaxySceneFadeSpeed = galaxyBeatFlash > galaxySceneGlow
-        ? 9.2 + (1 - smoothing) * 1.8
-        : 2.7 + (1 - smoothing) * .5;
-      galaxySceneGlow += (galaxyBeatFlash - galaxySceneGlow)
-        * Math.min(1, deltaSeconds * galaxySceneFadeSpeed);
-      const targetRotationVelocity = .055 * settings.animationSpeed * (1 + galaxyLow * .18 + galaxyBeatFlash * .32);
+      galaxyLow += (music.low - galaxyLow) * Math.min(1, deltaSeconds * (music.low > galaxyLow ? lowAttack : lowRelease));
+      galaxyMid += (music.mid - galaxyMid) * Math.min(1, deltaSeconds * (music.mid > galaxyMid ? 4.1 : 1.2 + settings.decaySpeed * .48));
+      galaxyHigh += (music.high - galaxyHigh) * Math.min(1, deltaSeconds * (music.high > galaxyHigh ? 6.4 : 1.6 + settings.decaySpeed * .62));
+      if (music.beatHit && galaxyWaveProgress >= 1) galaxyWaveProgress = 0;
+      if (music.beatRising) galaxyWaveStrength = Math.max(galaxyWaveStrength, music.beatStrength);
+      // Straight from the beat envelope: lit on the kick, dark again before
+      // the next one. A second smoothing stage here used to lag the kick by
+      // ~200 ms and never let the scene go dark at dance tempos.
+      const galaxySceneFlash = music.beat * .74;
+      const targetRotationVelocity = .055 * settings.animationSpeed * (1 + galaxyLow * .18 + galaxySceneFlash * .43);
       galaxyRotationVelocity += (targetRotationVelocity - galaxyRotationVelocity)
         * Math.min(1, deltaSeconds * (2.2 + (1 - smoothing) * 3.8));
       const layerSpeed = [1.32, .92, .62];
@@ -439,7 +413,6 @@ export function createVisualizerScene(
       const maximumRadius = scale * .46;
       const effectSize = .5 + settings.lineWidth / 3;
       const galaxyGlow = Math.max(0, Math.min(3, glowStrength));
-      const galaxySceneFlash = Math.min(.74, galaxySceneGlow * .86);
       context.shadowBlur = 0;
       context.globalCompositeOperation = "lighter";
       context.fillStyle = accent;
@@ -453,8 +426,8 @@ export function createVisualizerScene(
         const y = cy + star.y * height * .72;
         if (x < 0 || x > width || y < 0 || y > height) return;
         const depth = .35 + (1 - star.z) * .65;
-        const energy = Math.min(1, data[Math.min(data.length - 1, star.frequency)] / 255 * settings.sensitivity);
-        const sparkle = Math.pow(Math.max(0, Math.sin(currentTime * star.twinkleSpeed + star.twinkle)), 10);
+        const energy = music.bin(star.frequency);
+        const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * star.twinkleSpeed + star.twinkle)), 10);
         const backgroundBeatFlash = galaxySceneFlash * (.4 + star.response * .22);
         const backgroundStarRadius = Math.max(.38,
           (star.size * .5 + depth * .18 + sparkle * .5 + backgroundBeatFlash * .44) * ratio * effectSize);
@@ -527,8 +500,8 @@ export function createVisualizerScene(
         const angle = star.angle + galaxyLayerAngles[star.layer];
         const x = cx + Math.cos(angle) * radius;
         const y = cy + Math.sin(angle) * radius * .68;
-        const energy = Math.min(1, data[Math.min(data.length - 1, star.frequency)] / 255 * settings.sensitivity);
-        const sparkle = Math.pow(Math.max(0, Math.sin(currentTime * star.twinkleSpeed + star.phase)), 8);
+        const energy = music.bin(star.frequency);
+        const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * star.twinkleSpeed + star.phase)), 8);
         const sharedBeatFlash = galaxySceneFlash * (.4 + star.response * .22);
         const starSize = Math.max(.48, (star.size + sparkle * .72 + sharedBeatFlash * .62) * ratio * effectSize);
         if (galaxyGlow > 0 && (sparkle > .08 || sharedBeatFlash > .04)) {
@@ -539,12 +512,21 @@ export function createVisualizerScene(
         context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash) * barOpacity * star.ridgeLift);
         context.fillRect(x - starSize / 2, y - starSize / 2, starSize, starSize);
         const glintStrength = sparkle * (.55 + galaxyHigh * .6) + sharedBeatFlash * .5;
-        if (glintStrength > .5 && glints.length < glintLimit && galaxyGlow > 0)
-          glints.push({ x, y, size: starSize, strength: Math.min(1, glintStrength), color: group.tint === "warm" ? rgba(palette.warm, 1) : rgba(palette.ice, 1) });
+        if (glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0)
+          glints.push({ x, y, size: starSize, strength: glintStrength, color: group.tint === "warm" ? rgba(palette.warm, 1) : rgba(palette.ice, 1) });
       }); });
+      // Keep the strongest, not the first found: filling the slots in draw
+      // order swapped glints between stars every frame and starved the last
+      // colour group. Each glint fades in from the threshold, so one dropped
+      // at the cut is already nearly invisible.
+      if (glints.length > glintLimit) {
+        glints.sort((a, b) => b.strength - a.strength);
+        glints.length = glintLimit;
+      }
       glints.forEach(glint => {
-        const length = glint.size * (4.5 + glint.strength * 5) * (.75 + galaxyGlow * .25);
-        context.globalAlpha = Math.min(.7, glint.strength * .55 * galaxyGlow) * barOpacity;
+        const visibility = Math.min(1, (glint.strength - GLINT_THRESHOLD) / (1 - GLINT_THRESHOLD));
+        const length = glint.size * (4.5 + visibility * 5) * (.75 + galaxyGlow * .25);
+        context.globalAlpha = Math.min(.7, visibility * .55 * galaxyGlow) * barOpacity;
         context.lineWidth = Math.max(.5, glint.size * .32);
         for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
           const spike = context.createLinearGradient(glint.x - dx * length, glint.y - dy * length, glint.x + dx * length, glint.y + dy * length);
@@ -571,8 +553,8 @@ export function createVisualizerScene(
         const x = cx + cos * orbit;
         const y = cy + sin * orbit * (.46 + Math.abs(mote.tilt) * .34) + cos * orbit * mote.tilt * .12;
         if (x < 0 || x > width || y < 0 || y > height) return;
-        const energy = Math.min(1, data[Math.min(data.length - 1, mote.frequency)] / 255 * settings.sensitivity);
-        const sparkle = Math.pow(Math.max(0, Math.sin(currentTime * (1.5 + mote.response * 3.2) + mote.phase)), 9);
+        const energy = music.bin(mote.frequency);
+        const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * (1.5 + mote.response * 3.2) + mote.phase)), 9);
         const moteBeatFlash = galaxySceneFlash * (.4 + mote.response * .22);
         const moteRadius = Math.max(.5, mote.size * ratio * (1.1 + sparkle * .78 + moteBeatFlash * .5) * effectSize);
         if (galaxyGlow > 0 && (sparkle > .06 || moteBeatFlash > .025)) {
@@ -626,7 +608,10 @@ export function createVisualizerScene(
 
       // The bright, tilted core remains theme-derived and shares the same
       // smoothed beat envelope as the rotating arms.
-      const coreBreath = .5 + Math.sin(currentTime * (.54 + galaxyMid * .22)) * .5;
+      // Accumulated, not time × rate: with hours of uptime a small change in
+      // the mid level would otherwise jump the phase by whole cycles.
+      galaxyCorePhase += deltaSeconds * settings.animationSpeed * (.54 + galaxyMid * .22);
+      const coreBreath = .5 + Math.sin(galaxyCorePhase) * .5;
       const coreRadius = scale * (.073 + galaxyLow * .008 + galaxySceneFlash * .0045 + coreBreath * .0014)
         * (.92 + settings.lineWidth * .045);
       context.save();
@@ -699,44 +684,32 @@ export function createVisualizerScene(
       context.globalAlpha = 1;
     } else if (mode === "pulse") {
       const data = audio.getFrequencyData();
-      const sampleRate = audio.meters().sampleRate || 48000;
-      const hzPerBin = sampleRate / Math.max(2, data.length * 2);
-      const averageHz = (fromHz: number, toHz: number) => {
-        const start = Math.max(1, Math.min(data.length - 1, Math.floor(fromHz / hzPerBin)));
-        const end = Math.max(start + 1, Math.min(data.length, Math.ceil(toHz / hzPerBin)));
-        let sum = 0;
-        for (let i = start; i < end; i++) sum += data[i];
-        return Math.min(1, sum / Math.max(1, end - start) / 255 * settings.sensitivity);
-      };
-      const rawLow = averageHz(40, 180);
-      const rawMid = averageHz(180, 2000);
-      const rawHigh = averageHz(2000, 8000);
-      const onset = Math.max(0, rawLow - pulseBassLevel);
       const currentTime = now / 1000;
-      pulseBassLevel += (rawLow - pulseBassLevel)
-        * Math.min(1, deltaSeconds * (rawLow > pulseBassLevel ? 9 : 2.2));
-      if (onset > .035 && currentTime - lastPulseBeatAt > .16) {
-        const beatStrength = Math.min(.9, .42 + onset * 4.5);
-        pulseBeatTarget = beatStrength;
-        // Apply an impulse to velocity instead of resetting an animation
-        // phase. Position stays continuous across closely spaced beats.
-        pulseCoreVelocity = Math.max(-.04, pulseCoreVelocity - beatStrength * .026);
-        const travelingWave = pulseShockwaves.find((wave) => wave.progress < 1);
-        if (travelingWave) {
-          // Reinforce the wave already moving outwards. Starting another
-          // bright ring at the core makes the apparent wavefront jump back.
-          travelingWave.strength = Math.max(travelingWave.strength, beatStrength);
-        } else {
-          pulseShockwaves.push({ progress: 0, strength: beatStrength, tilt: -.08 + Math.random() * .16, radius: 0 });
+      music.update(data, audio.meters().sampleRate, currentTime, deltaSeconds);
+      if (music.beatHit) {
+        pulseBeatApplied = 0;
+        // Reinforce the wave already moving outwards. Starting another
+        // bright ring at the core makes the apparent wavefront jump back.
+        if (!pulseShockwaves.some((wave) => wave.progress < 1))
+          pulseShockwaves.push({ progress: 0, strength: 0, tilt: -.08 + Math.random() * .16, radius: 0 });
+      }
+      if (music.beatRising) {
+        // A beat keeps gaining strength through its attack. Apply only the
+        // gain as a velocity impulse, never a reset, so position stays
+        // continuous across closely spaced beats.
+        const beatStrength = music.beatStrength * .9;
+        if (beatStrength > pulseBeatApplied) {
+          pulseCoreVelocity = Math.max(-.04, pulseCoreVelocity - (beatStrength - pulseBeatApplied) * .026);
+          pulseBeatApplied = beatStrength;
         }
-        lastPulseBeatAt = currentTime;
-      } else pulseBeatTarget = Math.max(0, pulseBeatTarget - deltaSeconds * 2.2);
-      const beatFadeSpeed = pulseBeatTarget > pulseBeat ? 12 : 3.2;
-      pulseBeat += (pulseBeatTarget - pulseBeat) * Math.min(1, deltaSeconds * beatFadeSpeed);
-      const envelopeSpeed = rawLow > displayedPulseEnergy ? 4.2 : 1.7;
-      displayedPulseEnergy += (rawLow - displayedPulseEnergy) * Math.min(1, deltaSeconds * envelopeSpeed);
-      pulseMidLevel += (rawMid - pulseMidLevel) * Math.min(1, deltaSeconds * (rawMid > pulseMidLevel ? 4.5 : 2));
-      pulseHighLevel += (rawHigh - pulseHighLevel) * Math.min(1, deltaSeconds * (rawHigh > pulseHighLevel ? 7 : 3.8));
+        const travelingWave = pulseShockwaves.find((wave) => wave.progress < 1);
+        if (travelingWave) travelingWave.strength = Math.max(travelingWave.strength, beatStrength);
+      }
+      const pulseBeat = music.beat * .9;
+      const envelopeSpeed = music.low > displayedPulseEnergy ? 4.2 : 1.7;
+      displayedPulseEnergy += (music.low - displayedPulseEnergy) * Math.min(1, deltaSeconds * envelopeSpeed);
+      pulseMidLevel += (music.mid - pulseMidLevel) * Math.min(1, deltaSeconds * (music.mid > pulseMidLevel ? 4.5 : 2));
+      pulseHighLevel += (music.high - pulseHighLevel) * Math.min(1, deltaSeconds * (music.high > pulseHighLevel ? 7 : 3.8));
       const low = displayedPulseEnergy;
       // A damped spring gives the whole black-hole body a continuous
       // contraction and rebound. No beat can reset its scale or direction.
@@ -830,7 +803,7 @@ export function createVisualizerScene(
         const x = cx + Math.cos(bentAngle) * lensedDistance;
         const y = cy + Math.sin(bentAngle) * lensedDistance;
         if (x < 0 || x > width || y < 0 || y > height) return;
-        const energy = Math.min(1, data[Math.min(data.length - 1, star.frequency)] / 255 * settings.sensitivity);
+        const energy = music.bin(star.frequency);
         const sparkle = Math.pow(Math.max(0, Math.sin(time * star.twinkleSpeed + star.twinkle)), 10);
         const sharedBeatFlash = pulseSceneFlash * (.4 + star.response * .22);
         const starRadius = Math.max(.48, (star.size * .68 + sparkle * .62 + lens * .34 + sharedBeatFlash * .6) * ratio * starEffectSize);
@@ -1035,23 +1008,14 @@ export function createVisualizerScene(
       const data = audio.getFrequencyData();
       const cx = width / 2, cy = height / 2;
       const perspective = Math.min(width, height) * .64;
-      let totalEnergy = 0;
-      const energyBins = Math.max(1, Math.floor(data.length * .28));
-      for (let i = 0; i < energyBins; i++) totalEnergy += data[i];
-      const averageEnergy = Math.min(1, totalEnergy / energyBins / 255 * settings.sensitivity);
-      const bassBins = Math.max(2, Math.floor(data.length * .055));
-      let bassEnergy = 0;
-      for (let i = 1; i < bassBins; i++) bassEnergy += data[i];
-      const rawBass = Math.min(1, bassEnergy / Math.max(1, bassBins - 1) / 255 * settings.sensitivity);
-      const bassOnset = Math.max(0, rawBass - starBassLevel);
-      starBassLevel += (rawBass - starBassLevel) * Math.min(1, deltaSeconds * (rawBass > starBassLevel ? 9 : 2.2));
-      if (bassOnset > .035 && now / 1000 - lastStarBeatAt > .16) {
-        starBeatTarget = Math.min(.9, .42 + bassOnset * 4.5);
-        lastStarBeatAt = now / 1000;
-      } else starBeatTarget = Math.max(0, starBeatTarget - deltaSeconds * 2.2);
-      const beatFadeSpeed = starBeatTarget > starBeatFlash ? 12 : 3.2;
-      starBeatFlash += (starBeatTarget - starBeatFlash) * Math.min(1, deltaSeconds * beatFadeSpeed);
-      const travel = deltaSeconds * (.13 + averageEnergy * .34 + starBeatFlash * .05) * settings.animationSpeed;
+      // The same kick detector as the galaxy and black hole. The old one
+      // averaged 94–1300 Hz, so it missed kicks and flashed on vocals.
+      music.update(data, audio.meters().sampleRate, now / 1000, deltaSeconds);
+      const starBeatFlash = music.beat * .9;
+      const travel = deltaSeconds * (.13 + music.level * .34 + starBeatFlash * .05) * settings.animationSpeed;
+      // A sparkle peak must span at least two frames, or at 30 FPS half of
+      // them show up as single-frame strobe pops.
+      const maximumTwinkleRate = visualizerTargetFps(options) * .175;
       const starGlow = Math.max(0, Math.min(3, glowStrength));
       const starfieldOpacity = barOpacity;
       const starfieldEffectSize = starEffectSize * .6;
@@ -1062,10 +1026,11 @@ export function createVisualizerScene(
       context.shadowBlur = 0;
       context.lineCap = "round";
       particles.forEach((particle) => {
-        const energy = Math.min(1, data[Math.min(data.length - 1, particle.frequency)] / 255 * settings.sensitivity);
+        const energy = music.bin(particle.frequency);
         particle.previousZ = particle.z;
         particle.z -= travel * (.72 + particle.size * .2 + energy * .75);
-        particle.twinkle += deltaSeconds * particle.twinkleSpeed * (1 + energy * 1.8);
+        particle.twinkle += deltaSeconds * Math.min(maximumTwinkleRate,
+          particle.twinkleSpeed * (1 + energy * 1.8) * settings.animationSpeed);
         if (particle.z <= .025) {
           particle.x = (Math.random() - .5) * 2.2;
           particle.y = (Math.random() - .5) * 1.45;

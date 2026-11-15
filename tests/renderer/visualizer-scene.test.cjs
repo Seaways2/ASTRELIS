@@ -16,7 +16,8 @@ const load = (relative, requireFn = () => ({})) => {
 };
 const modules = {
   "./framePacing": load("src/visualizers/framePacing.ts"),
-  "./galaxyPalette": load("src/visualizers/galaxyPalette.ts")
+  "./galaxyPalette": load("src/visualizers/galaxyPalette.ts"),
+  "./musicDynamics": load("src/visualizers/musicDynamics.ts")
 };
 const { createVisualizerScene, visualizerTargetFps } = load("src/visualizers/visualizerScene.ts", name => modules[name]);
 

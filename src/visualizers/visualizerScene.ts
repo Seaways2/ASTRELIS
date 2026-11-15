@@ -121,7 +121,9 @@ export function createVisualizerScene(
     twinkle: Math.random() * Math.PI * 2,
     twinkleSpeed: 1.3 + Math.random() * 6.7,
     response: .25 + Math.random() * .95,
-    frequency: Math.floor(Math.random() * 96)
+    frequency: Math.floor(Math.random() * 96),
+    /** Starfield flight speed factor, eased towards its band's level. */
+    pace: .8
   }));
   const coreMoteCount = settings.lowPerformance
     ? Math.max(36, Math.round(particleUnits * .8))
@@ -220,6 +222,7 @@ export function createVisualizerScene(
   let galaxyMid = 0;
   let galaxyHigh = 0;
   let galaxyCorePhase = 0;
+  let starfieldPace = .13;
   let galaxyRotationVelocity = .055 * settings.animationSpeed;
   const galaxyLayerAngles = [0, .73, 1.41];
   let galaxyWaveProgress = 2;
@@ -395,7 +398,7 @@ export function createVisualizerScene(
       // Straight from the beat envelope: lit on the kick, dark again before
       // the next one. A second smoothing stage here used to lag the kick by
       // ~200 ms and never let the scene go dark at dance tempos.
-      const galaxySceneFlash = music.beat * .74;
+      const galaxySceneFlash = music.beat * .6;
       const targetRotationVelocity = .055 * settings.animationSpeed * (1 + galaxyLow * .18 + galaxySceneFlash * .43);
       galaxyRotationVelocity += (targetRotationVelocity - galaxyRotationVelocity)
         * Math.min(1, deltaSeconds * (2.2 + (1 - smoothing) * 3.8));
@@ -705,7 +708,7 @@ export function createVisualizerScene(
         const travelingWave = pulseShockwaves.find((wave) => wave.progress < 1);
         if (travelingWave) travelingWave.strength = Math.max(travelingWave.strength, beatStrength);
       }
-      const pulseBeat = music.beat * .9;
+      const pulseBeat = music.beat * .72;
       const envelopeSpeed = music.low > displayedPulseEnergy ? 4.2 : 1.7;
       displayedPulseEnergy += (music.low - displayedPulseEnergy) * Math.min(1, deltaSeconds * envelopeSpeed);
       pulseMidLevel += (music.mid - pulseMidLevel) * Math.min(1, deltaSeconds * (music.mid > pulseMidLevel ? 4.5 : 2));
@@ -1011,8 +1014,14 @@ export function createVisualizerScene(
       // The same kick detector as the galaxy and black hole. The old one
       // averaged 94–1300 Hz, so it missed kicks and flashed on vocals.
       music.update(data, audio.meters().sampleRate, now / 1000, deltaSeconds);
-      const starBeatFlash = music.beat * .9;
-      const travel = deltaSeconds * (.13 + music.level * .34 + starBeatFlash * .05) * settings.animationSpeed;
+      const starBeatFlash = music.beat * .62;
+      // Flight speed has inertia: it picks up over ~half a second and coasts
+      // down over a second, instead of jerking with every change in level.
+      const targetPace = .13 + music.level * .34 + starBeatFlash * .05;
+      starfieldPace += (targetPace - starfieldPace)
+        * (1 - Math.exp(-deltaSeconds / (targetPace > starfieldPace ? .6 : 1.2)));
+      const travel = deltaSeconds * starfieldPace * settings.animationSpeed;
+      const paceEase = 1 - Math.exp(-deltaSeconds / .5);
       // A sparkle peak must span at least two frames, or at 30 FPS half of
       // them show up as single-frame strobe pops.
       const maximumTwinkleRate = visualizerTargetFps(options) * .175;
@@ -1028,7 +1037,9 @@ export function createVisualizerScene(
       particles.forEach((particle) => {
         const energy = music.bin(particle.frequency);
         particle.previousZ = particle.z;
-        particle.z -= travel * (.72 + particle.size * .2 + energy * .75);
+        // Each star eases towards its own band's speed as well.
+        particle.pace += (.72 + particle.size * .2 + energy * .75 - particle.pace) * paceEase;
+        particle.z -= travel * particle.pace;
         particle.twinkle += deltaSeconds * Math.min(maximumTwinkleRate,
           particle.twinkleSpeed * (1 + energy * 1.8) * settings.animationSpeed);
         if (particle.z <= .025) {
@@ -1058,8 +1069,11 @@ export function createVisualizerScene(
           energy * particle.response * (.18 + sharpSparkle * .82)
           + starBeatFlash * (.4 + particle.response * .22));
         const shimmer = slowShimmer + musicalFlash;
-        if (depth > .26 || musicalFlash > .32) {
-          context.globalAlpha = Math.min(1, (.25 + depth * .58 + musicalFlash * .68) * shimmer) * starfieldOpacity;
+        // Trails, halos and flares fade in from their thresholds instead of
+        // appearing at once across the field on every beat.
+        const trailFade = Math.min(1, Math.max((depth - .26) / .12, (musicalFlash - .32) / .3));
+        if (trailFade > 0) {
+          context.globalAlpha = Math.min(1, (.25 + depth * .58 + musicalFlash * .68) * shimmer) * trailFade * starfieldOpacity;
           context.lineWidth = Math.max(.52, (particle.size * .72 + depth * .92 + energy * particle.response * .52) * ratio * starfieldEffectSize);
           context.beginPath();
           context.moveTo(previousX, previousY);
@@ -1070,14 +1084,16 @@ export function createVisualizerScene(
         context.beginPath();
         context.arc(x, y, Math.max(.55, (particle.size + depth * .82 + musicalFlash * .92) * ratio * starfieldEffectSize), 0, Math.PI * 2);
         context.fill();
-        if (starGlow > 0 && (depth > .18 || musicalFlash > .18)) {
-          context.globalAlpha = Math.min(.42, (.035 + depth * .075 + musicalFlash * .14) * starGlow) * starfieldOpacity;
+        const haloFade = Math.min(1, Math.max((depth - .18) / .1, (musicalFlash - .18) / .2));
+        if (starGlow > 0 && haloFade > 0) {
+          context.globalAlpha = Math.min(.42, (.035 + depth * .075 + musicalFlash * .14) * starGlow) * haloFade * starfieldOpacity;
           context.beginPath();
           context.arc(x, y, Math.max(1.25, (particle.size + 1.2 + depth * 2.15 + musicalFlash * 2.4) * ratio * (.72 + starGlow * .28) * starfieldEffectSize), 0, Math.PI * 2);
           context.fill();
         }
-        if (musicalFlash > .52) {
-          context.globalAlpha = Math.min(.82, musicalFlash * (.42 + starGlow * .13)) * starfieldOpacity;
+        const flareFade = Math.min(1, (musicalFlash - .52) / .35);
+        if (flareFade > 0) {
+          context.globalAlpha = Math.min(.82, musicalFlash * (.42 + starGlow * .13)) * flareFade * starfieldOpacity;
           context.beginPath();
           context.arc(x, y, Math.max(1.1, (particle.size + musicalFlash * (1.8 + starGlow * .42)) * ratio * starfieldEffectSize), 0, Math.PI * 2);
           context.fill();

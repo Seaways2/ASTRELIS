@@ -15,7 +15,7 @@ test("Black Hole Pulse separates bass, mid, and high-frequency responses", () =>
 });
 
 test("Black Hole Pulse follows the shared beat envelope with a continuous body rebound", () => {
-  assert.match(source, /const pulseBeat = music\.beat \* \.9/);
+  assert.match(source, /const pulseBeat = music\.beat \* \.72/);
   // Only the strength a beat gains during its attack becomes an impulse.
   assert.match(source, /pulseCoreVelocity = Math\.max\(-\.04, pulseCoreVelocity - \(beatStrength - pulseBeatApplied\) \* \.026\)/);
   assert.match(source, /pulseCoreVelocity \+= \(-pulseCoreMotion \* 30 - pulseCoreVelocity \* 7\.5\) \* springStep/);

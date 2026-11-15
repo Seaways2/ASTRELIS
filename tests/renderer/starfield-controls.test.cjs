@@ -21,7 +21,7 @@ test("Starfield Motion maps the shared effect controls to star count and size", 
 
 test("Starfield Motion gives every star a shared low-frequency beat flash", () => {
   const canvas = read("src/visualizers/visualizerScene.ts");
-  assert.match(canvas, /const starBeatFlash = music\.beat \* \.9;/);
+  assert.match(canvas, /const starBeatFlash = music\.beat \* \.62;/);
   assert.match(canvas, /musicalFlash = Math\.min\(1\.4,[\s\S]*starBeatFlash \* \(\.4 \+ particle\.response \* \.22\)/);
 });
 
@@ -42,10 +42,19 @@ test("Starfield Motion keeps every sparkle peak at least two frames long", () =>
 test("Starfield Motion applies effect opacity to trails, stars, halos, and flashes", () => {
   const canvas = read("src/visualizers/visualizerScene.ts");
   assert.match(canvas, /const starfieldOpacity = barOpacity/);
-  assert.match(canvas, /shimmer\) \* starfieldOpacity/);
+  assert.match(canvas, /shimmer\) \* trailFade \* starfieldOpacity/);
   assert.match(canvas, /musicalFlash\) \* starfieldOpacity/);
-  assert.match(canvas, /starGlow\) \* starfieldOpacity/);
-  assert.match(canvas, /starGlow \* \.13\)\) \* starfieldOpacity/);
+  assert.match(canvas, /starGlow\) \* haloFade \* starfieldOpacity/);
+  assert.match(canvas, /starGlow \* \.13\)\) \* flareFade \* starfieldOpacity/);
+});
+
+test("Starfield Motion eases flight speed and fades trails, halos and flares in", () => {
+  const canvas = read("src/visualizers/visualizerScene.ts");
+  assert.match(canvas, /starfieldPace \+= \(targetPace - starfieldPace\)/);
+  assert.match(canvas, /particle\.pace \+= \(\.72 \+ particle\.size \* \.2 \+ energy \* \.75 - particle\.pace\) \* paceEase;/);
+  assert.match(canvas, /particle\.z -= travel \* particle\.pace;/);
+  assert.match(canvas, /const trailFade = Math\.min\(1, Math\.max\(\(depth - \.26\) \/ \.12, \(musicalFlash - \.32\) \/ \.3\)\);/);
+  assert.match(canvas, /const flareFade = Math\.min\(1, \(musicalFlash - \.52\) \/ \.35\);/);
 });
 
 test("visualizer controls use effect-oriented labels in every language", () => {

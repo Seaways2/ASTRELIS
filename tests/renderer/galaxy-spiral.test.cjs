@@ -84,7 +84,7 @@ test("Galaxy Spiral borrows independently rotating elliptical motes from Black H
 test("Galaxy Spiral shares one beat flash across dust, stars, motes, and core", () => {
   // Straight from the shared beat envelope: a second smoothing stage lagged
   // the kick by ~200 ms and kept the scene lit between beats.
-  assert.match(canvas, /const galaxySceneFlash = music\.beat \* \.74;/);
+  assert.match(canvas, /const galaxySceneFlash = music\.beat \* \.6;/);
   assert.doesNotMatch(canvas, /galaxySceneGlow|galaxyBeatTarget/);
   assert.match(canvas, /sharedBeatFlash = galaxySceneFlash \* \(\.4 \+ star\.response \* \.22\)/);
   assert.match(canvas, /moteBeatFlash = galaxySceneFlash \* \(\.4 \+ mote\.response \* \.22\)/);

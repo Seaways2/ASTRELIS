@@ -78,11 +78,17 @@ test("the beat flash lands within ~100 ms and goes dark before the next kick", (
   for (const period of [.5, .4]) {
     const frames = run((bins, t) => { const k = Math.exp(-(t % period) / .12); [1, .95, .7, .4].forEach((w, i) => { bins[i] = clamp((60 + 170 * k) * w); }); }, 10);
     const steady = frames.filter(f => f.t > 3);
-    const peakPhase = steady.reduce((best, f) => f.beat > best.beat ? f : best).t % period;
-    assert.ok(peakPhase < .1, `peak ${Math.round(peakPhase * 1000)} ms after the kick at ${period}s`);
-    const beforeNext = steady.filter(f => f.t % period > period - .04);
-    assert.ok(Math.max(...beforeNext.map(f => f.beat)) < .15, `still lit at ${period}s: ${Math.max(...beforeNext.map(f => f.beat)).toFixed(2)}`);
-    assert.ok(Math.max(...steady.map(f => f.beat)) > .6);
+    const peak = Math.max(...steady.map(f => f.beat));
+    const peakPhase = steady.find(f => f.beat === peak).t % period;
+    assert.ok(peak > .6, `peak ${peak.toFixed(2)}`);
+    assert.ok(peakPhase < .15, `peak ${Math.round(peakPhase * 1000)} ms after the kick at ${period}s`);
+    // It swells in over several frames rather than jumping in one.
+    let jump = 0;
+    for (let index = 1; index < steady.length; index++) jump = Math.max(jump, steady[index].beat - steady[index - 1].beat);
+    assert.ok(jump < peak * .4, `one frame rose by ${(jump / peak * 100).toFixed(0)}% of the peak`);
+    // And it has mostly faded before the next kick.
+    const beforeNext = Math.max(...steady.filter(f => f.t % period > period - .04).map(f => f.beat));
+    assert.ok(beforeNext < peak * (period >= .5 ? .35 : .45), `still ${(beforeNext / peak * 100).toFixed(0)}% lit before the next kick at ${period}s`);
   }
 });
 
@@ -110,5 +116,10 @@ test("loud mastering no longer pins the per-star levels near the top", () => {
   const steady = frames.filter(f => f.t > 6).map(f => f.bin);
   const average = steady.reduce((a, b) => a + b, 0) / steady.length;
   assert.ok(average > .3 && average < .7, `bin 10 averages ${average.toFixed(2)}`);
-  assert.ok(Math.max(...steady) - Math.min(...steady) > .25, "per-star level should still move with the music");
+  const range = Math.max(...steady) - Math.min(...steady);
+  assert.ok(range > .1, `per-star level should still move with the music (range ${range.toFixed(2)})`);
+  // ...but eased: no frame-to-frame flicker.
+  let step = 0;
+  for (let index = 1; index < steady.length; index++) step = Math.max(step, Math.abs(steady[index] - steady[index - 1]));
+  assert.ok(step < .06, `per-star level jumped ${step.toFixed(2)} in one frame`);
 });

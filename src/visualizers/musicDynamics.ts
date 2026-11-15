@@ -21,11 +21,17 @@ const AUDIBLE = .12;
 const MIN_BEAT_GAP_SECONDS = .17;
 /** How long a detected beat keeps rising before its strength is final. */
 const ATTACK_WINDOW_SECONDS = .09;
+/** The flash swells in over about twice this and fades with this time constant. */
+const BEAT_SWELL_SECONDS = .045;
+const BEAT_RELEASE_SECONDS = .22;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const audible = (value: number) => clamp01((value - SILENCE) / (AUDIBLE - SILENCE));
 const approach = (value: number, target: number, dt: number, seconds: number) =>
   value + (target - value) * Math.min(1, dt / seconds);
+/** Exponential approach, the same at any frame rate. */
+const ease = (value: number, target: number, dt: number, seconds: number) =>
+  value + (target - value) * (1 - Math.exp(-dt / seconds));
 
 /**
  * A level measured against its own recent average: 0.5 when steady, towards 1
@@ -86,6 +92,7 @@ export class MusicDynamics {
   private readonly loudness = new RelativeLevel(3.4, 4, 10, .45, .3);
   private readonly kickBaselines: number[] = [];
   private previousOnset = 0;
+  private beatTarget = 0;
   private typicalOnset = .06;
   private lastBeatAt = -10;
   private attackUntil = -10;
@@ -109,8 +116,12 @@ export class MusicDynamics {
     this.high = this.highLevel.update(average(2000, 8000), dt);
     this.level = this.loudness.update(average(40, 8000), dt);
     const tracked = Math.min(TRACKED_BINS, data.length);
-    for (let index = 0; index < tracked; index++)
-      this.bins[index] = this.binLevels[index].update(Math.min(1, data[index] * sensitivity), dt);
+    for (let index = 0; index < tracked; index++) {
+      // A star brightens quickly with its band and fades out gently, rather
+      // than flickering with every frame-to-frame wobble of the spectrum.
+      const relative = this.binLevels[index].update(Math.min(1, data[index] * sensitivity), dt);
+      this.bins[index] = ease(this.bins[index], relative, dt, relative > this.bins[index] ? .06 : .28);
+    }
     // The kick lives below ~150 Hz: at the analyser's ~94 Hz bins that is
     // the first two. Its fundamental fills the first; a bass note's attack
     // mostly lifts the second, so the first one counts most.
@@ -154,15 +165,20 @@ export class MusicDynamics {
       this.beatRising = true;
       this.attackPeak = Math.max(this.attackPeak, onset);
       this.beatStrength = Math.max(.3, Math.min(1, Math.pow(this.attackPeak / (this.typicalOnset * 1.15), .8)));
-      this.beat = Math.max(this.beat, this.beatStrength);
+      this.beatTarget = Math.max(this.beatTarget, this.beatStrength);
       if (onset < this.previousOnset || now + dt > this.attackUntil) {
         this.typicalOnset += (this.attackPeak - this.typicalOnset) * .2;
         this.attackUntil = -10;
       }
+    } else {
+      // Long enough to read as a glow fading out, short enough to be mostly
+      // dark again before the next kick at dance tempos.
+      const decaySeconds = BEAT_RELEASE_SECONDS / Math.max(.5, Math.min(2, this.settings.decaySpeed));
+      this.beatTarget *= Math.exp(-dt / decaySeconds);
     }
     this.previousOnset = onset;
-    // Fast enough to go dark between kicks at any dance tempo.
-    const decaySeconds = .16 / Math.max(.5, Math.min(2, this.settings.decaySpeed));
-    this.beat *= Math.exp(-dt / decaySeconds);
+    // The visible flash eases towards the target: it swells over ~100 ms
+    // instead of jumping in one frame, and rounds off the start of the fade.
+    this.beat = ease(this.beat, this.beatTarget, dt, this.beatTarget > this.beat ? BEAT_SWELL_SECONDS : .07);
   }
 }

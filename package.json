@@ -1,7 +1,7 @@
 {
   "name": "astrelis",
   "productName": "ASTRELIS",
-  "version": "2.18.0",
+  "version": "2.18.1",
   "private": true,
   "description": "Professional futuristic audio workstation and music visualizer for Windows",
   "author": "ASTRELIS",
@@ -21,7 +21,9 @@
     "verify": "pnpm lint && pnpm build && pnpm build:native && pnpm test",
     "preview": "vite preview",
     "start": "electron .",
-    "dist:win": "pnpm verify && electron-builder --win nsis"
+    "dist:win": "pnpm verify && electron-builder --win nsis",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "tune:visualizer": "node scripts/visualizer-tuning.cjs"
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "4.36.2",

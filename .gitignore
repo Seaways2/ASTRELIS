@@ -36,3 +36,6 @@ Thumbs.db
 Desktop.ini
 native-window/build/
 release-work/
+
+# Visualizer tuning captures and reports (derived from local music)
+tuning/

@@ -28,6 +28,9 @@ const BEAT_RELEASE_SECONDS = .22;
 const BEAT_DROUGHT_SECONDS = 1.2;
 /** ...towards this floor, so a quieter song's kicks are found again. */
 const TYPICAL_ONSET_FLOOR = .05;
+/** A kick must also stand this many deviations above the recent onset level. */
+const ONSET_DEVIATIONS = 1.5;
+const ONSET_STATS_SECONDS = 1.5;
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const audible = (value: number) => clamp01((value - SILENCE) / (AUDIBLE - SILENCE));
@@ -100,6 +103,8 @@ export class MusicDynamics {
   private previousOnset = 0;
   private beatTarget = 0;
   private typicalOnset = .06;
+  private onsetMean = 0;
+  private onsetDeviation = 0;
   private lastBeatAt = -10;
   private attackUntil = -10;
   private attackPeak = 0;
@@ -158,7 +163,13 @@ export class MusicDynamics {
   private detectBeat(onset: number, kick: number, now: number, dt: number) {
     this.beatHit = false;
     this.beatRising = false;
-    const threshold = Math.max(.022, this.typicalOnset * .42);
+    // The song's typical kick sets the bar; the onset's own recent statistics
+    // keep it above the general churn of the low end (orchestral swells, busy
+    // bass), which the typical kick alone let through on real recordings.
+    const threshold = Math.max(.022, this.typicalOnset * .42, this.onsetMean + ONSET_DEVIATIONS * this.onsetDeviation);
+    const statsWeight = 1 - Math.exp(-dt / ONSET_STATS_SECONDS);
+    this.onsetMean += (onset - this.onsetMean) * statsWeight;
+    this.onsetDeviation += (Math.abs(onset - this.onsetMean) - this.onsetDeviation) * statsWeight;
     if (onset > threshold && onset > this.previousOnset && kick > AUDIBLE * .6
       && now - this.lastBeatAt > MIN_BEAT_GAP_SECONDS) {
       this.beatHit = true;

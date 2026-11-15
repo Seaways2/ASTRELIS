@@ -82,8 +82,7 @@ export function MainVolumeFader({ volume, muted, restoreVolume, disabled = false
     }}
     onPointerCancel={() => { drag.current = null; dragBounds.current = null; }}
   >
-    {/* LED cells: the lit column covers the cell area (the slot minus its 3 px frame) and stops on a whole cell. */}
-    <div className="channel-fader-fill" style={{ height: `round(down, calc(${position} * (100% - 6px)), var(--led-pitch))` }} />
+    <div className="channel-fader-fill" style={{ height: `${position * 100}%` }} />
     <div className="channel-fader-ticks" aria-hidden="true">
       {METER_MINOR_DB_TICKS.map(tick => <span className="minor" key={tick} style={{ bottom: `${dbToMeterPosition(tick)}%` }} />)}
       {METER_DB_TICKS.map(tick => <span className="major" key={tick} style={{ bottom: `${dbToMeterPosition(tick)}%` }} />)}

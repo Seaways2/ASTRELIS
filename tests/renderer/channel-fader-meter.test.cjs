@@ -7,8 +7,21 @@ const root = path.resolve(__dirname, "../..");
 const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 const css = read("src/styles/global.css");
 
-test("the level meter draws two dense columns of LED cells in whole device pixels", () => {
-  assert.match(css, /\.channel-meter \{\s*--led-cell: calc\(var\(--device-px, 1px\) \* 2\);\s*--led-pitch: calc\(var\(--device-px, 1px\) \* 3\);/);
+test("both level meters share one LED cell definition in whole device pixels", () => {
+  assert.match(css, /\.channel-meter, \.meter-track \{\s*--led-cell: calc\(var\(--device-px, 1px\) \* 2\);\s*--led-pitch: calc\(var\(--device-px, 1px\) \* 3\);/);
+  assert.equal((css.match(/--led-cell:/g) || []).length, 1, "one cell size for every meter");
+});
+
+test("the channel monitor draws each channel as a row of LED cells", () => {
+  assert.match(css, /\.meter-track \{[^}]*height: 10px;[^}]*repeating-linear-gradient\(to right, var\(--led-off\) 0 var\(--led-cell\), var\(--led-off-gap\) var\(--led-cell\) var\(--led-pitch\)\) content-box,\s*var\(--led-frame\);/);
+  assert.match(css, /\.meter-track i \{[^}]*inset: 1px;[^}]*clip-path: inset\(0 calc\(100% - round\(down, var\(--meter-level, 0%\), var\(--led-pitch\)\)\) 0 0\);/);
+  assert.match(css, /repeating-linear-gradient\(to right, transparent 0 var\(--led-cell\), var\(--led-lit-gap\) var\(--led-cell\) var\(--led-pitch\)\),\s*linear-gradient\(90deg,\s*var\(--accent\) 0 78%/);
+  // Light theme recolours the cells instead of replacing them with the old block pattern.
+  assert.match(css, /\.theme-light \.meter-track \{\s*--led-frame:/);
+  assert.doesNotMatch(css, /\.theme-light \.meter-track \{ background:/);
+});
+
+test("the channel strip meter draws two dense columns of LED cells", () => {
   // Unlit cells fill each column; lit cells keep the level colours with darker gaps.
   assert.match(css, /\.channel-meter i \{[^}]*repeating-linear-gradient\(to top, var\(--led-off\) 0 var\(--led-cell\), var\(--led-off-gap\) var\(--led-cell\) var\(--led-pitch\)\)/);
   assert.match(css, /repeating-linear-gradient\(to top, transparent 0 var\(--led-cell\), var\(--led-lit-gap\) var\(--led-cell\) var\(--led-pitch\)\),\s*linear-gradient\(to top,\s*var\(--accent\) 0 78%,\s*var\(--meter-warning\) 87%/);
@@ -16,7 +29,7 @@ test("the level meter draws two dense columns of LED cells in whole device pixel
   assert.match(css, /clip-path: inset\(calc\(100% - round\(down, var\(--meter-level, 0%\), var\(--led-pitch\)\)\) 0 0 0\);/);
   // One frame holds both columns, in the light popover too.
   assert.match(css, /\.channel-fader-section \.channel-meter \{ width: 23px; justify-self: end; grid-template-columns: repeat\(2, 8px\); \}/);
-  assert.match(css, /\.channel-strip-popover\.light \.channel-meter \{\s*--led-off:/);
+  assert.match(css, /\.channel-strip-popover\.light \.channel-meter \{\s*--led-frame:/);
 });
 
 test("the fader keeps its thin slot; only the meter is segmented", () => {

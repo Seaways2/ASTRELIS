@@ -1271,7 +1271,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .theme-light .vst-chain > header > b { color: #607980; }
 .theme-light .channel b,
 .theme-light .data-panel dd { color: #39545b; }
-.theme-light .meter-track { background: repeating-linear-gradient(90deg, #bfd0d3 0 4px, transparent 4px 6px); }
 .theme-light .energy-ring { background: conic-gradient(var(--accent) var(--level), #bfd0d3 0); }
 .theme-light .energy-ring::after { background: #f2f8f9; }
 .theme-light .energy-ring span { color: #1b3137; }
@@ -1956,24 +1955,42 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .visual-head { min-height: 0; align-items: flex-start; padding: 2px 0 13px; }
 .visual-head-actions { padding-top: 1px; }
 
-/* Keep the meter bed and live fill continuous so the inactive range and the
-   active signal are not cut up by dark separator stripes. */
+/* LED level meters (channel monitor rows and the channel strip columns): cells are
+   2 device pixels with a 1 device pixel gap (--device-px), so they stay crisp at any
+   display scale; lit cells keep the accent -> warning -> danger colours with darker
+   gaps of the same colour, and a lit run always ends on a whole cell. */
+.channel-meter, .meter-track {
+  --led-cell: calc(var(--device-px, 1px) * 2);
+  --led-pitch: calc(var(--device-px, 1px) * 3);
+  --led-frame: #15191b;
+  --led-off: color-mix(in srgb, var(--accent) 13%, #0d1112);
+  --led-off-gap: #080b0c;
+  --led-lit-gap: rgba(4, 6, 7, .62);
+}
+/* Channel monitor: one row of cells per channel in a dark frame. */
 .meter-track {
   position: relative;
   overflow: visible;
-  height: 8px;
-  background: color-mix(in srgb, var(--accent) 12%, #111d20);
-  box-shadow: inset 0 0 0 1px rgba(126,169,176,.08);
+  height: 10px;
+  padding: 1px;
+  border: 1px solid #263033;
+  border-radius: 1px;
+  background:
+    repeating-linear-gradient(to right, var(--led-off) 0 var(--led-cell), var(--led-off-gap) var(--led-cell) var(--led-pitch)) content-box,
+    var(--led-frame);
+  box-shadow: inset 0 0 3px #000;
 }
 .meter-track i {
   position: absolute;
-  inset: 0;
+  inset: 1px;
   width: auto;
-  clip-path: inset(0 calc(100% - var(--meter-level, 0%)) 0 0);
-  background: linear-gradient(90deg,
-    var(--accent) 0 78%,
-    var(--meter-warning) 87%,
-    var(--meter-danger) 96%,
+  clip-path: inset(0 calc(100% - round(down, var(--meter-level, 0%), var(--led-pitch))) 0 0);
+  background:
+    repeating-linear-gradient(to right, transparent 0 var(--led-cell), var(--led-lit-gap) var(--led-cell) var(--led-pitch)),
+    linear-gradient(90deg,
+      var(--accent) 0 78%,
+      var(--meter-warning) 87%,
+      var(--meter-danger) 96%,
       var(--meter-clip) 100%);
   z-index: 1;
   filter: drop-shadow(0 0 calc(4px * var(--glow-strength)) color-mix(in srgb, var(--accent) 78%, transparent));
@@ -1983,7 +2000,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   content: "";
   position: absolute;
   z-index: 0;
-  left: 0;
+  left: 1px;
   top: 1px;
   bottom: 1px;
   width: var(--meter-level, 0%);
@@ -1994,27 +2011,22 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   transition: width .07s linear, opacity .12s linear, filter .12s linear;
 }
 .theme-light .meter-track {
-  background: color-mix(in srgb, var(--accent) 15%, #c9d8db);
+  --led-frame: #a7b8bc;
+  --led-off: color-mix(in srgb, var(--accent) 15%, #c9d8db);
+  --led-off-gap: #b3c3c7;
+  border-color: #92a6ab;
+  box-shadow: none;
 }
 
 .channel-fader-section { grid-template-columns: 34px 24px 38px; gap: 4px; }
-/* Level meter: two dense columns of LED cells in one dark frame, lit to the
-   current level in the accent -> warning -> danger colours, with the gaps between
-   lit cells a darker shade of the same colour. Cells are 2 device pixels with a
-   1 device pixel gap (--device-px), so they stay crisp at any display scale, and
-   the lit column always ends on a whole cell. */
+/* Channel strip level meter: two columns of LED cells (shared LED rules above) in one dark frame. */
 .channel-meter {
-  --led-cell: calc(var(--device-px, 1px) * 2);
-  --led-pitch: calc(var(--device-px, 1px) * 3);
-  --led-off: color-mix(in srgb, var(--accent) 13%, #0d1112);
-  --led-off-gap: #080b0c;
-  --led-lit-gap: rgba(4, 6, 7, .62);
   position: relative;
   grid-template-columns: repeat(2, 8px);
   justify-content: start;
   gap: 1px;
   padding: 2px;
-  background: #15191b;
+  background: var(--led-frame);
   border: 1px solid #263033;
   border-radius: 1px;
   box-shadow: inset 0 0 3px #000;
@@ -2057,9 +2069,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .channel-strip-popover.light .channel-meter .channel-fader-scale { color: #536a70; }
 .channel-strip-popover.light .channel-meter .channel-fader-scale span::after { border-color: #82979c; }
 .channel-strip-popover.light .channel-meter {
+  --led-frame: #a7b8bc;
   --led-off: color-mix(in srgb, var(--accent) 15%, #c8d7da);
   --led-off-gap: #b3c3c7;
-  background: #a7b8bc;
   border-color: #92a6ab;
   box-shadow: none;
 }

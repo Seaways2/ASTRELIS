@@ -41,6 +41,9 @@ if ($Clean -and (Test-Path -LiteralPath $build)) {
   Remove-Item -LiteralPath $resolvedBuild -Recurse -Force
 }
 
+. (Join-Path $PSScriptRoot "lib\CMakeCache.ps1")
+Reset-MovedCMakeCache -Build $build
+
 & $cmake -S $source -B $build -G "Visual Studio 17 2022" -A x64
 if ($LASTEXITCODE -ne 0) { throw "Native configure failed with exit code $LASTEXITCODE" }
 

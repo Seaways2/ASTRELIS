@@ -20,6 +20,8 @@ $cmake = if ($env:CMAKE_EXE) { $env:CMAKE_EXE } else {
 }
 if (-not $cmake) { throw 'Visual Studio CMake is required to build the window outline module' }
 $build = Join-Path $repoRoot 'native-window/build'
+. (Join-Path $PSScriptRoot 'lib/CMakeCache.ps1')
+Reset-MovedCMakeCache -Build $build
 & $cmake -S (Join-Path $repoRoot 'native-window') -B $build -G 'Visual Studio 17 2022' -A x64 "-DNODE_INCLUDE_DIR=$include" "-DNODE_LIBRARY=$library"
 if ($LASTEXITCODE -ne 0) { throw 'Window module configure failed' }
 & $cmake --build $build --config Release

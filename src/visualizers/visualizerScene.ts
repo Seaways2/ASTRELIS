@@ -204,7 +204,9 @@ export function createVisualizerScene(
   // Black hole: warm stars crowd the event horizon as the galaxy's crowd its
   // bulge, blue-white and accent ones fill the field, a few jewel stars sit
   // further out, and the motes run warm inside and accent outside.
-  // Starfield: there is no centre to measure from, so fixed shares.
+  // Starfield: there is no centre to measure from, so fixed shares, mostly
+  // the accent (65%) with blue-white (22%), warm (11%) and jewel (2%) stars
+  // as accents; with the other colours dominant it no longer read as the theme.
   // Drawn after the galaxy's populations so its layout stays as it was.
   type StarTint = GalaxyTint | "jewel";
   const starTints: readonly StarTint[] = ["warm", "ice", "accent", "jewel"];
@@ -228,7 +230,7 @@ export function createVisualizerScene(
       if (mode === "pulse") {
         const radius = Math.hypot(star.x * size.width * .46, star.y * size.height * .66) / warmReach;
         tint = radius > .45 && jewelRoll < .02 ? "jewel" : pickGalaxyTint(radius, tintRoll);
-      } else tint = tintRoll < .03 ? "jewel" : tintRoll < .23 ? "warm" : tintRoll < .55 ? "accent" : "ice";
+      } else tint = tintRoll < .02 ? "jewel" : tintRoll < .13 ? "warm" : tintRoll < .35 ? "ice" : "accent";
       fieldTintGroups[starTints.indexOf(tint)].stars.push(star);
     });
   };

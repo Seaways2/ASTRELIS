@@ -69,10 +69,11 @@ test("Black Hole Pulse colours its stars warm near the hole, cool outside, a few
   assert.ok(share(drawn, "jewel") < .05, `jewels are ${(share(drawn, "jewel") * 100).toFixed(1)}% of stars`);
 });
 
-test("Starfield Motion spreads the galaxy palette in fixed shares", () => {
+test("Starfield Motion stays mostly the accent, with the galaxy palette as accents", () => {
   const drawn = fills("particles");
   assert.ok(drawn.length > 300);
-  const expected = { ice: .45, accent: .32, warm: .2, jewel: .03 };
+  // Mostly the theme accent; the other colours are accents.
+  const expected = { accent: .65, ice: .22, warm: .11, jewel: .02 };
   for (const [tint, target] of Object.entries(expected))
     assert.ok(Math.abs(share(drawn, tint) - target) < .07, `${tint}: ${(share(drawn, tint) * 100).toFixed(0)}%, expected ~${target * 100}%`);
 });

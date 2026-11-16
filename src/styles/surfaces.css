@@ -13,8 +13,10 @@
   /* Room a scroller leaves so a glow at its edge is not cut off: as wide as
      the glow plus a little, never wider than the page's narrowest padding. */
   --panel-glow-gutter: min(calc(var(--panel-glow-reach) + 2px), 14px);
-  /* Buttons rest a step below the panels (a 22% halo was invisible on the
-     dark chrome) and reach panel strength on hover or when active. */
+  /* The round transport controls rest inside a halo a step below the panels
+     (a 22% halo was invisible on the dark chrome). Sidebar buttons and mode
+     tabs stay calm at rest: a halo each, or one around the group, was tried
+     and looked boxy. */
   --button-glow: color-mix(in srgb, var(--accent) 34%, transparent);
   --button-glow-inner: color-mix(in srgb, var(--accent) 8%, transparent);
   --surface-glass-fill: rgba(12, 20, 24, .48);
@@ -100,44 +102,6 @@
 .app-shell:not(.obs-mode):not(.immersive-mode) .native-browser-page .page-content {
   padding-block: min(var(--panel-glow-gutter), 6px);
   margin-block: calc(-1 * min(var(--panel-glow-gutter), 6px));
-}
-/* Buttons without a frame glow as a group, not one by one. The navigation
-   sits on one lit panel, like the panels on the right: inside it only the
-   icons glow, hover blooms softly and the active item is lit. Padding and an
-   equal negative margin keep every button where it was; the outline is an
-   inset shadow so it takes no space either. Dark theme only, like every
-   accent glow, and ECO keeps its plain sidebar. */
-.app-shell:not(.obs-mode):not(.immersive-mode):not(.theme-light):not(.low-performance-mode) .sidebar nav {
-  --group-inset: 5px;
-  padding: var(--group-inset);
-  margin: calc(-1 * var(--group-inset));
-  border-radius: var(--radius-panel);
-  background: var(--surface-dither) repeat, var(--surface-glass-fill);
-  box-shadow: inset 0 0 0 1px var(--surface-glass-border), 0 0 var(--panel-glow-reach) var(--panel-glow);
-}
-/* The icon rail and short windows leave less room around the navigation. */
-@media (max-width: 1250px), (max-height: 720px) {
-  .app-shell:not(.obs-mode):not(.immersive-mode):not(.theme-light):not(.low-performance-mode) .sidebar nav { --group-inset: 3px; }
-}
-/* The visualizer mode tabs are one segmented strip that glows as a whole. It
-   scrolls sideways, so it clips anything its tabs draw outside themselves:
-   the hovered and the active segment are lit from the inside instead. */
-.app-shell:not(.obs-mode):not(.immersive-mode):not(.theme-light):not(.low-performance-mode) .mode-tabs {
-  padding: 3px;
-  margin: -3px;
-  border-radius: calc(var(--radius-control) + 3px);
-  background: var(--surface-glass-fill);
-  box-shadow: inset 0 0 0 1px var(--surface-glass-border), 0 0 var(--panel-glow-reach) var(--panel-glow);
-}
-.app-shell:not(.obs-mode):not(.immersive-mode):not(.theme-light):not(.low-performance-mode) .mode-tabs button:hover {
-  box-shadow: inset 0 0 calc(12px * var(--glow-strength)) color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.app-shell:not(.obs-mode):not(.immersive-mode):not(.theme-light):not(.low-performance-mode) .mode-tabs button.active {
-  filter: none;
-  text-shadow: 0 0 calc(7px * var(--glow-strength)) color-mix(in srgb, var(--accent) 62%, transparent);
-  box-shadow:
-    inset 0 0 calc(12px * var(--glow-strength)) color-mix(in srgb, var(--accent) 18%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 /* Floating control panels sit directly over animated visualizers. Give them a
    denser local sheet so labels and values stay readable without going opaque. */

@@ -119,7 +119,12 @@ test("device page groups native configuration and status before the unified othe
   assert.match(page, /Shared Low Latency/);
   assert.match(page, /WASAPI Exclusive/);
   assert.match(page, /device\.outputDevice/);
-  assert.match(page, /device\.otherSettings/);
+  // Sample rate and buffer are ordinary rows of the output form, with no "other settings" group.
+  assert.match(page, /<label className="unified-output-section"><span>\{t\("device\.sampleRate"\)\}<\/span>/);
+  assert.match(page, /<label className="unified-output-section"><span>\{t\("device\.buffer"\)\}<\/span>/);
+  assert.doesNotMatch(page, /device\.otherSettings/);
+  // The form comes first, the live status beside it.
+  assert.ok(page.indexOf('className="output-config-form"') < page.indexOf('className="native-overview-status"'));
   assert.match(page, /device\.applyConfiguration/);
   const outputConfigIndex = page.indexOf("unified-output-config");
   // One output device row: native device when native output is on, Web output otherwise.

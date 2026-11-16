@@ -5,8 +5,22 @@
   --module-padding: 22px;
   --module-title: 16px;
   --module-muted: #96a9b2;
+  /* Settings pages: row titles are labels in a secondary ink, and controls are
+     compact with a faint fill, so only section titles read as bold. */
+  --setting-label-ink: #a9bbc0;
+  --setting-control-ink: #d3dfe2;
+  --setting-control-fill: rgba(200,225,232,.045);
+  --setting-control-border: rgba(160,188,196,.14);
+  --setting-divider: rgba(160,188,196,.1);
 }
-.app-shell.theme-light { --module-muted: #506b77; }
+.app-shell.theme-light {
+  --module-muted: #506b77;
+  --setting-label-ink: var(--ice-text-secondary);
+  --setting-control-ink: var(--ice-text);
+  --setting-control-fill: var(--light-control-fill, var(--ice-control-fill));
+  --setting-control-border: var(--ice-panel-border);
+  --setting-divider: rgba(48,91,101,.14);
+}
 .app-shell :is(.workspace-section, .settings-section, .appearance-section) {
   min-width: 0;
   padding: var(--module-padding);
@@ -98,25 +112,53 @@
 .library-browse .library-sort-controls { flex-wrap: wrap; }
 .library-browse .library-view-switch { flex-wrap: wrap; }
 
-/* Output choices form one primary group; status/help and browser fallback
-   share the secondary row. Advanced explanations remain available on demand. */
+/* Audio device: one settings form (title · control rows, the rhythm of the
+   other settings pages) with the live output status beside it. The panel is a
+   size container, so the status drops below the form on a narrow page. */
 .device-page-grid { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; padding-bottom: 20px; }
-.device-page-grid .unified-output-config { grid-column: 1 / -1; gap: 20px; }
-.device-page-grid .native-output-overview { grid-column: 1 / -1; gap: 16px; }
-.device-page-grid .unified-output-section { border: 0; padding-top: 0; grid-template-columns: minmax(160px,.65fr) minmax(0,1.35fr); }
-.device-page-grid .native-advanced-settings { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px 20px; }
-.device-page-grid .native-advanced-settings > div { grid-column: 1 / -1; }
-.device-page-grid .unified-output-section h3 { font-size: 13px; }
-.native-device-picker { display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 10px; align-items: stretch; min-width: 0; }
+.device-page-grid .native-output-overview { grid-column: 1 / -1; gap: 18px; container-type: inline-size; --output-title: 140px; --output-gap: 20px; --output-control: 520px; }
+.app-shell .output-config-body { display: grid; gap: 18px 32px; align-items: start; min-width: 0; }
+.app-shell .output-config-form { display: grid; gap: 14px; min-width: 0; }
+.app-shell .device-page-grid .unified-output-section { display: grid; grid-template-columns: var(--output-title) minmax(0, var(--output-control)); align-items: center; gap: 8px var(--output-gap); padding: 0; border: 0; }
+.app-shell .device-page-grid .unified-output-section > :not(:first-child) { grid-column: 2; min-width: 0; }
+.app-shell .device-page-grid .native-configuration-fields { display: grid; gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.app-shell .device-page-grid .native-advanced-settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.app-shell .device-page-grid .native-advanced-settings > label { grid-column: 1 / -1; color: var(--setting-label-ink); font-family: inherit; font-size: 13px; line-height: 1.35; }
+.app-shell .device-page-grid .native-advanced-settings select { width: 280px; max-width: 100%; }
+.app-shell .device-page-grid .native-apply-button { justify-self: start; min-width: 0; max-width: 100%; min-height: 34px; margin-left: calc(var(--output-title) + var(--output-gap)); padding: 0 16px; font-size: 13px; white-space: normal; }
+.native-device-picker { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 8px; align-items: stretch; min-width: 0; }
 .native-device-picker > select { width: 100%; min-width: 0; }
-.native-device-picker .native-device-refresh { display: grid; place-items: center; width: 42px; min-height: 42px; padding: 0; border: 1px solid color-mix(in srgb, var(--module-muted) 25%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--module-muted); cursor: pointer; }
+.native-device-picker .native-device-refresh { display: grid; place-items: center; width: 34px; min-height: 34px; padding: 0; border: 1px solid var(--setting-control-border); border-radius: 6px; background: var(--setting-control-fill); color: var(--module-muted); cursor: pointer; }
 .native-device-picker .native-device-refresh:hover:not(:disabled) { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .native-device-picker .native-device-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .native-device-picker .native-device-refresh:disabled { cursor: default; }
-.device-page-grid .native-mode-options button { min-height: 56px; font-size: 13px; }
-.device-page-grid .native-mode-options button > small { color: var(--module-muted); font-size: 12px; }
-.device-page-grid .native-apply-button { min-width: 0; max-width: 100%; white-space: normal; }
-.device-page-grid .native-configuration-fields { display: grid; gap: 20px; min-width: 0; margin: 0; padding: 0; border: 0; }
+/* Playback policy and output mode: segments of one strip, not a card per word.
+   The mode description stays on the segment's tooltip. */
+.app-shell .device-page-grid .native-mode-options { display: inline-flex; flex-wrap: wrap; justify-self: start; width: max-content; max-width: 100%; gap: 2px; padding: 3px; border: 1px solid var(--setting-control-border); border-radius: var(--radius-panel, 8px); background: var(--setting-control-fill); }
+.app-shell .device-page-grid .native-mode-options button { display: flex; align-items: center; min-height: 30px; padding: 0 14px; border: 0; border-radius: var(--radius-control, 6px); background: transparent; color: var(--setting-label-ink); box-shadow: none; text-align: center; }
+.app-shell .device-page-grid .native-mode-options button > span { font-size: 13px; font-weight: 500; line-height: 1.2; }
+.app-shell .device-page-grid .native-mode-options button:hover:not(:disabled) { color: var(--setting-control-ink); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.app-shell .device-page-grid .native-mode-options button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+/* Light theme: workspace buttons all carry a frost fill; inside the strip only
+   the chosen segment is filled, strongly enough to read with pale accents. */
+.app-shell.theme-light .device-page-grid .native-mode-options button.active { color: color-mix(in srgb, var(--accent) 40%, var(--ice-text)); }
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .workspace-page .native-mode-options button:not(.active):not(:hover) { background: transparent !important; }
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .workspace-page .native-mode-options button.active { background: color-mix(in srgb, var(--accent) 26%, transparent) !important; }
+/* The live status reads as a side note of the form, not a box inside the panel. */
+.app-shell .output-config-body > .native-overview-status { gap: 4px; padding: 14px 0 0; border: 0; border-top: 1px solid var(--setting-divider); border-radius: 0; background: transparent; box-shadow: none; }
+.app-shell.theme-light:not(.obs-mode):not(.immersive-mode) .workspace-page .output-config-body > .native-overview-status { background: transparent !important; }
+.app-shell .output-config-body > .native-overview-status > h4 { margin: 0 0 6px; color: var(--setting-label-ink); font-size: 13px; font-weight: 400; }
+.app-shell .output-config-body > .native-overview-status > p { line-height: 1.8; }
+.app-shell .device-page-grid .native-output-overview > .module-details { padding-top: 10px; border-top: 1px solid var(--setting-divider); }
+@container (min-width: 1000px) {
+  .app-shell .output-config-body { grid-template-columns: calc(var(--output-title) + var(--output-gap) + var(--output-control)) minmax(0, 1fr); }
+  .app-shell .output-config-body > .native-overview-status { padding: 2px 0 2px 24px; border-top: 0; border-left: 1px solid var(--setting-divider); }
+}
+@container (max-width: 560px) {
+  .app-shell .device-page-grid .unified-output-section { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .device-page-grid .unified-output-section > :not(:first-child) { grid-column: 1; }
+  .app-shell .device-page-grid .native-apply-button { margin-left: 0; }
+}
 .module-details { min-width: 0; color: var(--module-muted); font-size: 12px; line-height: 1.65; }
 .module-details > summary { cursor: pointer; padding: 8px 0; color: inherit; font-size: 13px; }
 .module-details > :not(summary) { margin-top: 14px; }
@@ -173,15 +215,12 @@
   .app-shell .vst-workspace { grid-template-columns: minmax(0,1fr); }
   .vst-workspace .vst-engine-status { grid-column: 1; }
   .device-page-grid { grid-template-columns: minmax(0,1fr); }
-  .device-page-grid .native-mode-options { grid-template-columns: minmax(0,1fr); }
-  .device-page-grid .native-mode-options button { min-height: 76px; }
 }
 @media(max-width:900px) {
   .app-shell { --module-padding:16px; --module-gap:16px; }
   .app-shell .library-command { grid-template-columns: 36px minmax(0,1fr) 40px; }
   .library-command .scan-action { grid-column: 2; grid-row: 2; justify-self: start; }
   .library-command .icon-action { grid-column:3; grid-row:2; }
-  .device-page-grid :is(.unified-output-section,.native-advanced-settings) { grid-template-columns:minmax(0,1fr); }
 }
 
 /* Compact library header keeps browsing space available below the controls. */
@@ -429,16 +468,16 @@
 /* Output mode cards show the name only; the description is the card's tooltip. */
 .app-shell .native-mode-options .native-mode-description { display: none; }
 /* The background folder action is a compact button, not a full-width grey bar. */
-.app-shell .appearance-controls > label > button { justify-self: start; min-height: 31px; padding: 0 14px; border: 1px solid var(--library-control-border); border-radius: 5px; background: var(--library-control-fill); color: var(--accent); cursor: pointer; }
+.app-shell .appearance-controls > label > button { justify-self: start; min-height: 32px; padding: 0 14px; font-size: 13px; border: 1px solid var(--library-control-border); border-radius: 5px; background: var(--library-control-fill); color: var(--accent); cursor: pointer; }
 .app-shell .appearance-controls > label > button:not(:disabled):hover { background: var(--library-control-hover); border-color: var(--accent); }
 
 /* Compact settings layout: with explanations behind info marks, each setting is
    one short row (title · control · value) instead of a tall row stretched across
    the page. Wide windows put the smaller appearance groups side by side. */
 .app-shell .appearance-layout .appearance-section { padding: 18px 20px; }
-.app-shell .appearance-layout .appearance-section > h3 { margin-bottom: 10px; }
-.app-shell .appearance-layout .theme-swatches { margin: 6px 0 10px; }
-.app-shell .appearance-layout .appearance-section .appearance-controls { gap: 2px; }
+.app-shell .appearance-layout .appearance-section > h3 { margin-bottom: 14px; }
+.app-shell .appearance-layout .theme-swatches { margin: 10px 0 14px; }
+.app-shell .appearance-layout .appearance-section .appearance-controls { gap: 6px; }
 .app-shell .appearance-layout .appearance-section :is(.appearance-controls > label, .appearance-controls > .appearance-animation-module, .appearance-controls > .gpu-render-module) {
   min-height: 44px; padding: 4px 0; grid-template-columns: var(--setting-title-width) minmax(0, var(--setting-control-width)) 52px; justify-content: start; gap: 12px;
 }
@@ -452,14 +491,28 @@
   /* Glass on the left; music response and motion stack on the right. */
   .app-shell .appearance-layout > .appearance-section:nth-child(2) { grid-row: span 2; }
 }
-.app-shell .system-setting-row { min-height: 48px; padding-block: 8px; }
 /* Strength sliders line up with the other rows: title · slider · value. */
 .app-shell .appearance-layout .appearance-effects .atmosphere-strength { display: grid; grid-template-columns: var(--setting-title-width) minmax(0, var(--setting-control-width)) 52px; justify-content: start; gap: 14px; min-height: 44px; margin: 0; padding: 0; }
 .app-shell .appearance-layout .appearance-effects .atmosphere-strength output { width: auto; }
 
-/* Settings typography and alignment: one title style and one title column per page. */
-.app-shell .appearance-layout { --setting-title-width: 132px; --setting-control-width: 360px; }
-.app-shell .appearance-layout :is(.setting-title > b, .appearance-effect-row b, .atmosphere-strength > span, .gpu-render-module > span > b) { font-size: 13px; font-weight: 600; line-height: 1.35; }
+/* Settings typography and alignment: one title column per page and one quiet
+   hierarchy on every settings page. Section titles are the only bold text; row
+   titles are regular labels in a secondary ink (bold labels everywhere made the
+   pages read as crowded), and selects are compact with a faint fill instead of
+   dark slabs. */
+.app-shell .appearance-layout { --setting-title-width: 150px; --setting-control-width: 360px; }
+.app-shell :is(.appearance-layout, .settings-layout, .device-page-grid) .section-heading { font-size: 15px; }
+.app-shell .appearance-layout :is(.setting-title > b, .appearance-effect-row b, .atmosphere-strength > span, .gpu-render-module > span > b),
+.app-shell :is(.settings-layout, .device-page-grid) .setting-title > b { font-size: 13px; font-weight: 400; line-height: 1.35; color: var(--setting-label-ink); }
+.app-shell :is(.appearance-layout, .settings-layout, .device-page-grid) select { height: 34px; min-height: 34px; padding: 0 10px; color: var(--setting-control-ink); background-color: var(--setting-control-fill); border: 1px solid var(--setting-control-border); font-family: inherit; font-size: 13px; }
+/* The background picker is a row like the others: title in the title column,
+   then the thumbnail and the file name. */
+.app-shell .appearance-layout .custom-background-tile { height: auto; min-height: 44px; grid-template-columns: var(--setting-title-width) 34px minmax(0, max-content) 22px; justify-content: start; gap: 12px; }
+.app-shell .appearance-layout .custom-background-tile > b { font-size: 13px; font-weight: 400; color: var(--setting-label-ink); }
+.app-shell .appearance-layout .custom-background-tile > .custom-background-thumbnail { width: 34px; height: 34px; }
+.app-shell.theme-light .appearance-layout .custom-background-tile > .custom-background-thumbnail { background-color: var(--setting-control-fill); border: 1px solid var(--setting-control-border); color: var(--ice-text-secondary); }
+.app-shell .appearance-layout .custom-background-tile > small { margin: 0; font-size: 12px; }
+.app-shell .appearance-layout .theme-swatches .custom-theme b { font-size: 12px; font-weight: 500; }
 .app-shell .appearance-layout .appearance-effects .atmosphere-strength { margin: 0; }
 /* The transition and GPU quality selects carry aria-labels; their visible captions only squeezed the select. */
 .app-shell .appearance-layout :is(.animation-transition-field, .gpu-quality-field) { display: block; min-width: 0; }
@@ -467,13 +520,15 @@
 .app-shell .appearance-layout :is(.animation-transition-field, .gpu-quality-field) select { width: 100%; }
 .app-shell .appearance-layout :is(.animation-master-switch, .gpu-master-switch) { justify-self: start; }
 
-/* System settings: three narrow cards per row; title and control sit together. */
-.app-shell .system-setting-row { min-height: 40px; padding-block: 5px; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
-.app-shell .system-setting-row:not(.system-setting-wide) .system-setting-control select { width: 180px; max-width: 100%; }
-.app-shell .system-setting-row.system-setting-wide { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.app-shell .system-setting-row b { font-size: 13px; font-weight: 600; }
+/* System settings: three narrow cards per row. Every row, the fade slider and
+   the run mode included, is title left and control right. */
+.app-shell .system-setting-row { min-height: 44px; padding-block: 5px; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+/* At least 168px, wider when an option needs it ("Minimize to system tray"). */
+.app-shell .system-setting-control select { width: auto; min-width: 168px; max-width: 100%; }
+.app-shell .system-setting-control input[type="range"] { flex: 0 0 120px; }
+.app-shell .system-setting-control output { min-width: 52px; }
 .app-shell .settings-layout > .settings-section { padding: 16px 18px; }
-.app-shell .settings-layout > .settings-section > h3 { margin-bottom: 8px; }
+.app-shell .settings-layout > .settings-section > h3 { margin-bottom: 12px; }
 @media (min-width: 1301px) {
   .app-shell .settings-layout { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
   /* Performance sits under General; the audio cache fills the two columns beside it. */
@@ -481,11 +536,12 @@
 }
 
 /* Audio cache: sizes as one compact group with the actions on the same row, path below. */
-.app-shell .cache-settings { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 20px; row-gap: 8px; }
+.app-shell .cache-settings { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; align-content: start; column-gap: 20px; row-gap: 8px; }
 .app-shell .cache-settings > :is(h3, p, .cache-confirm) { grid-column: 1 / -1; }
 .app-shell .cache-settings dl { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 0; }
 .app-shell .cache-settings dl > div { display: flex; align-items: baseline; gap: 8px; }
 .app-shell .cache-settings dt { color: var(--module-muted, #8a9ca1); font-size: 12px; }
-.app-shell .cache-settings dd { font-size: 14px; font-weight: 600; }
+.app-shell .cache-settings dd { font-size: 13px; font-weight: 500; }
 .app-shell .cache-settings > .cache-actions { grid-column: 2; grid-row: 2; margin-top: 0; justify-content: flex-end; }
+.app-shell .cache-settings > .cache-actions button { min-height: 32px; padding: 0 12px; font-size: 12px; background: transparent; }
 .app-shell .cache-settings > .cache-path { grid-column: 1 / -1; font-size: 11px; }

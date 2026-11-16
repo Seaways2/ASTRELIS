@@ -66,7 +66,7 @@ test("setting explanations show when hovering the title, with no icon", () => {
 
 test("native-only configuration shows only while native output is on", () => {
   const page = read("src/components/WorkspacePage.tsx");
-  assert.match(page, /\{nativeOutputOn && <>\s*<header><SectionHeading icon=\{AudioLines\}>\{t\("device\.outputMode"\)\}/);
+  assert.match(page, /\{nativeOutputOn && <>\s*<div className="unified-output-section native-mode-section">\s*<span className="setting-title"><b>\{t\("device\.outputMode"\)\}/);
   assert.match(page, /<\/fieldset>\s*<\/>\}/);
 });
 
@@ -78,7 +78,7 @@ test("a refreshed cover is analysed again for smart framing", () => {
 test("settings use compact, aligned rows and fill wide windows", () => {
   const modules = read("src/styles/workspace-modules.css");
   // Appearance: one title column and one title style per page.
-  assert.match(modules, /--setting-title-width: 132px; --setting-control-width: 360px;/);
+  assert.match(modules, /--setting-title-width: 150px; --setting-control-width: 360px;/);
   assert.match(modules, /grid-template-columns: var\(--setting-title-width\) minmax\(0, var\(--setting-control-width\)\) 52px;/);
   assert.match(modules, /\.appearance-layout \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); align-items: stretch; \}/);
   // System settings: three narrow cards; the audio cache fills the two columns beside performance.

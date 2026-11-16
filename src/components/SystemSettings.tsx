@@ -6,10 +6,11 @@ import { AppWindow, ArrowUpRight, Gauge, Languages, Music2 } from "lucide-react"
 import { usePlayerStore, type StartupPage } from "../stores/playerStore";
 import { useI18n, type Language } from "../i18n";
 
-function SettingRow({ id, title, hint, children, wide = false }: {
-  id: string; title: string; hint: string; children: ReactNode; wide?: boolean;
+/** One settings row: the title on the left, its control on the right. */
+function SettingRow({ id, title, hint, children }: {
+  id: string; title: string; hint: string; children: ReactNode;
 }) {
-  return <div className={`system-setting-row ${wide ? "system-setting-wide" : ""}`}>
+  return <div className="system-setting-row">
     <label htmlFor={id}><span className="setting-title"><b>{title}</b><Hint id={`${id}-hint`}>{hint}</Hint></span></label>
     <div className="system-setting-control">{children}</div>
   </div>;
@@ -102,7 +103,7 @@ export function SystemSettings() {
       </section>
       <section className="settings-section panel">
         <SectionHeading icon={Music2}>{t("settings.group.playback")}</SectionHeading>
-        <SettingRow id="system-fade" title={t("settings.fade")} hint={t(state.uiSettings.lowPerformanceMode ? "settings.fadeSuspended" : "settings.fadeHint")} wide>
+        <SettingRow id="system-fade" title={t("settings.fade")} hint={t(state.uiSettings.lowPerformanceMode ? "settings.fadeSuspended" : "settings.fadeHint")}>
           <input {...control("system-fade")} disabled={state.uiSettings.lowPerformanceMode} type="range" min="0" max="3000" step="50" value={state.fadeMs} onDoubleClick={() => state.setFadeMs(350)} onChange={event => state.setFadeMs(Number(event.target.value))} />
           <output htmlFor="system-fade">{state.fadeMs === 0 ? t("settings.fadeOff") : `${state.fadeMs} ms`}</output>
         </SettingRow>
@@ -113,7 +114,7 @@ export function SystemSettings() {
       </section>
       <section className="settings-section panel">
         <SectionHeading icon={Gauge}>{t("settings.group.performance")}</SectionHeading>
-        <SettingRow id="system-performance" title={t("settings.performanceMode")} hint={t("settings.performanceModeHint")} wide>
+        <SettingRow id="system-performance" title={t("settings.performanceMode")} hint={t("settings.performanceModeHint")}>
           <select {...control("system-performance")} value={state.uiSettings.lowPerformanceMode ? "eco" : "full"} onChange={event => state.setUiSetting("lowPerformanceMode", event.target.value === "eco")}>
             <option value="full">{t("settings.performance.full")}</option><option value="eco">{t("settings.performance.eco")}</option>
           </select>

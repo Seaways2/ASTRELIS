@@ -16,8 +16,6 @@
 .system-setting-control input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
 .system-setting-control output { min-width: 68px; text-align: right; font: 12px "JetBrains Mono", monospace; color: var(--accent); }
 .system-setting-control :disabled { opacity: .45; cursor: default; }
-.system-setting-wide { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-.system-setting-wide select { max-width: 300px; margin-right: auto; }
 .system-settings-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 0; background: transparent; color: var(--accent); font-size: 12px; text-align: left; }
 .system-settings-link svg { width: 15px; height: 15px; flex-shrink: 0; }
 .system-settings-link:hover { text-decoration: underline; }
@@ -35,11 +33,9 @@
 @media (max-width: 1300px) {
   .settings-layout { grid-template-columns: minmax(0, 1fr); }
   .system-setting-row { grid-template-columns: minmax(0, 1fr) minmax(160px, .8fr); }
-  .system-setting-wide { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 900px) {
   .settings-section { padding: 16px; }
   .settings-layout { gap: 16px; }
   .system-setting-row { gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(125px, .7fr); }
-  .system-setting-wide { grid-template-columns: minmax(0, 1fr); }
 }

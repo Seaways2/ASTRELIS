@@ -2,8 +2,8 @@ import { SectionHeading } from "./SectionHeading";
 import { Hint } from "./Hint";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AudioLines, Blocks, Check, FileAudio, Globe2, ImagePlus, Import, ListMusic, MonitorSpeaker,
-  Palette, RefreshCw, Settings, ShieldAlert, Trash2, Layers, Music2, Sparkles, Cable, SlidersHorizontal
+  Blocks, Check, FileAudio, Globe2, ImagePlus, Import, ListMusic, MonitorSpeaker,
+  Palette, RefreshCw, Settings, ShieldAlert, Trash2, Layers, Music2, Sparkles, Cable
 } from "lucide-react";
 import { usePlayerStore } from "../stores/playerStore";
 import { PlaylistTable } from "./PlaylistTable";
@@ -360,10 +360,13 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           </label>
         </header>
 
+        {/* The settings form (title · control rows) with the live output status beside it. */}
+        <div className="output-config-body">
+        <div className="output-config-form">
         {/* One output device row: the native device while native output is on,
             otherwise the Chromium output used by local web playback, NetEase and YouTube. */}
         <div className="unified-output-section">
-          <div><SectionHeading icon={MonitorSpeaker} hint={t(nativeOutputOn ? "device.nativeDeviceHint" : "device.webFallbackHint")}>{t("device.outputDevice")}</SectionHeading></div>
+          <span className="setting-title"><b>{t("device.outputDevice")}</b><Hint>{t(nativeOutputOn ? "device.nativeDeviceHint" : "device.webFallbackHint")}</Hint></span>
           {nativeOutputOn ? <div className="native-device-picker">
           <select aria-label={t("device.outputDevice")} value={nativeSelectedKey} disabled={nativeControlsBusy || !selectableNativeDevices.length} onChange={event => {
             const device = nativeDevices.find(item => nativeDeviceKey(item) === event.target.value);
@@ -381,10 +384,10 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         </div>
 
         <div className="unified-output-section hdmi-output-policy">
-          <SectionHeading icon={Music2} hint={<>{t("device.hdmiHint")}<br />{t("device.hdmiFormats")}</>}>{t("device.playbackPolicy")}</SectionHeading>
-          <div className="native-mode-options">
-            <button type="button" disabled={nativeControlsBusy} className={!state.uiSettings.hdmiDirectEnabled ? "active" : ""} onClick={() => void setHdmiDirect(false)}><span>{t("device.normalPlayback")}</span></button>
-            <button type="button" disabled={nativeControlsBusy} className={state.uiSettings.hdmiDirectEnabled ? "active" : ""} onClick={() => void setHdmiDirect(true)}><span>{t("device.hdmiDirect")}</span></button>
+          <span className="setting-title"><b>{t("device.playbackPolicy")}</b><Hint>{t("device.hdmiHint")}<br />{t("device.hdmiFormats")}</Hint></span>
+          <div className="native-mode-options" role="group" aria-label={t("device.playbackPolicy")}>
+            <button type="button" disabled={nativeControlsBusy} className={!state.uiSettings.hdmiDirectEnabled ? "active" : ""} aria-pressed={!state.uiSettings.hdmiDirectEnabled} onClick={() => void setHdmiDirect(false)}><span>{t("device.normalPlayback")}</span></button>
+            <button type="button" disabled={nativeControlsBusy} className={state.uiSettings.hdmiDirectEnabled ? "active" : ""} aria-pressed={state.uiSettings.hdmiDirectEnabled} onClick={() => void setHdmiDirect(true)}><span>{t("device.hdmiDirect")}</span></button>
           </div>
           {nativeDeviceError && <p className="error-text" role="alert">{nativeDeviceError}</p>}
           {nativeApplyMessage && <p className="native-apply-message" role="status">{nativeApplyMessage}</p>}
@@ -392,28 +395,30 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         </div>
         {/* Mode, rate, buffer and apply act on the native device, which the output row shows only while native output is on. */}
         {nativeOutputOn && <>
-        <header><SectionHeading icon={AudioLines}>{t("device.outputMode")}</SectionHeading></header>
-        <div className="native-mode-options">
-          {nativeOutputModes.map(mode => <button
-            type="button" key={mode.backend} disabled={nativeControlsBusy || state.uiSettings.hdmiDirectEnabled}
-            className={selectedNativeBackend === mode.backend ? "active" : ""}
-            onClick={() => selectNativeBackend(mode.backend)} title={t(mode.descriptionKey)}
-          ><span>{mode.name}</span><small className="native-mode-description">{t(mode.descriptionKey)}</small>{selectedNativeBackend === mode.backend && <Check />}</button>)}
+        <div className="unified-output-section native-mode-section">
+          <span className="setting-title"><b>{t("device.outputMode")}</b></span>
+          <div className="native-mode-options" role="group" aria-label={t("device.outputMode")}>
+            {nativeOutputModes.map(mode => <button
+              type="button" key={mode.backend} disabled={nativeControlsBusy || state.uiSettings.hdmiDirectEnabled}
+              className={selectedNativeBackend === mode.backend ? "active" : ""} aria-pressed={selectedNativeBackend === mode.backend}
+              onClick={() => selectNativeBackend(mode.backend)} title={t(mode.descriptionKey)}
+            ><span>{mode.name}</span><small className="native-mode-description">{t(mode.descriptionKey)}</small></button>)}
+          </div>
         </div>
 
+        {/* Sample rate, buffer and the exclusive fallback are ordinary rows of the same form. */}
         <fieldset className="native-configuration-fields" disabled={state.uiSettings.hdmiDirectEnabled}>
-        <div className="unified-output-section native-advanced-settings">
-          <div><SectionHeading icon={SlidersHorizontal}>{t("device.otherSettings")}</SectionHeading></div>
-          <label><span>{t("device.sampleRate")}</span><select disabled={nativeControlsBusy} value={nativeRateChoice} onChange={event => setNativeRateChoice(event.target.value)}>
+        <div className="native-advanced-settings">
+          <label className="unified-output-section"><span>{t("device.sampleRate")}</span><select disabled={nativeControlsBusy} value={nativeRateChoice} onChange={event => setNativeRateChoice(event.target.value)}>
             <option value="system">System · {t("device.rateSystem")}</option>
             <option value="follow-source">Follow Source · {t("device.rateFollowSource")}</option>
             {(nativeCapabilities?.availableSampleRates || []).map(rate => <option value={`fixed:${rate}`} key={rate}>Fixed · {rate.toLocaleString()} Hz</option>)}
           </select></label>
-          <label><span>{t("device.buffer")}</span><select disabled={nativeControlsBusy} value={nativeBufferChoice} onChange={event => setNativeBufferChoice(event.target.value)}>
+          <label className="unified-output-section"><span>{t("device.buffer")}</span><select disabled={nativeControlsBusy} value={nativeBufferChoice} onChange={event => setNativeBufferChoice(event.target.value)}>
             <option value="auto">Auto · {t("device.deviceDefault")}</option>
             {(nativeCapabilities?.availableBufferSizes || []).map(buffer => <option value={`fixed:${buffer}`} key={buffer}>Fixed · {buffer} samples{nativeDeviceStatus?.sampleRate ? ` · ${(buffer * 1000 / nativeDeviceStatus.sampleRate).toFixed(2)} ms` : ""}</option>)}
           </select></label>
-          {selectedNativeBackend === "wasapi-exclusive" && <label><span>{t("device.exclusiveFallback")}</span><select disabled={nativeControlsBusy} value={nativeExclusiveFallback} onChange={event => setNativeExclusiveFallback(event.target.value as NativeExclusiveFallback)}>
+          {selectedNativeBackend === "wasapi-exclusive" && <label className="unified-output-section"><span>{t("device.exclusiveFallback")}</span><select disabled={nativeControlsBusy} value={nativeExclusiveFallback} onChange={event => setNativeExclusiveFallback(event.target.value as NativeExclusiveFallback)}>
             <option value="shared-low-latency">{t("device.fallbackLowLatency")}</option><option value="shared">{t("device.fallbackShared")}</option><option value="ask">{t("device.fallbackRestore")}</option>
           </select></label>}
         </div>
@@ -426,6 +431,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         {nativeOutputGuideVisible && <div className="native-output-vst-guide" role="alert">
           <ShieldAlert /><div><b>{t("vst.nativeOutputRequiredTitle")}</b><span>{t("vst.nativeOutputRequiredGuideHint")}</span></div>
         </div>}
+        </div>
         <div className="native-overview-status">
           <h4>{t("device.guideTitle")}</h4>
           {nativeDeviceLoading ? <em>{t("device.detecting")}</em> : nativeDeviceStatus?.ok ? <em className="ready">{t("device.engineReady")}</em> : <em>{t("device.offline")}</em>}
@@ -436,6 +442,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
           {nativeCapabilities?.ok && <small>
             {t("device.reportedRates")} {nativeCapabilities.availableSampleRates?.join(" / ") || t("device.unknown")} Hz · {t("device.bufferRange")} {nativeCapabilities.availableBufferSizes?.[0] || "?"}–{nativeCapabilities.availableBufferSizes?.at(-1) || "?"} samples
           </small>}
+        </div>
         </div>
         <details className="module-details" open={nativeOutputGuideVisible || undefined}><summary>{t("device.signalPath")}</summary>
         <p className="native-overview-intro">{t("device.guideIntro")}</p>
@@ -463,7 +470,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
   if (page === "appearance") return <Page title={t("page.appearance")} code="INTERFACE SYSTEM" icon={<Palette />}>
     <div className="appearance-layout">
     <section className="appearance-section panel"><SectionHeading icon={Palette}>{t("appearance.group.theme")}</SectionHeading>
-    <div className="appearance-controls">      <label><span><span className="setting-title"><b>{t("appearance.colorMode")}</b><Hint>{t("appearance.colorModeHint")}</Hint></span></span><select value={state.uiSettings.colorMode} onChange={(event) => state.setUiSetting("colorMode", event.target.value as "dark" | "light" | "system")}><option value="dark">{t("appearance.dark")}</option><option value="light">{t("appearance.light")}</option><option value="system">{t("appearance.system")}</option></select><em>{state.uiSettings.colorMode.toUpperCase()}</em></label></div>
+    <div className="appearance-controls">      <label><span><span className="setting-title"><b>{t("appearance.colorMode")}</b><Hint>{t("appearance.colorModeHint")}</Hint></span></span><select value={state.uiSettings.colorMode} onChange={(event) => state.setUiSetting("colorMode", event.target.value as "dark" | "light" | "system")}><option value="dark">{t("appearance.dark")}</option><option value="light">{t("appearance.light")}</option><option value="system">{t("appearance.system")}</option></select></label></div>
     <div className="theme-swatches">{themes.map(([name, color]) => <button aria-label={name} title={name} aria-pressed={state.accent === color} className={`theme-swatch ${state.accent === color ? "active" : ""}`} key={name} onClick={() => state.setAccent(color)}>
       <span style={{ background: color }} /><b>{name}</b>{state.accent === color && <Check />}
     </button>)}
@@ -475,16 +482,15 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
         title={state.uiSettings.customBackgroundUrl ? t("appearance.clearBackgroundConfirm") : t("appearance.chooseBackground")}
         onClick={() => void handleCustomBackgroundClick()}
       >
+        {/* A settings row: the title in the title column, then the thumbnail and file name. */}
+        <b>{t("appearance.customBackground")}</b>
         <span
           className="custom-background-thumbnail"
           style={state.uiSettings.customBackgroundUrl ? { backgroundImage: `url("${state.uiSettings.customBackgroundUrl.replace(/"/g, "%22")}")` } : undefined}
         >{!state.uiSettings.customBackgroundUrl && <ImagePlus />}</span>
-        <div>
-          <b>{t("appearance.customBackground")}</b>
-          <small className={backgroundError ? "error" : ""}>{backgroundError || (state.uiSettings.customBackgroundPath
-            ? state.uiSettings.customBackgroundPath.split(/[\\/]/).pop()
-            : t("appearance.chooseBackground"))}</small>
-        </div>
+        <small className={backgroundError ? "error" : ""}>{backgroundError || (state.uiSettings.customBackgroundPath
+          ? state.uiSettings.customBackgroundPath.split(/[\\/]/).pop()
+          : t("appearance.chooseBackground"))}</small>
         {state.uiSettings.customBackgroundUrl && <Check />}
       </button>
       <div className="appearance-controls">
@@ -494,7 +500,7 @@ export function WorkspacePage({ page, devices, deviceId, deviceError, onDevice, 
     </section>
     <section className="appearance-section panel"><SectionHeading icon={Layers}>{t("appearance.group.glass")}</SectionHeading>
     <div className="appearance-controls">
-      <label><span><span className="setting-title"><b>{t("appearance.glass")}</b><Hint>{t("appearance.glassHint")}</Hint></span></span><select value={state.uiSettings.glassMaterial} onChange={(event) => state.setUiSetting("glassMaterial", event.target.value as "mica" | "acrylic" | "none")}><option value="mica">{t("appearance.mica")}</option><option value="acrylic">{t("appearance.acrylic")}</option><option value="none">{t("appearance.transparent")}</option></select><em>{state.uiSettings.glassMaterial.toUpperCase()}</em></label>
+      <label><span><span className="setting-title"><b>{t("appearance.glass")}</b><Hint>{t("appearance.glassHint")}</Hint></span></span><select value={state.uiSettings.glassMaterial} onChange={(event) => state.setUiSetting("glassMaterial", event.target.value as "mica" | "acrylic" | "none")}><option value="mica">{t("appearance.mica")}</option><option value="acrylic">{t("appearance.acrylic")}</option><option value="none">{t("appearance.transparent")}</option></select></label>
       <label><span><span className="setting-title"><b>{t("appearance.opacity")}</b><Hint>{t("appearance.opacityHint")}</Hint></span></span><input type="range" min=".20" max="1" step=".01" value={state.uiSettings.windowOpacity} onDoubleClick={() => state.setUiSetting("windowOpacity", .94)} onChange={(event) => state.setUiSetting("windowOpacity", Number(event.target.value))} /><em>{Math.round(state.uiSettings.windowOpacity * 100)}%</em></label>
       <label><span><span className="setting-title"><b>{t("appearance.glow")}</b><Hint>{t("appearance.glowHint")}</Hint></span></span><input type="range" min="0" max="3" step=".05" value={state.uiSettings.glowStrength} onDoubleClick={() => state.setUiSetting("glowStrength", 1)} onChange={(event) => state.setUiSetting("glowStrength", Number(event.target.value))} /><em>{state.uiSettings.glowStrength.toFixed(2)}×</em></label>
     </div>

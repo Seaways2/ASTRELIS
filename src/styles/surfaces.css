@@ -4,15 +4,16 @@
      after painting the gradients, without a filter or an animation. */
   --surface-dither: url("../assets/surface-dither.png");
   --surface-glass-glow: transparent;
-  /* Display panels and cards glow like the energy rings: the same accent
-     strength and reach, scaled by the glow setting. A box-shadow, not the
-     rings' filter: on a rectangle it looks the same, and a filter would
-     re-composite the meter panels at 60 Hz. */
-  --panel-glow: color-mix(in srgb, var(--accent) 58%, transparent);
+  /* The energy rings' glow: accent strength and reach, scaled by the glow
+     setting. */
+  --accent-glow: color-mix(in srgb, var(--accent) 58%, transparent);
   --panel-glow-reach: calc(6px * var(--glow-strength));
-  /* Room a scroller leaves so a glow at its edge is not cut off: as wide as
-     the glow plus a little, never wider than the page's narrowest padding. */
-  --panel-glow-gutter: min(calc(var(--panel-glow-reach) + 2px), 14px);
+  /* Panels carry that glow only in the meter column (see below). On the
+     main pages every card glowing broke the page into separate boxes, so
+     there it stays off. A box-shadow, not the rings' filter: on a rectangle
+     it looks the same, and a filter would re-composite the meter panels at
+     60 Hz. */
+  --panel-glow: transparent;
   /* The round transport controls rest inside a halo a step below the panels
      (a 22% halo was invisible on the dark chrome). Sidebar buttons and mode
      tabs stay calm at rest: a halo each, or one around the group, was tried
@@ -60,7 +61,7 @@
   --surface-glass-border: rgba(72, 104, 118, .18);
   --surface-glass-highlight: rgba(255, 255, 255, .16);
   /* No accent glow on light surfaces, as for the icons. */
-  --panel-glow: transparent;
+  --accent-glow: transparent;
   --button-glow: transparent;
   --button-glow-inner: transparent;
 }
@@ -90,19 +91,9 @@
   backdrop-filter: var(--surface-glass-filter);
   -webkit-backdrop-filter: var(--surface-glass-filter);
 }
-/* Panels sit flush against the sides of their page's scroller, which cut the
-   glow off on that side. The scroller keeps a gutter as wide as the glow and
-   takes it back out of the page's own padding with an equal negative margin,
-   so no panel moves or resizes. */
-.app-shell:not(.obs-mode):not(.immersive-mode) .page-content {
-  padding-inline: var(--panel-glow-gutter);
-  margin-inline: calc(-1 * var(--panel-glow-gutter));
-}
-/* The online page fills its scroller edge to edge, top and bottom as well. */
-.app-shell:not(.obs-mode):not(.immersive-mode) .native-browser-page .page-content {
-  padding-block: min(var(--panel-glow-gutter), 6px);
-  margin-block: calc(-1 * min(var(--panel-glow-gutter), 6px));
-}
+/* The meter column is the one place whose panels glow: it sits apart from the
+   page, beside the energy rings the glow comes from. */
+.app-shell .meters { --panel-glow: var(--accent-glow); }
 /* Floating control panels sit directly over animated visualizers. Give them a
    denser local sheet so labels and values stay readable without going opaque. */
 .app-shell:not(.obs-mode):not(.immersive-mode) :is(.visual-settings-panel, .queue-drawer, .channel-strip-popover) {

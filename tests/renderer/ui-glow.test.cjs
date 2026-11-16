@@ -1,7 +1,9 @@
-// Icons and display panels share the energy rings' accent glow (6 px reach,
-// 58% accent, scaled by the glow setting), off in the light theme and in ECO.
-// Sidebar buttons and visualizer mode tabs stay calm at rest and bloom on
-// hover or when active; the round transport controls rest inside a soft halo.
+// Icons share the energy rings' accent glow (6 px reach, 58% accent, scaled by
+// the glow setting); of the panels only the meter column glows, because on the
+// main pages every card glowing broke the page into separate boxes. Off in the
+// light theme and in ECO. Sidebar buttons and visualizer mode tabs stay calm
+// at rest and bloom on hover or when active; the round transport controls rest
+// inside a soft halo.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -12,8 +14,6 @@ const read = relative => fs.readFileSync(path.join(root, relative), "utf8").repl
 const globalCss = read("src/styles/global.css");
 const surfaces = read("src/styles/surfaces.css");
 const ringGlow = String.raw`0 0 calc\(6px \* var\(--glow-strength\)\) color-mix\(in srgb, var\(--accent\) 58%, transparent\)`;
-/** The declarations of the first rule whose selector matches (a regex source). */
-const block = (css, selector) => css.match(new RegExp(`${selector} \\{([^}]*)\\}`))?.[1] ?? null;
 
 test("every interface icon gets the energy-ring glow, except rows of long lists", () => {
   const rule = globalCss.match(/:where\(\.app-shell\) :where\(svg\.lucide, svg\.ui-icon\):not\(:is\(([^)]*)\) \*\) \{([^}]*)\}/);
@@ -26,34 +26,27 @@ test("every interface icon gets the energy-ring glow, except rows of long lists"
   assert.match(read("src/components/VolumeLevelIcon.tsx"), /<svg className="ui-icon"/);
 });
 
-test("display panels glow with the same accent strength and reach as the rings", () => {
-  assert.match(surfaces, /--panel-glow: color-mix\(in srgb, var\(--accent\) 58%, transparent\);/);
+test("only the meter column's panels glow, with the rings' strength and reach", () => {
+  assert.match(surfaces, /--accent-glow: color-mix\(in srgb, var\(--accent\) 58%, transparent\);/);
   assert.match(surfaces, /--panel-glow-reach: calc\(6px \* var\(--glow-strength\)\);/);
+  // Off for every panel by default, switched on for the meter column alone.
+  const shell = surfaces.match(/^\.app-shell \{([^}]*)\}/m);
+  assert.ok(shell && /--panel-glow: transparent;/.test(shell[1]), "panels on the main pages must not glow");
+  assert.match(surfaces, /\.app-shell \.meters \{ --panel-glow: var\(--accent-glow\); \}/);
   const panelRule = surfaces.match(/:is\(\.panel, \.setting-card,[^{]*\) \{([^}]*)\}/);
   assert.ok(panelRule, "panel surface rule missing");
   assert.match(panelRule[1], /box-shadow: [^;]*0 0 var\(--panel-glow-reach\) var\(--panel-glow\);/);
   // A panel inside a panel is not a second glowing sheet.
   assert.match(surfaces, /A grouping container is not a second sheet of glass[\s\S]*?box-shadow: none;/);
+  // With no glow on the main pages, the page scroller keeps its original layout.
+  assert.doesNotMatch(surfaces, /--panel-glow-gutter/);
 });
 
 test("the light theme and ECO mode keep icons and panels unlit", () => {
-  assert.match(surfaces, /\.app-shell\.theme-light \{[^}]*--panel-glow: transparent;[^}]*--button-glow: transparent;/);
+  assert.match(surfaces, /\.app-shell\.theme-light \{[^}]*--accent-glow: transparent;[^}]*--button-glow: transparent;/);
   assert.match(globalCss, /\.app-shell\.theme-light svg \{ filter: none; \}/);
   const eco = globalCss.match(/\.app-shell\.low-performance-mode \*::after \{([^}]*)\}/);
   assert.ok(eco && /box-shadow: none !important;/.test(eco[1]) && /filter: none !important;/.test(eco[1]));
-});
-
-test("the page scroller leaves a gutter for panel glows without moving the panels", () => {
-  const rule = block(surfaces, String.raw`\.app-shell:not\(\.obs-mode\):not\(\.immersive-mode\) \.page-content`);
-  assert.ok(rule, "page-content gutter rule missing");
-  // As wide as the glow (plus a little), never wider than the page's own padding.
-  assert.match(surfaces, /--panel-glow-gutter: min\(calc\(var\(--panel-glow-reach\) \+ 2px\), 14px\);/);
-  // Padding and an equal negative margin: the content box stays where it was.
-  assert.match(rule, /padding-inline: var\(--panel-glow-gutter\);/);
-  assert.match(rule, /margin-inline: calc\(-1 \* var\(--panel-glow-gutter\)\);/);
-  // The page's side padding the gutter borrows from must stay at least 14px.
-  const page = globalCss.match(/\.workspace-page \{[^}]*padding: 24px (\d+)px 24px (\d+)px;/);
-  assert.ok(page && Number(page[1]) >= 14 && Number(page[2]) >= 14, "workspace-page side padding is narrower than the gutter cap");
 });
 
 test("sidebar buttons and mode tabs are calm at rest and bloom on hover or when active", () => {
@@ -67,14 +60,14 @@ test("sidebar buttons and mode tabs are calm at rest and bloom on hover or when 
   assert.ok(bloom, "bloom rule missing");
   for (const selector of [".mode-tabs button:hover", ".mode-tabs button.active", ".visual-tune-toggle:hover", ".visual-tune-toggle.active"]) assert.ok(bloom[1].includes(selector), `${selector} missing from the bloom rule`);
   assert.match(bloom[2], /inset 0 0 calc\(14px \* var\(--glow-strength\)\) color-mix\(in srgb, var\(--accent\) 9%, transparent\),\s*0 0 calc\(12px \* var\(--glow-strength\)\) color-mix\(in srgb, var\(--accent\) 18%, transparent\);/);
-  assert.doesNotMatch(bloom[2], /--panel-glow\b/);
+  assert.doesNotMatch(bloom[2], /--(panel|accent)-glow\b/);
 });
 
-test("the round transport controls rest inside a soft halo and play carries the panel glow", () => {
+test("the round transport controls rest inside a soft halo and play carries the rings' glow", () => {
   const rest = surfaces.match(/--button-glow: color-mix\(in srgb, var\(--accent\) (\d+)%, transparent\);/);
-  assert.ok(rest && Number(rest[1]) >= 25 && Number(rest[1]) < 58, "the resting halo should be visible but below the panels' 58%");
+  assert.ok(rest && Number(rest[1]) >= 25 && Number(rest[1]) < 58, "the resting halo should be visible but below the rings' 58%");
   const round = globalCss.match(/\.transport \.controls button:not\(\.play\),\s*[^{]*\.volume-popover-trigger \{([^}]*)\}/);
   assert.ok(round, "transport halo rule missing");
   assert.match(round[1], /inset 0 0 calc\(10px \* var\(--glow-strength\)\) var\(--button-glow-inner\),\s*0 0 var\(--panel-glow-reach\) var\(--button-glow\);/);
-  assert.match(globalCss, /\.transport \.controls \.play \{[^}]*0 0 var\(--panel-glow-reach\) var\(--panel-glow\);/);
+  assert.match(globalCss, /\.transport \.controls \.play \{[^}]*0 0 var\(--panel-glow-reach\) var\(--accent-glow\);/);
 });

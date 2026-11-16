@@ -10,6 +10,13 @@
      re-composite the meter panels at 60 Hz. */
   --panel-glow: color-mix(in srgb, var(--accent) 58%, transparent);
   --panel-glow-reach: calc(6px * var(--glow-strength));
+  /* Room a scroller leaves so a glow at its edge is not cut off: as wide as
+     the glow plus a little, never wider than the page's narrowest padding. */
+  --panel-glow-gutter: min(calc(var(--panel-glow-reach) + 2px), 14px);
+  /* Buttons rest a step below the panels (a 22% halo was invisible on the
+     dark chrome) and reach panel strength on hover or when active. */
+  --button-glow: color-mix(in srgb, var(--accent) 34%, transparent);
+  --button-glow-inner: color-mix(in srgb, var(--accent) 8%, transparent);
   --surface-glass-fill: rgba(12, 20, 24, .48);
   --surface-glass-border: rgba(160, 188, 196, .12);
   --surface-glass-highlight: rgba(215, 235, 240, .025);
@@ -52,6 +59,8 @@
   --surface-glass-highlight: rgba(255, 255, 255, .16);
   /* No accent glow on light surfaces, as for the icons. */
   --panel-glow: transparent;
+  --button-glow: transparent;
+  --button-glow-inner: transparent;
 }
 .app-shell.theme-light.has-custom-background {
   --surface-glass-fill: rgba(238, 246, 249, .48);
@@ -82,9 +91,8 @@
 /* Panels sit flush against the sides of their page's scroller, which cut the
    glow off on that side. The scroller keeps a gutter as wide as the glow and
    takes it back out of the page's own padding with an equal negative margin,
-   so no panel moves or resizes. Capped at the page's narrowest padding. */
+   so no panel moves or resizes. */
 .app-shell:not(.obs-mode):not(.immersive-mode) .page-content {
-  --panel-glow-gutter: min(calc(var(--panel-glow-reach) + 2px), 14px);
   padding-inline: var(--panel-glow-gutter);
   margin-inline: calc(-1 * var(--panel-glow-gutter));
 }
@@ -92,6 +100,13 @@
 .app-shell:not(.obs-mode):not(.immersive-mode) .native-browser-page .page-content {
   padding-block: min(var(--panel-glow-gutter), 6px);
   margin-block: calc(-1 * min(var(--panel-glow-gutter), 6px));
+}
+/* The visualizer mode tabs scroll sideways inside their own strip, which cut
+   their glow on every side. The same gutter trick, kept narrower than the gap
+   to the buttons beside the strip. */
+.app-shell:not(.obs-mode):not(.immersive-mode) .mode-tabs {
+  padding: min(var(--panel-glow-gutter), 6px);
+  margin: calc(-1 * min(var(--panel-glow-gutter), 6px));
 }
 /* Floating control panels sit directly over animated visualizers. Give them a
    denser local sheet so labels and values stay readable without going opaque. */

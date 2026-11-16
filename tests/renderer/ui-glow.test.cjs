@@ -43,11 +43,38 @@ test("the page scroller leaves a gutter for panel glows without moving the panel
   const rule = surfaces.match(/\.app-shell:not\(\.obs-mode\):not\(\.immersive-mode\) \.page-content \{([^}]*)\}/);
   assert.ok(rule, "page-content gutter rule missing");
   // As wide as the glow (plus a little), never wider than the page's own padding.
-  assert.match(rule[1], /--panel-glow-gutter: min\(calc\(var\(--panel-glow-reach\) \+ 2px\), 14px\);/);
+  assert.match(surfaces, /--panel-glow-gutter: min\(calc\(var\(--panel-glow-reach\) \+ 2px\), 14px\);/);
   // Padding and an equal negative margin: the content box stays where it was.
   assert.match(rule[1], /padding-inline: var\(--panel-glow-gutter\);/);
   assert.match(rule[1], /margin-inline: calc\(-1 \* var\(--panel-glow-gutter\)\);/);
   // The page's side padding the gutter borrows from must stay at least 14px.
   const page = globalCss.match(/\.workspace-page \{[^}]*padding: 24px (\d+)px 24px (\d+)px;/);
   assert.ok(page && Number(page[1]) >= 14 && Number(page[2]) >= 14, "workspace-page side padding is narrower than the gutter cap");
+});
+
+test("buttons rest with a dimmer panel glow and reach panel strength on hover or when active", () => {
+  // Dimmer than the panels at rest, off in the light theme.
+  const rest = surfaces.match(/--button-glow: color-mix\(in srgb, var\(--accent\) (\d+)%, transparent\);/);
+  assert.ok(rest && Number(rest[1]) >= 25 && Number(rest[1]) < 58, "resting button glow should be visible but below the panels' 58%");
+  assert.match(surfaces, /\.app-shell\.theme-light \{[^}]*--button-glow: transparent;[^}]*--button-glow-inner: transparent;/);
+  const shadow = String.raw`box-shadow:\s*inset 0 0 calc\(\d+px \* var\(--glow-strength\)\) var\(--button-glow-inner\),\s*0 0 var\(--panel-glow-reach\) var\(--button-glow\);`;
+  // Sidebar buttons, visualizer mode tabs and the tune toggles: zero specificity, before the bloom rule.
+  const restRule = globalCss.match(/:where\(\.sidebar nav button, \.mode-tabs button, \.visual-tune-toggle\) \{([^}]*)\}/);
+  assert.ok(restRule && new RegExp(shadow).test(restRule[1]), "resting glow rule missing");
+  const bloom = globalCss.match(/\.sidebar nav button:hover,\s*\.sidebar nav button\.active,[^{]*\) \{([^}]*)\}/);
+  assert.ok(bloom && /0 0 var\(--panel-glow-reach\) var\(--panel-glow\);/.test(bloom[1]), "hover and active should reach the panel glow");
+  assert.ok(globalCss.indexOf(restRule[0]) < globalCss.indexOf(bloom[0]), "the resting rule must come before hover and active");
+  // The round transport controls and the volume trigger get the same halo; play carries the full panel glow.
+  const round = globalCss.match(/\.transport \.controls button:not\(\.play\),\s*[^{]*\.volume-popover-trigger \{([^}]*)\}/);
+  assert.ok(round && new RegExp(shadow).test(round[1]), "transport halo rule missing");
+  assert.match(globalCss, /\.transport \.controls \.play \{[^}]*0 0 var\(--panel-glow-reach\) var\(--panel-glow\);/);
+});
+
+test("the mode tab strip leaves room for its tabs' glow", () => {
+  const strip = surfaces.match(/\.app-shell:not\(\.obs-mode\):not\(\.immersive-mode\) \.mode-tabs \{([^}]*)\}/);
+  assert.ok(strip, "mode-tabs gutter rule missing");
+  assert.match(strip[1], /padding: min\(var\(--panel-glow-gutter\), 6px\);/);
+  assert.match(strip[1], /margin: calc\(-1 \* min\(var\(--panel-glow-gutter\), 6px\)\);/);
+  // Narrower than the 7px gap to the tune toggles beside the strip.
+  assert.match(globalCss, /\.visual-head-actions \{[^}]*gap: 7px;/);
 });

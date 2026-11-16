@@ -79,6 +79,20 @@
   backdrop-filter: var(--surface-glass-filter);
   -webkit-backdrop-filter: var(--surface-glass-filter);
 }
+/* Panels sit flush against the sides of their page's scroller, which cut the
+   glow off on that side. The scroller keeps a gutter as wide as the glow and
+   takes it back out of the page's own padding with an equal negative margin,
+   so no panel moves or resizes. Capped at the page's narrowest padding. */
+.app-shell:not(.obs-mode):not(.immersive-mode) .page-content {
+  --panel-glow-gutter: min(calc(var(--panel-glow-reach) + 2px), 14px);
+  padding-inline: var(--panel-glow-gutter);
+  margin-inline: calc(-1 * var(--panel-glow-gutter));
+}
+/* The online page fills its scroller edge to edge, top and bottom as well. */
+.app-shell:not(.obs-mode):not(.immersive-mode) .native-browser-page .page-content {
+  padding-block: min(var(--panel-glow-gutter), 6px);
+  margin-block: calc(-1 * min(var(--panel-glow-gutter), 6px));
+}
 /* Floating control panels sit directly over animated visualizers. Give them a
    denser local sheet so labels and values stay readable without going opaque. */
 .app-shell:not(.obs-mode):not(.immersive-mode) :is(.visual-settings-panel, .queue-drawer, .channel-strip-popover) {

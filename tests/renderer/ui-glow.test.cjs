@@ -38,3 +38,16 @@ test("the light theme and ECO mode keep icons and panels unlit", () => {
   const eco = globalCss.match(/\.app-shell\.low-performance-mode \*::after \{([^}]*)\}/);
   assert.ok(eco && /box-shadow: none !important;/.test(eco[1]) && /filter: none !important;/.test(eco[1]));
 });
+
+test("the page scroller leaves a gutter for panel glows without moving the panels", () => {
+  const rule = surfaces.match(/\.app-shell:not\(\.obs-mode\):not\(\.immersive-mode\) \.page-content \{([^}]*)\}/);
+  assert.ok(rule, "page-content gutter rule missing");
+  // As wide as the glow (plus a little), never wider than the page's own padding.
+  assert.match(rule[1], /--panel-glow-gutter: min\(calc\(var\(--panel-glow-reach\) \+ 2px\), 14px\);/);
+  // Padding and an equal negative margin: the content box stays where it was.
+  assert.match(rule[1], /padding-inline: var\(--panel-glow-gutter\);/);
+  assert.match(rule[1], /margin-inline: calc\(-1 \* var\(--panel-glow-gutter\)\);/);
+  // The page's side padding the gutter borrows from must stay at least 14px.
+  const page = globalCss.match(/\.workspace-page \{[^}]*padding: 24px (\d+)px 24px (\d+)px;/);
+  assert.ok(page && Number(page[1]) >= 14 && Number(page[2]) >= 14, "workspace-page side padding is narrower than the gutter cap");
+});

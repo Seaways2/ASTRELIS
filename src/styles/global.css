@@ -94,6 +94,14 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   .channel-plugin-results svg, .energy-ring
 ) { filter: drop-shadow(0 0 calc(6px * var(--glow-strength)) color-mix(in srgb, var(--accent) 58%, transparent)); }
 
+/* Every interface icon carries the same glow as the energy rings, not only
+   the ones listed above. Rows of long lists are left out: a filter per row
+   icon would be rasterized again on every scroll. The light theme and ECO
+   mode switch icon filters off further down. */
+:where(.app-shell) :where(svg.lucide, svg.ui-icon):not(:is(.queue-list, .playlist-table, .netease-results, .channel-rack-list) *) {
+  filter: drop-shadow(0 0 calc(6px * var(--glow-strength)) color-mix(in srgb, var(--accent) 58%, transparent));
+}
+
 :where(
   .sidebar nav button.active, .import-button, .mode-tabs button.active,
   .visual-tune-toggle:hover, .visual-tune-toggle.active,

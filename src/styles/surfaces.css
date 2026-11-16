@@ -4,6 +4,12 @@
      after painting the gradients, without a filter or an animation. */
   --surface-dither: url("../assets/surface-dither.png");
   --surface-glass-glow: transparent;
+  /* Display panels and cards glow like the energy rings: the same accent
+     strength and reach, scaled by the glow setting. A box-shadow, not the
+     rings' filter: on a rectangle it looks the same, and a filter would
+     re-composite the meter panels at 60 Hz. */
+  --panel-glow: color-mix(in srgb, var(--accent) 58%, transparent);
+  --panel-glow-reach: calc(6px * var(--glow-strength));
   --surface-glass-fill: rgba(12, 20, 24, .48);
   --surface-glass-border: rgba(160, 188, 196, .12);
   --surface-glass-highlight: rgba(215, 235, 240, .025);
@@ -44,6 +50,8 @@
   --surface-glass-fill: rgba(238, 246, 249, .48);
   --surface-glass-border: rgba(72, 104, 118, .18);
   --surface-glass-highlight: rgba(255, 255, 255, .16);
+  /* No accent glow on light surfaces, as for the icons. */
+  --panel-glow: transparent;
 }
 .app-shell.theme-light.has-custom-background {
   --surface-glass-fill: rgba(238, 246, 249, .48);
@@ -67,7 +75,7 @@
       transparent 86%),
     var(--surface-glass-fill);
   border: 1px solid var(--surface-glass-border);
-  box-shadow: inset 0 0 18px var(--surface-glass-glow), 0 0 12px var(--surface-glass-glow);
+  box-shadow: inset 0 0 18px var(--surface-glass-glow), 0 0 12px var(--surface-glass-glow), 0 0 var(--panel-glow-reach) var(--panel-glow);
   backdrop-filter: var(--surface-glass-filter);
   -webkit-backdrop-filter: var(--surface-glass-filter);
 }

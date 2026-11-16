@@ -2525,17 +2525,19 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   filter: drop-shadow(0 0 calc(9px * var(--glow-strength)) color-mix(in srgb, var(--accent) 18%, transparent));
 }
 
-/* Sidebar buttons, visualizer mode tabs and the tune toggles rest with a
-   dimmer version of the panel glow (see --button-glow in surfaces.css), so
-   they read as lit like the panels around them. Zero specificity and placed
+/* The framed tune toggles rest with a dimmer version of the panel glow (see
+   --button-glow in surfaces.css). Buttons without a frame of their own do
+   not: a halo around a transparent button has nothing to come from, and a
+   column of them read as a stack of fuzzy boxes. The navigation and the mode
+   tabs glow as a group instead (surfaces.css). Zero specificity and placed
    first: hover and active below outshine it. */
-.app-shell:not(.obs-mode):not(.immersive-mode) :where(.sidebar nav button, .mode-tabs button, .visual-tune-toggle) {
+.app-shell:not(.obs-mode):not(.immersive-mode) :where(.visual-tune-toggle) {
   box-shadow:
     inset 0 0 calc(12px * var(--glow-strength)) var(--button-glow-inner),
     0 0 var(--panel-glow-reach) var(--button-glow);
 }
 
-/* Sidebar, mode and window controls then bloom to panel strength on focus. */
+/* Sidebar, mode and window controls bloom softly on hover... */
 .app-shell:not(.obs-mode):not(.immersive-mode) :where(
   .sidebar nav button,
   .import-button,
@@ -2548,14 +2550,21 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 }
 .app-shell:not(.obs-mode):not(.immersive-mode) :where(
   .sidebar nav button:hover,
-  .sidebar nav button.active,
   .import-button:hover,
   .mode-tabs button:hover,
-  .mode-tabs button.active,
   .visual-tune-toggle:hover,
+  .window-actions button:hover
+) {
+  box-shadow:
+    inset 0 0 calc(14px * var(--glow-strength)) color-mix(in srgb, var(--accent) 9%, transparent),
+    0 0 calc(12px * var(--glow-strength)) color-mix(in srgb, var(--accent) 18%, transparent);
+}
+/* ...and the active one is lit at panel strength, so it is the brightest. */
+.app-shell:not(.obs-mode):not(.immersive-mode) :where(
+  .sidebar nav button.active,
+  .mode-tabs button.active,
   .visual-tune-toggle.active,
   .titlebar-vst-mode.active,
-  .window-actions button:hover,
   .window-actions button.active
 ) {
   box-shadow:

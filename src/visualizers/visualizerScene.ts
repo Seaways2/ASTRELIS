@@ -21,6 +21,21 @@ export interface VisualizerSceneOptions {
   playbackActive: boolean;
   backgroundBrightness: number;
   backgroundOpacity: number;
+  /** Pointer interaction (see VisualizerPointer); off unless the page enables it. */
+  interactive?: boolean;
+}
+
+/**
+ * The pointer over the canvas. x and y are fractions of the canvas box, so the
+ * page needs no backing-store sizes. Every press arrives as its own message
+ * with `press` set, so a click shorter than a frame is never missed.
+ */
+export interface VisualizerPointer {
+  x: number;
+  y: number;
+  inside: boolean;
+  pressed: boolean;
+  press?: boolean;
 }
 
 /**
@@ -53,6 +68,7 @@ export interface VisualizerScene {
   resize(layout: VisualizerLayout): void;
   setLensImage(image: ImageBitmap | undefined): void;
   draw(now: number, audio: VisualizerAudioSource): void;
+  pointer(state: VisualizerPointer): void;
 }
 
 export function visualizerTargetFps(options: Pick<VisualizerSceneOptions, "playbackActive" | "settings">) {
@@ -74,9 +90,10 @@ export function createVisualizerScene(
   onFps?: (fps: number) => void
 ): VisualizerScene {
   const { mode, accent, settings, glowStrength, playbackActive, backgroundBrightness, backgroundOpacity } = options;
+  const interactive = Boolean(options.interactive);
   // Both canvas kinds expose the same 2D API for everything drawn here.
   const context = canvas.getContext("2d", { alpha: true }) as unknown as CanvasRenderingContext2D | null;
-  if (!context) return { resize() {}, setLensImage() {}, draw() {} };
+  if (!context) return { resize() {}, setLensImage() {}, draw() {}, pointer() {} };
   let lensBackground: ImageBitmap | undefined;
   let layout: VisualizerLayout = {
     width: 1, height: 1, ratio: 1, left: 0, top: 0, cssWidth: 1, cssHeight: 1, viewportWidth: 1, viewportHeight: 1
@@ -160,7 +177,10 @@ export function createVisualizerScene(
       response: .25 + Math.random() * .75,
       frequency: Math.floor(Math.random() * 112),
       ridgeLift: 1 + ridgeBand * ridgeCenter * .16,
-      tint: pickGalaxyTint(radius)
+      tint: pickGalaxyTint(radius),
+      /** Pointer pull, eased so the star lags and springs back (see pointerPull). */
+      pullX: 0,
+      pullY: 0
     };
   });
   // Drawn one colour at a time: four fill-style changes per frame, not one per star.
@@ -185,7 +205,9 @@ export function createVisualizerScene(
     size: .24 + Math.random() * .72,
     phase: Math.random() * Math.PI * 2,
     response: .25 + Math.random() * .75,
-    frequency: Math.floor(Math.random() * 112)
+    frequency: Math.floor(Math.random() * 112),
+    pullX: 0,
+    pullY: 0
   }));
   const galaxyInnerOrbitMoteCount = settings.lowPerformance
     ? Math.max(32, Math.round(particleUnits * .65))
@@ -198,7 +220,9 @@ export function createVisualizerScene(
     size: .2 + Math.random() * .64,
     phase: Math.random() * Math.PI * 2,
     response: .28 + Math.random() * .72,
-    frequency: Math.floor(Math.random() * 112)
+    frequency: Math.floor(Math.random() * 112),
+    pullX: 0,
+    pullY: 0
   }));
   // Starfield and black hole colours, from the same palette as the galaxy.
   // Black hole: warm stars crowd the event horizon as the galaxy's crowd its
@@ -270,6 +294,61 @@ export function createVisualizerScene(
   let galaxyWaveStrength = 0;
   const peakBars: number[] = [];
   const peakTimes: number[] = [];
+  // Pointer interaction. Every effect eases in and out and stays a step below
+  // the music: hovering steers or bends, a press sends one short impulse, and
+  // with no pointer over the canvas the scene draws exactly as before.
+  const pointer: VisualizerPointer = { x: .5, y: .5, inside: false, pressed: false };
+  const pendingPresses: Array<{ x: number; y: number }> = [];
+  /** 0–1 while the pointer is over the canvas. */
+  let pointerPresence = 0;
+  /** 0–1 while a press is held: the starfield's warp. */
+  let pointerHold = 0;
+  let starfieldSteerX = 0;
+  let starfieldSteerY = 0;
+  /** Density waves sent out by presses on the galaxy. */
+  const galaxyPressWaves: Array<{ x: number; y: number; age: number }> = [];
+  const GALAXY_WAVE_SECONDS = 1.9;
+  /** Matter dropped into the black hole: it spirals in and is swallowed. */
+  const pulseInfall: Array<{ radius: number; angle: number; speed: number; size: number; x: number; y: number; drawn: boolean }> = [];
+  /** Accretion flare from swallowed matter, on top of the music's own. */
+  let pulseFeed = 0;
+  /**
+   * The black hole's pointer lens trails the pointer on a damped spring (in
+   * canvas fractions): it lags a little, swings slightly past and settles,
+   * instead of sticking to the cursor.
+   */
+  const pulseLens = { x: .5, y: .5, velocityX: 0, velocityY: 0 };
+  const LENS_FREQUENCY = 2 * Math.PI * 1.1;
+  const LENS_DAMPING = .62;
+  const followPulseLens = (dt: number) => {
+    if (pointerPresence < .02) {
+      // Nothing to trail: wait where the pointer will next appear.
+      pulseLens.x = pointer.x; pulseLens.y = pointer.y;
+      pulseLens.velocityX = pulseLens.velocityY = 0;
+      return;
+    }
+    // Small fixed steps keep the spring stable through a long frame.
+    const steps = Math.max(1, Math.ceil(dt * 240));
+    const step = dt / steps;
+    for (let index = 0; index < steps; index++) {
+      pulseLens.velocityX += (LENS_FREQUENCY * LENS_FREQUENCY * (pointer.x - pulseLens.x) - 2 * LENS_DAMPING * LENS_FREQUENCY * pulseLens.velocityX) * step;
+      pulseLens.velocityY += (LENS_FREQUENCY * LENS_FREQUENCY * (pointer.y - pulseLens.y) - 2 * LENS_DAMPING * LENS_FREQUENCY * pulseLens.velocityY) * step;
+      pulseLens.x += pulseLens.velocityX * step;
+      pulseLens.y += pulseLens.velocityY * step;
+    }
+  };
+  let pulseFeedWaveAt = -Infinity;
+  const pointerState = (state: VisualizerPointer) => {
+    if (!interactive) return;
+    pointer.x = Math.max(0, Math.min(1, state.x));
+    pointer.y = Math.max(0, Math.min(1, state.y));
+    pointer.inside = state.inside;
+    pointer.pressed = state.inside && state.pressed;
+    if (state.press && state.inside) {
+      pendingPresses.push({ x: pointer.x, y: pointer.y });
+      if (pendingPresses.length > 4) pendingPresses.shift();
+    }
+  };
 
   const rebuildGalaxyLayers = () => {
     if (mode !== "waveform") return;
@@ -452,6 +531,15 @@ export function createVisualizerScene(
     const ratio = layout.ratio;
     const { width, height } = size;
     context.clearRect(0, 0, width, height);
+    // Pointer presence and hold ease in and out; each press is taken once.
+    const pointerActive = interactive && pointer.inside;
+    pointerPresence += ((pointerActive ? 1 : 0) - pointerPresence)
+      * (1 - Math.exp(-deltaSeconds / (pointerActive ? .25 : .6)));
+    pointerHold += ((pointerActive && pointer.pressed ? 1 : 0) - pointerHold)
+      * (1 - Math.exp(-deltaSeconds / (pointer.pressed ? .35 : 1.1)));
+    const pointerX = pointer.x * width;
+    const pointerY = pointer.y * height;
+    const presses = pendingPresses.splice(0);
 
     context.shadowColor = accent;
     context.shadowBlur = 12 * ratio * glowStrength;
@@ -498,6 +586,66 @@ export function createVisualizerScene(
       context.globalCompositeOperation = "lighter";
       context.fillStyle = accent;
 
+      // Pointer: a gravity well bends the live stars and motes towards it (the
+      // cached arm textures stay put), and each press sends a density wave
+      // out across the field. The wave is felt rather than drawn: a broad,
+      // soft band nudges the stars it passes outwards and barely lights them,
+      // so the field ripples without a visible edge.
+      for (const press of presses) {
+        galaxyPressWaves.push({ x: press.x * width, y: press.y * height, age: 0 });
+        if (galaxyPressWaves.length > 4) galaxyPressWaves.shift();
+      }
+      for (let index = galaxyPressWaves.length - 1; index >= 0; index--) {
+        galaxyPressWaves[index].age += deltaSeconds;
+        if (galaxyPressWaves[index].age > GALAXY_WAVE_SECONDS) galaxyPressWaves.splice(index, 1);
+      }
+      const waveSpeed = scale * .5;
+      const waveWidth = scale * .06;
+      /** How far the wave pushes a star outwards, and how much light it adds: a step below the well. */
+      const wavePush = scale * .014;
+      const waveLight = .25;
+      /** Calls `each` for every wave whose front passes (x, y), with its strength there. */
+      const pressWaveBands = (x: number, y: number, each: (band: number, dx: number, dy: number, distance: number) => void) => {
+        for (const wave of galaxyPressWaves) {
+          const dx = x - wave.x, dy = y - wave.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          const offset = (distance - wave.age * waveSpeed) / waveWidth;
+          if (offset * offset >= 9) continue;
+          const fade = Math.min(1, wave.age / .08) * Math.pow(1 - wave.age / GALAXY_WAVE_SECONDS, 1.5);
+          each(Math.exp(-offset * offset) * fade, dx, dy, distance);
+        }
+      };
+      const wellRadius = scale * .2;
+      const wellStrength = scale * .04 * pointerPresence * (1 + pointerHold * .6);
+      const pullEase = 1 - Math.exp(-deltaSeconds / .22);
+      const pullActive = wellStrength > .05 || galaxyPressWaves.length > 0;
+      /** Eases a body's pull towards the pointer and out along a wave; returns its added light. */
+      const pointerPull = (body: { pullX: number; pullY: number }, x: number, y: number) => {
+        if (!pullActive && body.pullX === 0 && body.pullY === 0) return 0;
+        let targetX = 0, targetY = 0, lift = 0;
+        if (wellStrength > .05) {
+          const dx = pointerX - x, dy = pointerY - y;
+          const distance = Math.hypot(dx, dy);
+          if (distance < wellRadius && distance > .001) {
+            const falloff = Math.pow(1 - distance / wellRadius, 2);
+            // Never past the pointer itself, so the stars gather instead of crossing over.
+            const reach = Math.min(distance * .8, wellStrength * falloff);
+            targetX = dx / distance * reach;
+            targetY = dy / distance * reach;
+            lift = falloff * pointerPresence;
+          }
+        }
+        pressWaveBands(x, y, (band, dx, dy, distance) => {
+          targetX += dx / distance * band * wavePush;
+          targetY += dy / distance * band * wavePush;
+          lift += band * waveLight;
+        });
+        body.pullX += (targetX - body.pullX) * pullEase;
+        body.pullY += (targetY - body.pullY) * pullEase;
+        if (!pullActive && Math.abs(body.pullX) < .01 && Math.abs(body.pullY) < .01) body.pullX = body.pullY = 0;
+        return lift;
+      };
+
       // Reuse the Black Hole Pulse star-field layout behind the galaxy. It
       // covers the whole frame while remaining dim enough to preserve the
       // spiral silhouette and shares the same softened scene flash. Mostly
@@ -520,11 +668,31 @@ export function createVisualizerScene(
           context.arc(x, y, backgroundStarRadius * (1.85 + galaxyGlow * .34), 0, Math.PI * 2);
           context.fill();
         }
+        // The well bends the static field too (its presence is already eased),
+        // and a press wave pushes it outwards as the band passes.
+        let wellX = 0, wellY = 0, wellLift = 0, waveLift = 0;
+        if (galaxyPressWaves.length) pressWaveBands(x, y, (band, dx, dy, distance) => {
+          wellX += dx / distance * band * wavePush;
+          wellY += dy / distance * band * wavePush;
+          waveLift += band * waveLight;
+        });
+        if (wellStrength > .05) {
+          const dx = pointerX - x, dy = pointerY - y;
+          const distance = Math.hypot(dx, dy);
+          if (distance < wellRadius && distance > .001) {
+            const falloff = Math.pow(1 - distance / wellRadius, 2);
+            const reach = Math.min(distance * .8, wellStrength * falloff);
+            wellX += dx / distance * reach;
+            wellY += dy / distance * reach;
+            wellLift = falloff * pointerPresence;
+          }
+        }
+        const lift = waveLift + wellLift;
         context.globalAlpha = Math.min(.46,
           (.045 + depth * .075 + energy * star.response * .075 + sparkle * (.11 + galaxyHigh * .18) + backgroundBeatFlash * .62)
-          * barOpacity);
+          * barOpacity) + Math.min(.55, lift * .55) * barOpacity;
         context.beginPath();
-        context.arc(x, y, backgroundStarRadius, 0, Math.PI * 2);
+        context.arc(x + wellX, y + wellY, backgroundStarRadius * (1 + lift * .6), 0, Math.PI * 2);
         context.fill();
       }); });
 
@@ -578,18 +746,21 @@ export function createVisualizerScene(
       galaxyLiveStarGroups.forEach(group => { context.fillStyle = group.color; group.stars.forEach((star) => {
         const radius = maximumRadius * Math.max(.02, star.radius + star.radialScatter);
         const angle = star.angle + galaxyLayerAngles[star.layer];
-        const x = cx + Math.cos(angle) * radius;
-        const y = cy + Math.sin(angle) * radius * .68;
+        const orbitX = cx + Math.cos(angle) * radius;
+        const orbitY = cy + Math.sin(angle) * radius * .68;
+        const pointerLift = pointerPull(star, orbitX, orbitY);
+        const x = orbitX + star.pullX;
+        const y = orbitY + star.pullY;
         const energy = music.bin(star.frequency);
         const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * star.twinkleSpeed + star.phase)), 8);
         const sharedBeatFlash = galaxySceneFlash * (.4 + star.response * .22);
-        const starSize = Math.max(.48, (star.size + sparkle * .72 + sharedBeatFlash * .62) * ratio * effectSize);
+        const starSize = Math.max(.48, (star.size + sparkle * .72 + sharedBeatFlash * .62) * ratio * effectSize) * (1 + pointerLift * .6);
         if (galaxyGlow > 0 && (sparkle > .08 || sharedBeatFlash > .04)) {
           context.globalAlpha = Math.min(.2, (.018 + sparkle * .045 + sharedBeatFlash * .095) * galaxyGlow) * barOpacity;
           const haloSize = starSize * (1.8 + galaxyGlow * .32);
           context.fillRect(x - haloSize / 2, y - haloSize / 2, haloSize, haloSize);
         }
-        context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash) * barOpacity * star.ridgeLift);
+        context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash + pointerLift * .5) * barOpacity * star.ridgeLift);
         context.fillRect(x - starSize / 2, y - starSize / 2, starSize, starSize);
         const glintStrength = sparkle * (.55 + galaxyHigh * .6) + sharedBeatFlash * .5;
         if (glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0)
@@ -606,20 +777,23 @@ export function createVisualizerScene(
         const orbit = maximumRadius * mote.radius;
         const cos = Math.cos(mote.angle);
         const sin = Math.sin(mote.angle);
-        const x = cx + cos * orbit;
-        const y = cy + sin * orbit * (.46 + Math.abs(mote.tilt) * .34) + cos * orbit * mote.tilt * .12;
+        const orbitX = cx + cos * orbit;
+        const orbitY = cy + sin * orbit * (.46 + Math.abs(mote.tilt) * .34) + cos * orbit * mote.tilt * .12;
+        const pointerLift = pointerPull(mote, orbitX, orbitY);
+        const x = orbitX + mote.pullX;
+        const y = orbitY + mote.pullY;
         if (x < 0 || x > width || y < 0 || y > height) return;
         const energy = music.bin(mote.frequency);
         const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * (1.5 + mote.response * 3.2) + mote.phase)), 9);
         const moteBeatFlash = galaxySceneFlash * (.4 + mote.response * .22);
-        const moteRadius = Math.max(.5, mote.size * ratio * (1.1 + sparkle * .78 + moteBeatFlash * .5) * effectSize);
+        const moteRadius = Math.max(.5, mote.size * ratio * (1.1 + sparkle * .78 + moteBeatFlash * .5) * effectSize) * (1 + pointerLift * .6);
         if (galaxyGlow > 0 && (sparkle > .06 || moteBeatFlash > .025)) {
           context.globalAlpha = Math.min(.25, (.02 + sparkle * .055 + moteBeatFlash * .15) * galaxyGlow) * barOpacity;
           context.beginPath();
           context.arc(x, y, moteRadius * (1.8 + galaxyGlow * .38), 0, Math.PI * 2);
           context.fill();
         }
-        context.globalAlpha = Math.min(1, (.17 + energy * mote.response * .34 + sparkle * (.3 + galaxyHigh * .46) + moteBeatFlash) * barOpacity);
+        context.globalAlpha = Math.min(1, (.17 + energy * mote.response * .34 + sparkle * (.3 + galaxyHigh * .46) + moteBeatFlash + pointerLift * .5) * barOpacity);
         context.beginPath();
         context.arc(x, y, moteRadius, 0, Math.PI * 2);
         context.fill();
@@ -784,6 +958,34 @@ export function createVisualizerScene(
       const orbitRadius = scale * (.35 + low * .015 + pulseBeat * .016 + coreRebound * .007) * pulseEffectScale;
       const glow = Math.min(2.2, Math.max(0, glowStrength));
       const pulseOpacity = barOpacity;
+
+      // Pointer: a press drops a clump of matter that spirals in, flattening
+      // into the disk plane as it falls. Each piece swallowed brightens the
+      // disk and halo for a moment, and the first in a while sends out a
+      // gravitational wave like a kick does.
+      pulseFeed *= Math.exp(-deltaSeconds / .7);
+      const infallFlatten = (radius: number) =>
+        .14 + .2 * Math.max(0, Math.min(1, (radius - coreRadius) / Math.max(1, orbitRadius - coreRadius)));
+      for (const press of presses) {
+        const dx = press.x * width - cx, dy = press.y * height - cy;
+        let radius = Math.hypot(dx, dy);
+        for (let pass = 0; pass < 3; pass++) radius = Math.hypot(dx, dy / infallFlatten(radius));
+        radius = Math.max(coreRadius * 1.6, radius);
+        const angle = Math.atan2(dy / infallFlatten(radius), dx);
+        for (let piece = 0; piece < 36; piece++) pulseInfall.push({
+          radius: radius * (1 + (Math.random() - .5) * .16),
+          angle: angle + (Math.random() - .5) * .3,
+          speed: .85 + Math.random() * .3,
+          size: .9 + Math.random() * 1.1,
+          x: 0, y: 0, drawn: false
+        });
+        if (pulseInfall.length > 144) pulseInfall.splice(0, pulseInfall.length - 144);
+      }
+      const pointerLensReach = scale * .26;
+      const pointerLensPush = scale * .07;
+      followPulseLens(deltaSeconds);
+      const pointerLensX = pulseLens.x * width;
+      const pointerLensY = pulseLens.y * height;
       context.globalCompositeOperation = "lighter";
       context.shadowBlur = 0;
       const makeLineGradient = (from: number, to: number, alpha = 1) => {
@@ -857,13 +1059,24 @@ export function createVisualizerScene(
         const baseAngle = Math.atan2(baseY, baseX);
         const bentAngle = baseAngle + lens * (.07 + pulseMidLevel * .1) * (star.response > .58 ? 1 : -1);
         const lensedDistance = distance * (1 - lens * (.025 + pulseBeat * .035));
-        const x = cx + Math.cos(bentAngle) * lensedDistance;
-        const y = cy + Math.sin(bentAngle) * lensedDistance;
+        let x = cx + Math.cos(bentAngle) * lensedDistance;
+        let y = cy + Math.sin(bentAngle) * lensedDistance;
+        // Pointer: a lens of its own, trailing the pointer, pushes the stars around it outwards.
+        let pointerLens = 0;
+        if (pointerPresence > .01) {
+          const dx = x - pointerLensX, dy = y - pointerLensY;
+          const pointerDistance = Math.hypot(dx, dy);
+          if (pointerDistance < pointerLensReach && pointerDistance > .001) {
+            pointerLens = Math.pow(1 - pointerDistance / pointerLensReach, 2) * pointerPresence;
+            x += dx / pointerDistance * pointerLens * pointerLensPush;
+            y += dy / pointerDistance * pointerLens * pointerLensPush;
+          }
+        }
         if (x < 0 || x > width || y < 0 || y > height) return;
         const energy = music.bin(star.frequency);
         const sparkle = Math.pow(Math.max(0, Math.sin(time * star.twinkleSpeed + star.twinkle)), 10);
         const sharedBeatFlash = pulseSceneFlash * (.4 + star.response * .22);
-        const starRadius = Math.max(.48, (star.size * .68 + sparkle * .62 + lens * .34 + sharedBeatFlash * .6) * ratio * starEffectSize);
+        const starRadius = Math.max(.48, (star.size * .68 + sparkle * .62 + lens * .34 + pointerLens * .5 + sharedBeatFlash * .6) * ratio * starEffectSize);
         if (glow > 0) {
           const pulseStarGlow = Math.min(.24, (.018 + sparkle * .045 + sharedBeatFlash * .14) * glow);
           context.globalAlpha = pulseStarGlow * pulseOpacity;
@@ -871,7 +1084,7 @@ export function createVisualizerScene(
           context.arc(x, y, starRadius * (1.8 + glow * .42), 0, Math.PI * 2);
           context.fill();
         }
-        context.globalAlpha = Math.min(1, .2 + star.response * .26 + sparkle * (.26 + energy * .42) + pulseHighLevel * star.response * .12 + sharedBeatFlash) * pulseOpacity;
+        context.globalAlpha = Math.min(1, .2 + star.response * .26 + sparkle * (.26 + energy * .42) + pulseHighLevel * star.response * .12 + sharedBeatFlash + pointerLens * .3) * pulseOpacity;
         context.beginPath();
         context.arc(x, y, starRadius, 0, Math.PI * 2);
         context.fill();
@@ -987,6 +1200,54 @@ export function createVisualizerScene(
         }
       }); });
 
+      // Dropped matter: orbits faster and falls faster as it nears the hole,
+      // with a short trail, warm once it is close.
+      for (let index = pulseInfall.length - 1; index >= 0; index--) {
+        const piece = pulseInfall[index];
+        const closeness = coreRadius / Math.max(coreRadius, piece.radius);
+        piece.angle += deltaSeconds * 1.1 * piece.speed * settings.animationSpeed
+          * Math.pow(orbitRadius / Math.max(coreRadius, piece.radius), 1.5);
+        piece.radius -= deltaSeconds * scale * .12 * piece.speed * settings.animationSpeed * (.6 + 4 * closeness * closeness);
+        if (piece.radius <= coreRadius * 1.02) {
+          pulseInfall.splice(index, 1);
+          pulseFeed = Math.min(1, pulseFeed + .05);
+          if (currentTime - pulseFeedWaveAt > .6) {
+            pulseFeedWaveAt = currentTime;
+            if (!pulseShockwaves.some(wave => wave.progress < .3))
+              pulseShockwaves.push({ progress: 0, strength: .6, tilt: -.08 + Math.random() * .16, radius: 0 });
+          }
+          continue;
+        }
+        const x = cx + Math.cos(piece.angle) * piece.radius;
+        const y = cy + Math.sin(piece.angle) * piece.radius * infallFlatten(piece.radius);
+        const pieceColor = closeness > .45 ? starTintColors.warm : accent;
+        const pieceAlpha = Math.min(1, .55 + closeness * .4) * pulseOpacity;
+        if (piece.drawn) {
+          context.globalAlpha = pieceAlpha * .55;
+          context.strokeStyle = pieceColor;
+          context.lineWidth = Math.max(.5, piece.size * 1.1 * ratio * starEffectSize);
+          context.beginPath();
+          context.moveTo(piece.x, piece.y);
+          context.lineTo(x, y);
+          context.stroke();
+        }
+        const pieceRadius = Math.max(.6, piece.size * (1 + closeness * .6) * ratio * starEffectSize);
+        context.fillStyle = pieceColor;
+        if (glow > 0) {
+          context.globalAlpha = Math.min(.3, .12 * glow) * pieceAlpha;
+          context.beginPath();
+          context.arc(x, y, pieceRadius * (2.4 + glow * .4), 0, Math.PI * 2);
+          context.fill();
+        }
+        context.globalAlpha = pieceAlpha;
+        context.beginPath();
+        context.arc(x, y, pieceRadius, 0, Math.PI * 2);
+        context.fill();
+        piece.x = x;
+        piece.y = y;
+        piece.drawn = true;
+      }
+
       // Accretion glow and disk are rendered before the dark core so the
       // event horizon cleanly occludes their rear half.
       const haloRadius = coreRadius * (2.18 + glow * .3 + pulseEnergy * .075);
@@ -1001,13 +1262,13 @@ export function createVisualizerScene(
         outerHalo.addColorStop(0, "transparent");
         outerHalo.addColorStop(.42, accent);
         outerHalo.addColorStop(1, "transparent");
-        context.globalAlpha = Math.min(.24, glow * (.055 + pulseSceneFlash * .075 + low * .035)) * pulseOpacity;
+        context.globalAlpha = Math.min(.24, glow * (.055 + pulseSceneFlash * .075 + low * .035 + pulseFeed * .09)) * pulseOpacity;
         context.fillStyle = outerHalo;
         context.beginPath();
         context.arc(cx, cy, outerHaloRadius, 0, Math.PI * 2);
         context.fill();
       }
-      context.globalAlpha = Math.min(.72, .25 + low * .24 + pulseSceneFlash * .16 + glow * .08) * pulseOpacity;
+      context.globalAlpha = Math.min(.72, .25 + low * .24 + pulseSceneFlash * .16 + glow * .08 + pulseFeed * .22) * pulseOpacity;
       context.fillStyle = halo;
       context.beginPath();
       context.arc(cx, cy, haloRadius, 0, Math.PI * 2);
@@ -1028,7 +1289,7 @@ export function createVisualizerScene(
         context.stroke();
       }
       for (let disk = 0; disk < 7; disk++) {
-        context.globalAlpha = (.065 + low * .05 + pulseMidLevel * .085 + pulseSceneFlash * .035 + (disk === 3 ? .2 + pulseSceneFlash * .055 : 0)) * pulseOpacity;
+        context.globalAlpha = (.065 + low * .05 + pulseMidLevel * .085 + pulseSceneFlash * .035 + pulseFeed * .1 + (disk === 3 ? .2 + pulseSceneFlash * .055 : 0)) * pulseOpacity;
         context.lineWidth = Math.max(.5, (.62 + (6 - Math.abs(3 - disk)) * .22 + low * .75 + pulseMidLevel * .7) * ratio * pulseEffectScale);
         context.strokeStyle = makeLineGradient(-coreRadius * 2.9, coreRadius * 2.9, context.globalAlpha);
         context.beginPath();
@@ -1051,13 +1312,13 @@ export function createVisualizerScene(
 
       // The near side of the disk passes in front of the black silhouette.
       context.globalCompositeOperation = "lighter";
-      context.globalAlpha = Math.min(1, .44 + low * .32 + pulseMidLevel * .18 + pulseSceneFlash * .12) * pulseOpacity;
+      context.globalAlpha = Math.min(1, .44 + low * .32 + pulseMidLevel * .18 + pulseSceneFlash * .12 + pulseFeed * .3) * pulseOpacity;
       context.lineWidth = Math.max(1, (1.3 + pulseEnergy * 1.05 + pulseMidLevel * .45) * ratio * pulseEffectScale);
       context.strokeStyle = makeLineGradient(cx - coreRadius * 2.5, cx + coreRadius * 2.5, context.globalAlpha);
       context.beginPath();
       context.ellipse(cx, cy, coreRadius * (2.32 + pulseEnergy * .05), coreRadius * (.21 + pulseEnergy * .046), -.035, 0, Math.PI);
       context.stroke();
-      context.globalAlpha = (.34 + low * .28 + pulseSceneFlash * .08) * pulseOpacity;
+      context.globalAlpha = Math.min(1, .34 + low * .28 + pulseSceneFlash * .08 + pulseFeed * .25) * pulseOpacity;
       context.lineWidth = Math.max(.75, (1 + low * .85 + pulseBeat * .32) * ratio * pulseEffectScale);
       context.strokeStyle = makeLineGradient(cx - coreRadius * 1.2, cx + coreRadius * 1.2, context.globalAlpha);
       context.beginPath();
@@ -1068,7 +1329,13 @@ export function createVisualizerScene(
       context.globalAlpha = 1;
     } else if (mode === "particles") {
       const data = audio.getFrequencyData();
-      const cx = width / 2, cy = height / 2;
+      // Pointer: the flight turns towards the pointer (the vanishing point
+      // follows it and the stars sweep the other way), and a held press warps.
+      const steerEase = 1 - Math.exp(-deltaSeconds / .45);
+      starfieldSteerX += ((pointer.x - .5) * pointerPresence - starfieldSteerX) * steerEase;
+      starfieldSteerY += ((pointer.y - .5) * pointerPresence - starfieldSteerY) * steerEase;
+      const warp = pointerHold;
+      const cx = width / 2 + starfieldSteerX * width * .5, cy = height / 2 + starfieldSteerY * height * .5;
       const perspective = Math.min(width, height) * .64;
       // The same kick detector as the galaxy and black hole. The old one
       // averaged 94–1300 Hz, so it missed kicks and flashed on vocals.
@@ -1079,7 +1346,7 @@ export function createVisualizerScene(
       const targetPace = .13 + music.level * .34 + starBeatFlash * .05;
       starfieldPace += (targetPace - starfieldPace)
         * (1 - Math.exp(-deltaSeconds / (targetPace > starfieldPace ? .6 : 1.2)));
-      const travel = deltaSeconds * starfieldPace * settings.animationSpeed;
+      const travel = deltaSeconds * starfieldPace * settings.animationSpeed * (1 + warp * 4.5);
       const paceEase = 1 - Math.exp(-deltaSeconds / .5);
       // A sparkle peak must span at least two frames, or at 30 FPS half of
       // them show up as single-frame strobe pops.
@@ -1101,6 +1368,10 @@ export function createVisualizerScene(
         // Each star eases towards its own band's speed as well.
         particle.pace += (.72 + particle.size * .2 + energy * .75 - particle.pace) * paceEase;
         particle.z -= travel * particle.pace;
+        if (starfieldSteerX || starfieldSteerY) {
+          particle.x -= starfieldSteerX * travel * .9;
+          particle.y -= starfieldSteerY * travel * .9;
+        }
         particle.twinkle += deltaSeconds * Math.min(maximumTwinkleRate,
           particle.twinkleSpeed * (1 + energy * 1.8) * settings.animationSpeed);
         if (particle.z <= .025) {
@@ -1132,7 +1403,8 @@ export function createVisualizerScene(
         const shimmer = slowShimmer + musicalFlash;
         // Trails, halos and flares fade in from their thresholds instead of
         // appearing at once across the field on every beat.
-        const trailFade = Math.min(1, Math.max((depth - .26) / .12, (musicalFlash - .32) / .3));
+        const trailFade = Math.max(Math.min(1, Math.max((depth - .26) / .12, (musicalFlash - .32) / .3)),
+          warp * Math.min(1, depth * 2.5));
         if (trailFade > 0) {
           context.globalAlpha = Math.min(1, (.25 + depth * .58 + musicalFlash * .68) * shimmer) * trailFade * starfieldOpacity;
           context.lineWidth = Math.max(.52, (particle.size * .72 + depth * .92 + energy * particle.response * .52) * ratio * starfieldEffectSize);
@@ -1261,6 +1533,7 @@ export function createVisualizerScene(
   return {
     resize,
     setLensImage: image => { lensBackground = image; },
-    draw
+    draw,
+    pointer: pointerState
   };
 }

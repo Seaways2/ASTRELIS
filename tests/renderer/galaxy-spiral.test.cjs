@@ -114,7 +114,8 @@ test("Galaxy Spiral reduces the broad fog disk and selectively lifts the existin
   assert.match(canvas, /const ridgeCenter = Math\.max\(0, 1 - Math\.abs\(armScatter\)/);
   assert.match(canvas, /const ridgeLift = 1 \+ ridgeBand \* ridgeCenter \* \.16/);
   assert.match(canvas, /brightNode \? \.34 : \.065 \+ Math\.random\(\) \* \.13\) \* ridgeLift/);
-  assert.match(canvas, /sharedBeatFlash\) \* barOpacity \* star\.ridgeLift/);
+  // The ridge lift scales the whole star, the pointer's added light included.
+  assert.match(canvas, /sharedBeatFlash \+ pointerLift \* \.5\) \* barOpacity \* star\.ridgeLift/);
 });
 
 test("Galaxy Spiral fog uses four continuous cached paths with two-axis falloff", () => {

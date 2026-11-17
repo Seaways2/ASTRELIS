@@ -247,6 +247,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .visual-settings-panel label { display: grid; gap: 5px; padding: 7px 0; border-top: 1px solid rgba(126,169,176,.09); color: #829398; font-size: 10px; }
 .visual-settings-panel label > span { display: flex; justify-content: space-between; }
 .visual-settings-panel label b { color: var(--accent); font: 500 10px "JetBrains Mono"; }
+/* An on/off row: the title with its hover hint on the left, the box on the right. */
+.visual-settings-panel label.visual-settings-toggle { grid-template-columns: minmax(0, 1fr) auto; align-items: center; cursor: pointer; }
+.visual-settings-panel label.visual-settings-toggle > span { justify-content: flex-start; }
+.visual-settings-toggle input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .visual-settings-panel input { width: 100%; accent-color: var(--accent); }
 .visual-settings-panel select { height: 27px; padding: 0 8px; color: #b8c7ca; background: #101b1f; border: 1px solid rgba(126,169,176,.16); font: 10px "JetBrains Mono"; }
 .visual-reset { width: 100%; height: 30px; margin-top: 7px; color: #829398; background: rgba(255,255,255,.025); border: 1px solid rgba(126,169,176,.13); font-size: 9px; }

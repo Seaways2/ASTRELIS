@@ -79,6 +79,9 @@ scope.onmessage = ({ data }) => {
     case "stop":
       surface.running = false;
       break;
+    case "pointer":
+      surface.scene?.pointer(data.pointer);
+      break;
     case "detach":
       surface.lens?.close();
       surfaces.delete(data.id);

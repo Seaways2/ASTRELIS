@@ -3,7 +3,7 @@ import { frameIsDue, nextFrameDue } from "./framePacing";
 import type { VisualizerWorkerEvent, VisualizerWorkerRequest } from "./visualizerProtocol";
 import {
   createVisualizerScene, visualizerTargetFps,
-  type VisualizerLayout, type VisualizerScene, type VisualizerSceneOptions
+  type VisualizerLayout, type VisualizerPointer, type VisualizerScene, type VisualizerSceneOptions
 } from "./visualizerScene";
 
 // The canvas size comes from ResizeObserver; this periodic re-read is only a
@@ -96,6 +96,12 @@ export class VisualizerHost {
     this.frame = 0;
     if (this.worker) this.post({ type: "stop", id: this.id });
     else this.scene = undefined;
+  }
+
+  /** The pointer over the canvas, for scenes configured as interactive. */
+  pointer(state: VisualizerPointer) {
+    if (this.worker) this.post({ type: "pointer", id: this.id, pointer: state });
+    else this.scene?.pointer(state);
   }
 
   /** The black-hole lens re-samples the page wallpaper around the event horizon. */

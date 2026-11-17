@@ -41,6 +41,8 @@ export interface VisualizerSettings {
   asymmetry: number;
   impulsePropagationSpeed: number;
   bloomThreshold: number;
+  /** Hover and press effects on the galaxy, starfield and black hole. */
+  pointerInteraction: boolean;
 }
 
 // Derived for rendering only; resource policy is owned by the system settings.

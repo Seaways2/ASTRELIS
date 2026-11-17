@@ -3,6 +3,7 @@ import { usePlaybackShortcuts } from "./hooks/usePlaybackShortcuts";
 import { nativeStatusReady } from "./utils/nativeStatusReady";
 import { useAtmosphereStore } from "./stores/atmosphereStore";
 import { VideoView } from "./components/VideoView";
+import { Hint } from "./components/Hint";
 import { isVideoTrack } from "./utils/videoTrack";
 import type { VideoState } from "../electron/videoPlayer";
 import { prefetchTarget } from "./utils/playbackResources";
@@ -67,6 +68,17 @@ export default function App() {
   const lightTheme = state.uiSettings.colorMode === "light" || (state.uiSettings.colorMode === "system" && systemLight);
   const lowPerformanceMode = state.uiSettings.lowPerformanceMode;
   const motionEnabled = state.uiSettings.animations && !lowPerformanceMode;
+  // Visualizer hover and press effects follow their own setting, and stay off
+  // in ECO, in OBS mode (a stray click must not show on stream) and with reduced motion.
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false);
+  useEffect(() => {
+    const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!media) return;
+    const change = () => setReducedMotion(media.matches);
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
+  const visualizerInteractive = state.visualSettings.pointerInteraction && !lowPerformanceMode && !reducedMotion && !state.obsMode;
   const effectiveGlowStrength = lowPerformanceMode ? 0 : state.uiSettings.glowStrength;
   const customBackgroundActive = Boolean(
     state.uiSettings.customBackgroundUrl
@@ -1319,7 +1331,7 @@ export default function App() {
         </div>
         <div className={`visual-area visual-mode-${state.visualizer} visual-transition-${state.uiSettings.visualTransition} ${visualStopped ? "visual-stopped" : ""} ${visualSwitchPhase === "idle" ? "" : `visual-switch-${visualSwitchPhase}`}`}>
           {videoLanding ? <div className="video-empty-mode"><Film /><h2>{t("video.title")}</h2><p>{t("video.empty")}</p><div><button className="import-button" onClick={() => fileRef.current?.click()}><Import />{t("common.importFiles")}</button><button onClick={() => { setVideoLanding(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("nowPlaying"); }}>{t("video.return")}</button></div></div> : videoActive ? <VideoView preparing={videoPreparing} onFullscreen={()=>void detachVideo()} windowBusy={videoWindowBusy} onBack={() => { if (current) { setLastVideoId(current.id); videoBookmarks.current.set(current.id, videoState?.position || 0); } state.setPlaying(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("library"); }} state={videoState} direct={videoDirect} setDirect={setVideoDirect} rackEnabled={videoRackEnabled} setRackEnabled={setVideoRack} visible={pageVisible && !windowBackgrounded && !channelStripOpen && !dragging && !compactMode} /> : <div className="visualizer-transition-layer" key={`${state.visualizer}-${immersiveMode}`}>
-            <VisualizerCanvas mode={state.visualizer} accent={state.accent} settings={effectiveVisualSettings} glowStrength={effectiveGlowStrength} playbackActive={lowPerformanceMode ? false : playbackActive} visible={visualsVisible} backgroundUrl={customBackgroundActive ? state.uiSettings.customBackgroundUrl : undefined} backgroundBrightness={1} backgroundOpacity={1 - state.uiSettings.windowOpacity} />
+            <VisualizerCanvas mode={state.visualizer} accent={state.accent} settings={effectiveVisualSettings} glowStrength={effectiveGlowStrength} playbackActive={lowPerformanceMode ? false : playbackActive} visible={visualsVisible} backgroundUrl={customBackgroundActive ? state.uiSettings.customBackgroundUrl : undefined} backgroundBrightness={1} backgroundOpacity={1 - state.uiSettings.windowOpacity} interactive={visualizerInteractive} />
           </div>}
           {!videoActive && visualSettingsOpen && <div className="visual-settings-panel panel">
             <div className="visual-settings-title"><div><span className="eyebrow">VISUAL ENGINE</span><b>{t("visual.tune")}</b></div><button onClick={() => setVisualSettingsOpen(false)}><X /></button></div>
@@ -1332,6 +1344,7 @@ export default function App() {
             <label><span>{t("visual.speed")} <b>{state.visualSettings.animationSpeed.toFixed(2)}×</b></span><input type="range" min=".25" max="2" step=".05" value={state.visualSettings.animationSpeed} onDoubleClick={() => state.setVisualSetting("animationSpeed", 1)} onChange={(e) => state.setVisualSetting("animationSpeed", Number(e.target.value))} /></label>
             <label><span>{t("visual.decay")} <b>{state.visualSettings.decaySpeed.toFixed(2).replace(/0$/, "")}/s</b></span><input type="range" min=".05" max="1" step=".05" value={state.visualSettings.decaySpeed} onDoubleClick={() => state.setVisualSetting("decaySpeed", 1)} onChange={(e) => state.setVisualSetting("decaySpeed", Number(e.target.value))} /></label>
             <label><span>{t("visual.peakHold")} <b>{state.visualSettings.peakHoldMs} ms</b></span><input type="range" min="0" max="2000" step="50" value={state.visualSettings.peakHoldMs} onDoubleClick={() => state.setVisualSetting("peakHoldMs", 650)} onChange={(e) => state.setVisualSetting("peakHoldMs", Number(e.target.value))} /></label>
+            <label className="visual-settings-toggle"><span>{t("visual.pointer")}<Hint>{t("visual.pointerHint")}</Hint></span><input type="checkbox" checked={state.visualSettings.pointerInteraction} onChange={(e) => state.setVisualSetting("pointerInteraction", e.target.checked)} /></label>
             <button className="visual-reset" onClick={state.resetVisualSettings}>{t("visual.reset")}</button>
           </div>}
           {immersiveMode && <div

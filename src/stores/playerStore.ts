@@ -39,7 +39,8 @@ export const defaultVisualizerSettings: VisualizerSettings = {
   densityFalloff: 1.7,
   asymmetry: .55,
   impulsePropagationSpeed: 1,
-  bloomThreshold: .68
+  bloomThreshold: .68,
+  pointerInteraction: true
 };
 
 const storedVisualizerSettings = (() => {
@@ -65,6 +66,7 @@ const storedVisualizerSettings = (() => {
         stored.decaySpeed = .2 + (Math.min(2, Math.max(.05, compactDecaySpeed)) - .05) / 1.95 * 4.8;
       }
     }
+    if (typeof stored.pointerInteraction !== "boolean") stored.pointerInteraction = defaultVisualizerSettings.pointerInteraction;
     const storedDecaySpeed = Number(stored.decaySpeed);
     stored.decaySpeed = Number.isFinite(storedDecaySpeed)
       ? Math.min(1, Math.max(.05, storedDecaySpeed))

@@ -1,5 +1,5 @@
 import type { MeterSnapshot } from "../types/audio";
-import type { VisualizerLayout, VisualizerSceneOptions } from "./visualizerScene";
+import type { VisualizerLayout, VisualizerPointer, VisualizerSceneOptions } from "./visualizerScene";
 
 /**
  * Page → visualizer worker. One worker serves every visualizer canvas (a mode
@@ -11,6 +11,7 @@ export type VisualizerWorkerRequest =
   | { type: "layout"; id: number; layout: VisualizerLayout }
   | { type: "lens"; id: number; image?: ImageBitmap }
   | { type: "stop"; id: number }
+  | { type: "pointer"; id: number; pointer: VisualizerPointer }
   | { type: "detach"; id: number }
   | { type: "audio"; frequency: Uint8Array; meters: MeterSnapshot };
 

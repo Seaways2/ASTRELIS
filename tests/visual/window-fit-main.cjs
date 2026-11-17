@@ -16,7 +16,7 @@ setTimeout(()=>app.exit(2),60000);require('../../dist-electron/main.js');
   win.setSize(Math.min(w,work.width),Math.min(h,work.height));await wait(1500);
   const [cw,ch]=win.getContentSize(),expected=Math.max(.8,Math.min(1,cw/1120,ch/720));
   assert.ok(Math.abs(win.webContents.getZoomFactor()-expected)<.002,'proportional zoom');
-  for(const title of ['媒体库','音频设备','外观设置']){
+  for(const title of ['媒体中心','音频设备','外观设置']){
    await js(`document.querySelector('.sidebar nav button[title="${title}"]').click()`);await wait(120);
    const state=await js(`(()=>{const r=document.querySelector('.app-shell').getBoundingClientRect(),f=document.querySelector('footer').getBoundingClientRect();return {width:innerWidth,height:innerHeight,right:r.right,bottom:r.bottom,footer:f.bottom,top:f.top}})()`);
    assert.ok(state.width>=cw/expected-2&&state.height>=ch/expected-2,JSON.stringify(state));

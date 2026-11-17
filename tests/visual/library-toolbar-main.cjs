@@ -9,7 +9,7 @@ const js=s=>win.webContents.executeJavaScript(s,true);
 setTimeout(()=>app.exit(2),60000);require('../../dist-electron/main.js');
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- for(const [locale,title] of [['zh-CN','媒体库'],['en-US','Media Library'],['ja-JP','ライブラリ']]){
+ for(const [locale,title] of [['zh-CN','媒体中心'],['en-US','Media Library'],['ja-JP','ライブラリ']]){
   await until(()=>js(`Boolean(document.querySelector('.sidebar'))`),'ready');
   await js(`localStorage.setItem('auralis.ui.language',${JSON.stringify(locale)})`);win.webContents.reload();await wait(500);
   await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title=${JSON.stringify(title)}]'))`),'language');

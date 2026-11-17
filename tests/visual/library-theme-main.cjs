@@ -14,7 +14,7 @@ const click=async selector=>{
 };
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');await until(()=>js(`Boolean(document.querySelector('.sidebar'))`),'ready');
- await click('.sidebar nav button[title="媒体库"]');await until(()=>js(`Boolean(document.querySelector('.library-management'))`),'library');
+ await click('.sidebar nav button[title="媒体中心"]');await until(()=>js(`Boolean(document.querySelector('.library-management'))`),'library');
  for(const theme of ['dark','light'])for(const width of [1280,720]){
   win.setSize(width,720);await wait(1800);
   await js(`(()=>{const a=document.querySelector('.app-shell');a.classList.toggle('theme-light',${theme==='light'});a.style.setProperty('--accent','#9b79e8')})()`);

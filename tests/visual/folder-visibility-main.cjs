@@ -13,8 +13,8 @@ async function input(selector,values){await js(`(()=>{const set=Object.getOwnPro
 const deadline=setTimeout(()=>app.exit(1),90000);require('../../dist-electron/main.js');
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'library');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'scan button');
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'library');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'scan button');
  await js(`document.querySelector('.scan-action').click()`);await until(()=>js(`!document.querySelector('.scan-action').disabled&&Boolean(document.querySelector('.library-folder-entry'))`),'scanned');
  assert.equal(await js(`document.querySelectorAll('.sidebar nav button').length`),8);
  await js(`document.querySelector('.library-folder-entry').click()`);await until(()=>js(`Boolean(document.querySelector('.library-folder-entry'))`),'child folder');

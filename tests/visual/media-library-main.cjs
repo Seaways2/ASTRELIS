@@ -21,8 +21,8 @@ async function until(fn,label){for(let i=0;i<400;i++){if(await fn())return;await
 const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/main.js');
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'library nav');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'library nav');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'library');
  await js(`document.querySelector('.library-management .library-menu-trigger').click()`);
  assert.equal(await js(`document.querySelector('.library-management .library-menu-popup').matches(':popover-open')`),true);
@@ -132,7 +132,7 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  await until(()=>js(`Boolean(document.querySelector('.appearance-section select'))`),'appearance settings');
  await js(`(()=>{const e=document.querySelector('.appearance-section select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'light');e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
  await until(()=>js(`document.querySelector('.app-shell').classList.contains('theme-light')`),'light theme');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-batch-trigger'))`),'library in light mode');
  // Batch selection, cancellation, automatic exact match, review and retry.
  await js(`document.querySelector('.library-batch-trigger').click()`);
@@ -201,7 +201,7 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  assert.equal(await js(`document.querySelectorAll('.batch-job.saved').length`),3);
  fs.writeFileSync(path.join(profile,'batch-match.png'),(await win.webContents.capturePage()).toPNG());
  await js(`document.querySelector('.batch-match-dialog header button').click()`);
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.music-library'))`),'library after background task');
  const remaining=(await js(`window.desktop.library.load()`)).tracks.filter(t=>t.sourcePath.endsWith('.mp4')&&!t.onlineMetadata).slice(0,2);
  assert.equal((await js(`window.desktop.library.artwork(${JSON.stringify(remaining[0].id)},'lock')`)).ok,true);
@@ -265,7 +265,7 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  const scrollTop=await js(`document.querySelector('.page-content').scrollTop`);assert.ok(scrollTop>0);
  await js(`document.querySelector('.sidebar nav button[title="播放列表"]').click()`);
  await until(()=>js(`!document.querySelector('.music-library')`),'leave library');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-virtual-body'))`),'restore list');await wait(400);
  assert.ok(Math.abs(await js(`document.querySelector('.page-content').scrollTop`)-scrollTop)<2,'list scroll restored');
  // Music playback uses the same session memory, including a search filter.
@@ -278,7 +278,7 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  await wait(300);
  await js(`document.querySelector('.library-track-entry').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`);
  await until(()=>js(`!document.querySelector('.music-library')`),'music playing page');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-search input'))`),'music return');
  assert.equal(await js(`document.querySelector('.library-search input').value`),'Music');
  assert.ok(await js(`document.querySelector('.library-media-filter [aria-selected="true"]').dataset.value === 'audio'`));
@@ -287,8 +287,8 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  assert.equal(await js(`document.querySelector('.folder-breadcrumb > span').textContent`),musicFolder);
  // A new renderer session keeps settings but discards the browse location.
  win.webContents.reload();await wait(800);
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'fresh renderer');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'fresh renderer');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-folder-entry'))`),'fresh session library');
  assert.equal(await js(`document.querySelectorAll('.folder-breadcrumb > span').length`),0);
  assert.ok(await js(`document.querySelector('.library-media-filter [aria-selected="true"]').dataset.value === 'all'`));
@@ -296,8 +296,8 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  const allVideoIds=(await js(`window.desktop.library.load()`)).tracks.filter(t=>t.sourcePath.endsWith('.mp4')).map(t=>t.id);
  assert.equal((await js(`window.desktop.library.tmdb({action:'batchApply',trackIds:${JSON.stringify(allVideoIds)},type:'movie',id:42,replaceCover:false})`)).ok,true);
  win.webContents.reload();await wait(800);
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'API empty scope reload');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'API empty scope reload');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-batch-trigger'))`),'empty scope batch entry');
  await js(`document.querySelector('.library-batch-trigger').click()`);
  await until(()=>js(`Boolean(document.querySelector('.batch-api-settings'))`),'empty scope API entry');
@@ -308,7 +308,7 @@ const deadline=setTimeout(()=>app.exit(1),120000);require('../../dist-electron/m
  await js(`document.querySelector('.library-api-settings input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
  await until(()=>js(`Boolean(document.querySelector('.batch-match-dialog'))`),'Escape returns to existing batch');
  // Exercise the real built UI in each locale, including short Japanese sidebar actions.
- for(const [locale,library,api,batch] of [['en-US','Media Library','API settings','Batch film matching'],['ja-JP','ライブラリ','API設定','作品一括照合'],['zh-CN','媒体库','API 设置','批量匹配影视资料']]) {
+ for(const [locale,library,api,batch] of [['en-US','Media Library','API settings','Batch film matching'],['ja-JP','ライブラリ','API設定','作品一括照合'],['zh-CN','媒体中心','API 设置','批量匹配影视资料']]) {
    await js(`localStorage.setItem('auralis.ui.language',${JSON.stringify(locale)})`);
    win.webContents.reload();await wait(800);
    await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title='+${JSON.stringify(JSON.stringify(library))}+']'))`),'localized sidebar '+locale);

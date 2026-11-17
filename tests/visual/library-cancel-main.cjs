@@ -28,8 +28,8 @@ const click=async selector=>{
 };
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'ready');
- await click('.sidebar nav button[title="媒体库"]');await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'library');
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'ready');
+ await click('.sidebar nav button[title="媒体中心"]');await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'library');
  await click('.library-management .library-menu-trigger');await click('.scan-action');
  await until(()=>js(`!document.querySelector('.scan-action').disabled&&Boolean(document.querySelector('.library-folder-entry'))`),'initial scan');
  const before=await js('window.desktop.library.load()');assert.equal(before.tracks.length,30);

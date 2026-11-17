@@ -14,8 +14,8 @@ async function until(fn,label){for(let i=0;i<150;i++){if(await fn())return;await
 setTimeout(()=>app.exit(2),45000);require('../../dist-electron/main.js');
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'ready');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'ready');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'scan ready');await js(`document.querySelector('.scan-action').click()`);
  await until(()=>js(`!document.querySelector('.scan-action').disabled&&Boolean(document.querySelector('.library-folder-entry'))`),'scanned');
 
@@ -23,7 +23,7 @@ setTimeout(()=>app.exit(2),45000);require('../../dist-electron/main.js');
  await until(()=>js(`Boolean(document.querySelector('.appearance-section select'))`),'appearance settings');
  await js(`(()=>{const e=document.querySelector('.appearance-section select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'light');e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
  await until(()=>js(`document.querySelector('.app-shell').classList.contains('theme-light')`),'light theme');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-folder-entry'))`),'library in light mode');
  await js(`[...document.querySelectorAll('.library-view-select [role=option]')].find(o=>o.textContent==="3D 封面流").click()`);await wait(200);
 

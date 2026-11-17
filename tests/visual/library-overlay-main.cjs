@@ -24,8 +24,8 @@ const toolsOpen=async()=>{if(await js(`(()=>{const e=document.querySelector('.li
 const openMenu=async()=>{await toolsOpen();await click('.library-management .library-menu-trigger');await until(()=>js(`document.querySelector('.library-management .library-menu-popup').matches(':popover-open')`),'menu opens')};
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'ready');
- await click('.sidebar nav button[title="媒体库"]');await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'library');
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'ready');
+ await click('.sidebar nav button[title="媒体中心"]');await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'library');
  for(let i=0;i<6;i++){console.log('scan root',i);await openMenu();await click('.scan-action');await until(()=>js(`!document.querySelector('.scan-action').disabled&&document.querySelectorAll('.library-folder-entry').length>0`),'scan');}
  for(const [view,w,h] of [['flow',1500,940],['flow',960,640],['cards',960,640],['details',960,640]]){
   await toolsOpen();await js(`[...document.querySelectorAll('.library-view-select [role=option]')].find(o=>o.dataset.value===${JSON.stringify(view)}).click()`);

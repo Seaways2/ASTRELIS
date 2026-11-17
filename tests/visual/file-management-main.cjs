@@ -14,8 +14,8 @@ async function until(fn,label){for(let i=0;i<150;i++){if(await fn())return;await
 setTimeout(()=>app.exit(2),45000);require('../../dist-electron/main.js');
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'ready');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'ready');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'scan ready');await js(`document.querySelector('.scan-action').click()`);
  await until(()=>js(`!document.querySelector('.scan-action').disabled&&Boolean(document.querySelector('.library-folder-entry'))`),'scanned');
 
@@ -28,8 +28,8 @@ setTimeout(()=>app.exit(2),45000);require('../../dist-electron/main.js');
  assert.ok(fs.existsSync(target.sourcePath)&&fs.existsSync(other.sourcePath));
  assert.ok((await js(`window.desktop.library.visibility({action:'unlock',password:'1234'})`)).ok);
  await js('location.reload()');await wait(1000);
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'reload');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);await wait(300);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'reload');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);await wait(300);
  await js(`[...document.querySelectorAll('.library-view-select [role=option]')].find(o=>o.textContent==="列表").click()`);await wait(300);
  await js(`document.querySelector('.library-folder-entry').click()`);await wait(300);
  await js(`document.querySelector('.library-folder-entry').click()`);await wait(300);

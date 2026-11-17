@@ -21,8 +21,8 @@ async function until(fn,label){for(let i=0;i<250;i++){if(await fn())return;await
 setTimeout(()=>app.exit(2),90000);require('../../dist-electron/main.js');
 (async()=>{
  await app.whenReady();await until(()=>{win=BrowserWindow.getAllWindows()[0];return win&&!win.webContents.isLoading()},'window');
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'ready');
- await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'ready');
+ await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.scan-action'))`),'scan ready');await js(`document.querySelector('.scan-action').click()`);
  await until(()=>js(`!document.querySelector('.scan-action').disabled&&Boolean(document.querySelector('.library-folder-entry'))`),'scanned');
  const original=await js('window.desktop.library.load()'),target=original.tracks[0];assert.equal(original.tracks.length,3);
@@ -33,7 +33,7 @@ setTimeout(()=>app.exit(2),90000);require('../../dist-electron/main.js');
  assert.ok((await js(`window.desktop.library.visibility({action:'unlock',password:'1234'})`)).ok);
  assert.ok((await js(`window.desktop.library.visibility({action:'unhide',folder:${JSON.stringify(target.sourcePath)}})`)).ok);
  win.webContents.reload();await wait(700);
- await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体库"]'))`),'reload');await js(`document.querySelector('.sidebar nav button[title="媒体库"]').click()`);
+ await until(()=>js(`Boolean(document.querySelector('.sidebar nav button[title="媒体中心"]'))`),'reload');await js(`document.querySelector('.sidebar nav button[title="媒体中心"]').click()`);
  await until(()=>js(`Boolean(document.querySelector('.library-batch-trigger'))`),'batch');
  await js(`document.querySelector('.library-batch-trigger').click()`);
  await until(()=>js(`Boolean(document.querySelector('.match-service-control select'))`),'service selector');

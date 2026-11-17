@@ -48,6 +48,9 @@ import {
   type GpuVisualQuality
 } from "./visualizers/gpuVisualRuntime";
 
+/** Titlebar elements with their own click action; a press on them is not a caption press. */
+const TITLEBAR_CONTROLS = "button, a, input, select, [role='button']";
+
 export default function App() {
   const state = usePlayerStore(useShallow(selectShellState));
   const { pageVisible, windowBackgrounded, maximized, clickThrough, setClickThrough, systemLight } = useWindowPresence();
@@ -458,6 +461,16 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- a one-off redirect when the page changes
   }, [state.activePage]);
   const toggleMaximize = () => window.desktop?.maximize();
+  const [titlebarGrace, setTitlebarGrace] = useState(false);
+  const titlebarGraceTimer = useRef<number | undefined>(undefined);
+  const releaseTitlebar = useCallback(() => { window.clearTimeout(titlebarGraceTimer.current); setTitlebarGrace(false); }, []);
+  const holdTitlebarForDoubleClick = useCallback(() => {
+    window.clearTimeout(titlebarGraceTimer.current);
+    setTitlebarGrace(true);
+    // Windows' default double-click time is 500 ms.
+    titlebarGraceTimer.current = window.setTimeout(() => setTitlebarGrace(false), 550);
+  }, []);
+  useEffect(() => () => window.clearTimeout(titlebarGraceTimer.current), []);
 
   const nextLocal = useCallback(() => {
     const latest = usePlayerStore.getState();
@@ -1037,6 +1050,8 @@ export default function App() {
     const closePopoversOutside = (event: globalThis.PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
+      // A press on the bare titlebar may be the first half of a double-click.
+      if (event.button === 0 && target.closest(".titlebar") && !target.closest(TITLEBAR_CONTROLS)) holdTitlebarForDoubleClick();
       if (visualSettingsOpen && !target.closest(".visual-settings-panel") && !target.closest(".visual-settings-trigger")) {
         setVisualSettingsOpen(false);
       }
@@ -1049,7 +1064,7 @@ export default function App() {
     };
     document.addEventListener("pointerdown", closePopoversOutside, true);
     return () => document.removeEventListener("pointerdown", closePopoversOutside, true);
-  }, [queueOpen, videoVolumeOpen, visualSettingsOpen]);
+  }, [queueOpen, videoVolumeOpen, visualSettingsOpen, holdTitlebarForDoubleClick]);
   useEffect(() => {
     const onlinePlayingNow = Boolean(state.onlineMedia?.playing);
     if (onlinePlayingNow && !previousOnlinePlaying.current) {
@@ -1194,8 +1209,12 @@ export default function App() {
   // is open the titlebar stops being a drag region; the first press closes the
   // popover and dragging works again right after.
   const transientPopoverOpen = queueOpen || videoVolumeOpen || visualSettingsOpen || channelStripOpen;
+  // A double-click whose first press closed a popover reached Windows only as a
+  // single caption click, so it did not maximize. That press keeps the titlebar
+  // a page element for a double-click's span, and the page handles the double-click.
+  const titlebarHoldsForDoubleClick = titlebarGrace || transientPopoverOpen;
   return <main
-    className={`app-shell ${videoSidebarMode ? `video-layout ${queueOpen ? "video-queue-open" : ""} ${videoVolumeOpen ? "video-volume-open" : ""}` : ""} ${visualsVisible ? "" : "visuals-suspended"} ${lightTheme ? "theme-light" : "theme-dark"} ${maximized ? "maximized" : ""} ${transientPopoverOpen ? "popover-open" : ""} ${dragging ? "dragging" : ""} ${state.obsMode ? "obs-mode" : ""} ${!state.obsMode && !lowPerformanceMode && state.uiSettings.glassMaterial !== "none" ? (!customBackgroundActive ? "native-glass" : "css-glass") : "glass-off"} ${immersiveMode ? "immersive-mode" : ""} ${compactMode ? "compact-mode" : ""} ${customBackgroundActive ? "has-custom-background" : ""} ${motionEnabled ? "" : "animations-off"} ${lowPerformanceMode ? "low-performance-mode" : ""} ${gpuEffectsActive ? `gpu-effects-on gpu-effects-${gpuEffectsQuality}` : ""}`}
+    className={`app-shell ${videoSidebarMode ? `video-layout ${queueOpen ? "video-queue-open" : ""} ${videoVolumeOpen ? "video-volume-open" : ""}` : ""} ${visualsVisible ? "" : "visuals-suspended"} ${lightTheme ? "theme-light" : "theme-dark"} ${maximized ? "maximized" : ""} ${titlebarHoldsForDoubleClick ? "popover-open" : ""} ${dragging ? "dragging" : ""} ${state.obsMode ? "obs-mode" : ""} ${!state.obsMode && !lowPerformanceMode && state.uiSettings.glassMaterial !== "none" ? (!customBackgroundActive ? "native-glass" : "css-glass") : "glass-off"} ${immersiveMode ? "immersive-mode" : ""} ${compactMode ? "compact-mode" : ""} ${customBackgroundActive ? "has-custom-background" : ""} ${motionEnabled ? "" : "animations-off"} ${lowPerformanceMode ? "low-performance-mode" : ""} ${gpuEffectsActive ? `gpu-effects-on gpu-effects-${gpuEffectsQuality}` : ""}`}
     style={{
       "--accent": interfaceAccent,
       "--accent-raw": state.accent,
@@ -1254,7 +1273,8 @@ export default function App() {
       playing={playbackActive} disabled={videoActive || lowPerformanceMode || state.obsMode || compactMode || immersiveMode}
       motion={motionEnabled} visible={visualsVisible} />
 
-    <header className="titlebar">
+    <header className="titlebar"
+      onDoubleClick={event => { if (titlebarGrace && !(event.target as Element).closest(TITLEBAR_CONTROLS)) { releaseTitlebar(); toggleMaximize(); } }}>
       <div className="brand">
         <div className="brand-lockup" role="img" aria-label="ASTRELIS" />
       </div>

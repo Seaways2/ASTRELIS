@@ -37,13 +37,7 @@ function Resolve-Pnpm {
   throw "pnpm not found: install it (npm i -g pnpm) or enable corepack with a cached pnpm."
 }
 
-function Get-FreeDriveLetter {
-  $used = (Get-PSDrive -PSProvider FileSystem).Name
-  foreach ($letter in "XWVUTSRQPONMLKJIHG".ToCharArray()) {
-    if ($used -notcontains [string]$letter) { return [string]$letter }
-  }
-  throw "No free drive letter for subst."
-}
+. (Join-Path $PSScriptRoot "lib\AsciiPath.ps1")
 
 # @() keeps a single path an array: PowerShell unrolls one-element results to a string.
 $pnpm = @(Resolve-Pnpm)
@@ -53,7 +47,7 @@ if ($pnpm.Count -eq 1) {
   $pnpmDirectory = Split-Path -Parent $pnpm[0]
   if (($env:PATH -split ";") -notcontains $pnpmDirectory) { $env:PATH = "$pnpmDirectory;$env:PATH" }
 }
-$needsAsciiPath = $repoRoot -match "[^\u0000-\u007F]"
+$needsAsciiPath = Test-NonAsciiPath $repoRoot
 $mappedDrive = $null
 $workRoot = $repoRoot
 try {

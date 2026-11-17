@@ -7,6 +7,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "lib\AsciiPath.ps1")
+
+# Under a non-ASCII checkout path, run this same script from a mapped drive
+# letter (as release.ps1 does), so "pnpm verify" works from any checkout.
+if (Test-NonAsciiPath $repoRoot) {
+  $drive = Get-FreeDriveLetter
+  & subst "$($drive):" "$repoRoot"
+  if ($LASTEXITCODE -ne 0) { throw "subst $($drive): failed" }
+  try {
+    Write-Output "Non-ASCII checkout path: building the native host from $($drive):\"
+    $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path "$($drive):\" "scripts\build-native.ps1"), "-Configuration", $Configuration)
+    if ($Clean) { $arguments += "-Clean" }
+    & powershell @arguments
+    $exitCode = $LASTEXITCODE
+  } finally {
+    & subst "$($drive):" /d | Out-Null
+  }
+  exit $exitCode
+}
 $source = Join-Path $repoRoot "native-host"
 $build = Join-Path $source "build"
 $bundledCMake = Join-Path $repoRoot ".tools\cmake\cmake\data\bin\cmake.exe"

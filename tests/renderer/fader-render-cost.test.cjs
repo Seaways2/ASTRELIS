@@ -73,7 +73,8 @@ test("a titlebar press closes the volume strip, queue and visual settings", () =
   // While a popover is open the titlebar stops being a drag region, so the press
   // reaches the page as a pointerdown and the click-outside handlers run.
   assert.match(app, /const transientPopoverOpen = queueOpen \|\| videoVolumeOpen \|\| visualSettingsOpen \|\| channelStripOpen;/);
-  assert.match(app, /\$\{transientPopoverOpen \? "popover-open" : ""\}/);
+  assert.match(app, /const titlebarHoldsForDoubleClick = titlebarGrace \|\| transientPopoverOpen;/);
+  assert.match(app, /\$\{titlebarHoldsForDoubleClick \? "popover-open" : ""\}/);
   assert.match(read("src/styles/global.css"), /\.app-shell\.popover-open :is\(\.titlebar, \.immersive-drag-zone\) \{ -webkit-app-region: no-drag; \}/);
   assert.doesNotMatch(app, /onCaptionPointerDown/);
 });

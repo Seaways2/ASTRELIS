@@ -6,7 +6,11 @@ const read = name => fs.readFileSync(path.join(__dirname, '../..', name), 'utf8'
 
 test('ordinary and compact titlebars use native dragging with no renderer move IPC', () => {
   const app = read('src/App.tsx'), css = read('src/styles/global.css');
-  assert.match(app, /<header className="titlebar">/);
+  // Native dragging: the titlebar has no press or move handlers of its own,
+  // only the double-click that follows closing a popover (titlebar-double-click.test).
+  const header = app.slice(app.indexOf('<header className="titlebar"'), app.indexOf('<div className="brand">'));
+  assert.ok(header.length > 0 && header.length < 300, 'titlebar header not found');
+  assert.doesNotMatch(header, /on(Mouse|Pointer)(Down|Move|Up)/);
   assert.match(css, /\.titlebar\s*\{\s*-webkit-app-region: drag/);
   assert.match(css, /\.window-actions\s*\{[^}]*-webkit-app-region: no-drag/);
   assert.match(css, /\.titlebar :is\(button, input, select, textarea, a,[\s\S]*?-webkit-app-region: no-drag/);

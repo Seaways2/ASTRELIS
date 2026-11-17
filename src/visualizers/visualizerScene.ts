@@ -11,7 +11,8 @@ type Glint = { x: number; y: number; size: number; strength: number; color: stri
 
 /** The render settings a scene reads; the options cross to the worker, so they stay plain values. */
 export type VisualizerSceneSettings = Pick<VisualizerRenderSettings,
-  "smoothing" | "sensitivity" | "barCount" | "barOpacity" | "lineWidth" | "animationSpeed" | "decaySpeed" | "peakHoldMs" | "lowPerformance">;
+  "smoothing" | "sensitivity" | "barCount" | "barOpacity" | "lineWidth" | "animationSpeed" | "decaySpeed" | "peakHoldMs" | "lowPerformance"
+  | "flashStrength" | "glintAmount" | "accentShare" | "pointerStrength">;
 
 export interface VisualizerSceneOptions {
   mode: VisualizerMode;
@@ -639,7 +640,7 @@ export function createVisualizerScene(
       const pressWaveShade = (x: number, y: number) => {
         if (!galaxyPressWaves.length) return 1;
         let swell = 0;
-        pressWaveBands(x, y, (band, dx, dy, distance, waveSwell) => { swell += waveSwell; });
+        pressWaveBands(x, y, (_band, _dx, _dy, _distance, waveSwell) => { swell += waveSwell; });
         return waveShadeOf(swell);
       };
       const wellRadius = scale * .2;

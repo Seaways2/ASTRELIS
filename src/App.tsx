@@ -3,7 +3,6 @@ import { usePlaybackShortcuts } from "./hooks/usePlaybackShortcuts";
 import { nativeStatusReady } from "./utils/nativeStatusReady";
 import { useAtmosphereStore } from "./stores/atmosphereStore";
 import { VideoView } from "./components/VideoView";
-import { Hint } from "./components/Hint";
 import { VisualTuningPanel } from "./app/VisualTuningPanel";
 import { isVideoTrack } from "./utils/videoTrack";
 import type { VideoState } from "../electron/videoPlayer";

@@ -705,8 +705,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             const remaining = options?.skipMissing ?? 0;
             const count = get().tracks.length;
             if (remaining > 0 && count > 1) {
+              // Past the end only with repeat-all, as when a song ends normally.
+              const next = index + 1 < count ? index + 1 : get().repeat === "all" ? 0 : -1;
               pendingPlayTrackId = "";
-              void get().playTrack((index + 1) % count, { ...options, skipMissing: Math.min(remaining, count) - 1 });
+              if (next >= 0) void get().playTrack(next, { ...options, skipMissing: Math.min(remaining, count) - 1 });
+              else get().setPlaying(false);
             }
             return;
           }

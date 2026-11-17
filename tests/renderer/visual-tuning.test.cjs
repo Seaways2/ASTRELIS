@@ -52,6 +52,18 @@ test("stored tuning values survive upgrades within their ranges", () => {
   assert.deepEqual([fresh.flashStrength, fresh.glintAmount, fresh.accentShare, fresh.pointerStrength], [1, 1, .65, 1]);
 });
 
+test("the four values reach the scene: the canvas passes them on and restarts it when they change", () => {
+  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  const configure = canvas.match(/settings: \{([^}]*)\}/);
+  assert.ok(configure, "scene settings missing");
+  const effect = canvas.slice(canvas.indexOf("current.configure({"), canvas.indexOf("useEffect(() => {\n    host.current?.setBackground"));
+  for (const key of ["flashStrength", "glintAmount", "accentShare", "pointerStrength"]) {
+    assert.ok(configure[1].includes(key), `${key} is not passed to the scene`);
+    assert.ok(effect.split(key).length >= 3, `${key} does not restart the scene`);
+  }
+  assert.match(read("src/visualizers/visualizerScene.ts"), /\| "flashStrength" \| "glintAmount" \| "accentShare" \| "pointerStrength">;/);
+});
+
 test("the tuning panel has the four sliders with copy in every language", () => {
   const app = read("src/app/VisualTuningPanel.tsx");
   for (const key of ["flashStrength", "glintAmount", "accentShare", "pointerStrength"])

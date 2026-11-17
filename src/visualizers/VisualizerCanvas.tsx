@@ -60,20 +60,22 @@ export function VisualizerCanvas({
   }, [canvasGeneration]);
 
   // Only the fields the scene reads restart it.
-  const { smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance } = settings;
+  const { smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance,
+    flashStrength, glintAmount, accentShare, pointerStrength } = settings;
   useEffect(() => {
     const current = host.current;
     if (!current || !visible) return;
     current.configure({
       mode, accent, glowStrength, playbackActive, backgroundBrightness, backgroundOpacity, interactive,
-      settings: { smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance }
+      settings: { smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance,
+        flashStrength, glintAmount, accentShare, pointerStrength }
     });
     if (interactive) current.pointer({ ...pointerState.current, pressed: false });
     return () => current.stop();
   }, [
     mode, accent, glowStrength, backgroundBrightness, backgroundOpacity, playbackActive, visible, interactive,
     smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance,
-    canvasGeneration
+    flashStrength, glintAmount, accentShare, pointerStrength, canvasGeneration
   ]);
 
   useEffect(() => {

@@ -85,6 +85,25 @@ test("a file that is gone is marked missing; advancing skips past it", async () 
   assert.ok(prepared.at(-1).includes("last"));
 });
 
+test("skipping missing files stops at the end of the queue unless repeat is all", async () => {
+  const run = async repeat => {
+    const prepared = [];
+    const { store } = loadPlayerStore({ desktop: { library: {
+      prepare: async source => {
+        prepared.push(source);
+        return source.includes("gone") ? { ok: false, code: "SOURCE_MISSING", error: "找不到音频文件。" } : { ok: true, url: `prepared:${source}`, path: source };
+      }
+    } } });
+    store.getState().addQueueTracks([track("first"), track("gone-last")]);
+    store.setState({ repeat });
+    await store.getState().playTrack(1, { navigateToNowPlaying: false, skipMissing: 2 });
+    for (let attempt = 0; attempt < 10; attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+    return prepared;
+  };
+  assert.deepEqual(await run("off"), [String.raw`K:\old\gone-last.wav`], "repeat off: stop after the last entry");
+  assert.ok((await run("all")).some(source => source.includes("first")), "repeat all: go round to the first entry");
+});
+
 test("both prepare handlers check the file before decoding", () => {
   for (const file of ["electron/ipc/libraryIpc.ts", "electron/ipc/audioCacheIpc.ts"])
     assert.match(read(file), /if \(await sourceIsMissing\(source\)\) return missingSourceResult\(source\);/, file);

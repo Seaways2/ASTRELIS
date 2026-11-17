@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useAtmosphereStore } from "../stores/atmosphereStore";
-import { atmosphereEnergy, coverPalette, reflectionGain } from "../utils/atmosphere";
+import { LIT_SURFACES, coverPalette } from "../utils/atmosphere";
+import { ReflectionPulse, pulseDepth, reflectionGain } from "../utils/reflectionPulse";
 import { audioEngine } from "../audio/AudioEngine";
 
+/** Brightness steps written to CSS, and the shortest gap between writes: every write repaints the glass. */
+const GAIN_STEPS = 50;
+const MIN_WRITE_MS = 30;
 
 interface Props { accent: string; cover?: string; trackKey: string; playing: boolean; disabled: boolean; motion: boolean; visible: boolean; }
 export function AtmosphereLayer({ accent, cover, trackKey, playing, disabled, motion, visible }: Props) {
   const settings = useAtmosphereStore(state => state.settings);
   const layer = useRef<HTMLDivElement>(null);
-  const energy = useRef(0);
+  const pulse = useRef<ReflectionPulse | null>(null);
   const [reduced, setReduced] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [palette, setPalette] = useState([accent, accent]);
 
@@ -17,7 +21,7 @@ export function AtmosphereLayer({ accent, cover, trackKey, playing, disabled, mo
 
   useEffect(() => {
     const shell = layer.current?.parentElement;
-    return () => { shell?.style.removeProperty("--fx-energy"); shell?.style.removeProperty("--fx-reflection-gain"); };
+    return () => { shell?.style.removeProperty("--fx-reflection-gain"); };
   }, []);
 
   useEffect(() => {
@@ -70,58 +74,94 @@ export function AtmosphereLayer({ accent, cover, trackKey, playing, disabled, mo
     };
   }, [enabled, moving, settings, palette]);
 
+  // Brightness follows the song's relative level and its kicks (ReflectionPulse).
+  // Analysis runs every frame; CSS is only written when the stepped value changes.
   useEffect(() => {
     const shell = layer.current?.parentElement;
     if (!shell) return;
-    if (!moving || !settings.glassEdges || settings.response === 0) {
-      energy.current = 0;
-      shell.style.setProperty("--fx-energy", "0");
+    const depth = pulseDepth(settings.response);
+    if (!moving || !settings.glassEdges || depth === 0) {
+      pulse.current = null;
       shell.style.setProperty("--fx-reflection-gain", "1");
       return;
     }
-    shell.style.setProperty("--fx-reflection-gain", String(reflectionGain(energy.current)));
-    const timer = window.setInterval(() => {
-      const meter = playing ? audioEngine.meters() : null;
-      const target = meter ? atmosphereEnergy(meter.low, meter.rms, settings.response) : 0;
-      const attack = .4;
-      energy.current += (target - energy.current) * (target > energy.current ? attack : .12);
-      if (energy.current < .001 && target === 0) energy.current = 0;
-      shell.style.setProperty("--fx-energy", energy.current.toFixed(3));
-      shell.style.setProperty("--fx-reflection-gain", String(reflectionGain(energy.current)));
-      if (!playing && energy.current < .001) {
-        energy.current = 0;
-        shell.style.setProperty("--fx-energy", "0");
-        window.clearInterval(timer);
-      }
-    }, 40);
-    return () => { window.clearInterval(timer); };
+    const reflection = pulse.current ??= new ReflectionPulse();
+    let frame = 0, last = performance.now(), written = "", writtenAt = -Infinity;
+    const write = (gain: number, now: number) => {
+      const value = (Math.round(gain * GAIN_STEPS) / GAIN_STEPS).toFixed(2);
+      if (value === written) return;
+      written = value;
+      writtenAt = now;
+      shell.style.setProperty("--fx-reflection-gain", value);
+    };
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      const value = reflection.update(playing ? audioEngine.getFrequencyData() : null, audioEngine.analysisSampleRate, now / 1000, dt);
+      // Paused and settled: rest at the calm level and stop the loop.
+      if (!playing && value < .002) { write(reflectionGain(0, depth), now); return; }
+      if (now - writtenAt >= MIN_WRITE_MS) write(reflectionGain(value, depth), now);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
   }, [moving, playing, settings.glassEdges, settings.response]);
 
+  // The reflection is lit from the pointer: each surface gets the pointer's
+  // position in its own coordinates, so a panel near the pointer brightens
+  // where the pointer is and one further away only along its nearest edge.
+  // Without a pointer every surface keeps the resting top light (50% 30%).
   useEffect(() => {
     const shell = layer.current?.parentElement;
-    if (!shell) return;
+    if (!shell || !moving || !settings.glassEdges) return;
     let frame = 0;
-    const reset = () => {
-      cancelAnimationFrame(frame);
-      shell.style.setProperty("--fx-light-x", "50%");
-      shell.style.setProperty("--fx-light-y", "30%");
+    let pointer: { x: number; y: number } | null = null;
+    let lit = new Set<HTMLElement>();
+    const unlight = (surface: HTMLElement) => {
+      surface.style.removeProperty("--fx-light-x");
+      surface.style.removeProperty("--fx-light-y");
     };
-    reset();
-    if (!moving || !settings.glassEdges) return;
-    const pointer = (event: PointerEvent) => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const rect = shell.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / Math.max(1, rect.width) - .5;
-        const y = (event.clientY - rect.top) / Math.max(1, rect.height);
-        shell.style.setProperty("--fx-light-x", `${Math.max(0, Math.min(100, (x + .5) * 100))}%`);
-        shell.style.setProperty("--fx-light-y", `${Math.max(0, Math.min(100, y * 100))}%`);
-      });
+    const place = () => {
+      frame = 0;
+      if (!pointer) return;
+      // Measure every surface first, then write: a read after each write
+      // would force a style recalculation per surface.
+      const placed: Array<[HTMLElement, DOMRect]> = [];
+      for (const surface of shell.querySelectorAll<HTMLElement>(LIT_SURFACES)) {
+        // A surface inside another is no second sheet of glass and draws no reflection.
+        if (surface.parentElement?.closest(LIT_SURFACES)) continue;
+        const box = surface.getBoundingClientRect();
+        if (box.width && box.height && box.bottom >= 0 && box.top <= window.innerHeight) placed.push([surface, box]);
+      }
+      const next = new Set<HTMLElement>();
+      for (const [surface, box] of placed) {
+        surface.style.setProperty("--fx-light-x", `${Math.round(pointer.x - box.left)}px`);
+        surface.style.setProperty("--fx-light-y", `${Math.round(pointer.y - box.top)}px`);
+        next.add(surface);
+      }
+      for (const surface of lit) if (!next.has(surface)) unlight(surface);
+      lit = next;
     };
-    shell.addEventListener("pointermove", pointer);
-    shell.addEventListener("pointerleave", reset);
-    return () => { reset(); shell.removeEventListener("pointermove", pointer); shell.removeEventListener("pointerleave", reset); };
-  }, [moving, settings.glassEdges, settings.intensity]);
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(place); };
+    const move = (event: PointerEvent) => { pointer = { x: event.clientX, y: event.clientY }; schedule(); };
+    const leave = () => {
+      pointer = null;
+      cancelAnimationFrame(frame);
+      frame = 0;
+      lit.forEach(unlight);
+      lit = new Set();
+    };
+    shell.addEventListener("pointermove", move);
+    shell.addEventListener("pointerleave", leave);
+    // Scrolling moves the panels under a still pointer; scroll events do not bubble.
+    shell.addEventListener("scroll", schedule, true);
+    return () => {
+      leave();
+      shell.removeEventListener("pointermove", move);
+      shell.removeEventListener("pointerleave", leave);
+      shell.removeEventListener("scroll", schedule, true);
+    };
+  }, [moving, settings.glassEdges]);
 
   useEffect(() => {
     if (!moving || !settings.trackTransition || !trackKey) return;

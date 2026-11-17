@@ -6,7 +6,7 @@ const source = fs.readFileSync("src/utils/atmosphere.ts", "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const loaded = { exports: {} };
 Function("exports", compiled)(loaded.exports);
-const { normalizeAtmosphere, atmosphereDefaults, coverPalette, atmosphereEnergy, reflectionGain } = loaded.exports;
+const { normalizeAtmosphere, atmosphereDefaults, coverPalette } = loaded.exports;
 
 test("new or invalid visual preferences use a quiet independent default", () => {
   assert.deepEqual(normalizeAtmosphere(null), atmosphereDefaults);
@@ -43,27 +43,10 @@ test("artwork sampling selects distinct colors and ignores transparent pixels", 
   assert.deepEqual(coverPalette(new Uint8ClampedArray([255,255,255,255,0,0,0,255]), "#abcdef"), ["#abcdef","#abcdef"]);
 });
 
-test("decorative energy is bounded and tolerates absent or invalid analysis", () => {
-  assert.equal(atmosphereEnergy(0, 0), 0);
-  assert.equal(atmosphereEnergy(10, 10), 1);
-  assert.equal(atmosphereEnergy(NaN, -1), 0);
-  assert.ok(atmosphereEnergy(.2, .1) > 0);
-});
-
-
-test("music response can increase independently of brightness and retains silence", () => {
-  assert.ok(atmosphereEnergy(.08, .08, 1.6) > .5);
-  assert.ok(atmosphereEnergy(.08, .08, 2) > atmosphereEnergy(.08, .08, 1));
-  assert.equal(atmosphereEnergy(0, 0, 3), 0);
-  assert.equal(atmosphereEnergy(.5, .5, 0), 0);
+// The reflection's brightness itself is covered by reflection-pulse.test.cjs.
+test("the response setting is bounded and the reflection choice survives old profiles", () => {
   assert.equal(normalizeAtmosphere({ response: 99 }).response, 3);
   assert.equal(normalizeAtmosphere({ response: NaN }).response, 1.6);
+  assert.equal(normalizeAtmosphere({ glassEdges: false, breathing: true }).glassEdges, false);
+  assert.equal(normalizeAtmosphere({ glassEdges: true, breathing: false }).glassEdges, true);
 });
-
- test("reflection gain stays within the existing light budget", () => {
-  assert.equal(reflectionGain(0), .25); assert.equal(reflectionGain(1), 1);
-  assert.equal(reflectionGain(99), 1); assert.equal(reflectionGain(NaN), .25);
-  assert.ok(reflectionGain(.7) > reflectionGain(.2));
-  assert.equal(normalizeAtmosphere({glassEdges:false,breathing:true}).glassEdges,false);
-  assert.equal(normalizeAtmosphere({glassEdges:true,breathing:false}).glassEdges,true);
- });

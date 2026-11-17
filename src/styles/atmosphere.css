@@ -1,5 +1,5 @@
 /* Decorative only: never intercept controls or transform the audio canvases. */
-.app-shell { --fx-strength: 0; --fx-energy: 0; --fx-reflection-gain: 1; --fx-light-x: 50%; }
+.app-shell { --fx-strength: 0; --fx-reflection-gain: 1; --fx-light-x: 50%; }
 .atmosphere-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: clip; border-radius: inherit; }
 .atmosphere-layer[data-enabled="false"] { display: none; }
 

@@ -25,15 +25,16 @@ export function normalizeAtmosphere(input: unknown): AtmosphereSettings {
   if (typeof value.glassEdges !== "boolean" && typeof value.breathing === "boolean") base.glassEdges = value.breathing;
   return base;
 }
-export function atmosphereEnergy(low: number, rms: number, response = 1) {
-  const safe = (v: number) => Number.isFinite(v) ? Math.max(0, v) : 0;
-  const signal = safe(low) * .65 + safe(rms) * 2.4;
-  return Math.min(1, Math.pow(Math.max(0, signal - .006), .6) * Math.min(3, safe(response)));
-}
-// One bounded gain multiplies the existing reflection instead of adding light.
-export function reflectionGain(energy: number) {
-  return .25 + .75 * (Number.isFinite(energy) ? Math.max(0, Math.min(1, energy)) : 0);
-}
+/**
+ * Glass surfaces that carry the pointer reflection (surfaces.css draws it).
+ * Library results are left out: their reflection is switched off.
+ */
+export const LIT_SURFACES = [
+  ".panel", ".setting-card", ".device-card", ".theme-card", ".settings-list > label",
+  ".appearance-controls > label", ".appearance-animation-module", ".gpu-render-module",
+  ".atmosphere-settings", ".playlist-table", ".library-command", ".library-summary > div",
+  ".library-stat", ".library-search", ".online-browser", ".vst-browser", ".vst-chain", ".channel-strip-popover"
+].join(", ");
 export function coverPalette(pixels: ArrayLike<number>, fallback: string): [string, string] {
   const bins = new Map<string, { rgb: number[]; weight: number }>();
   for (let i = 0; i + 3 < pixels.length; i += 4) {

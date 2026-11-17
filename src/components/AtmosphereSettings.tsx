@@ -1,5 +1,6 @@
 import { useAtmosphereStore } from "../stores/atmosphereStore";
 import { type AtmosphereSettings as Settings } from "../utils/atmosphere";
+import { pulseDepth } from "../utils/reflectionPulse";
 import { useI18n } from "../i18n";
 import { Hint } from "./Hint";
 type Section = "glass" | "music" | "motion";
@@ -15,7 +16,7 @@ export function AtmosphereSettings({ lowPerformance, section }: { lowPerformance
       <label className="appearance-effect-row"><span className="setting-title"><b>{t(`fx.${key}`)}</b><Hint>{t(`fx.${key}Hint`)}</Hint></span>
         <input type="checkbox" checked={settings[key]} onChange={event => update({ [key]: event.target.checked })} />
       </label>
-      {key === "glassEdges" && <label className="atmosphere-strength"><span>{t("fx.response")}</span><input aria-label={t("fx.response")} disabled={!settings.glassEdges || lowPerformance} type="range" min="0" max="3" step=".1" value={settings.response} onChange={event => update({ response: Number(event.target.value) })} /><output>{settings.response.toFixed(1)}×</output></label>}
+      {key === "glassEdges" && <label className="atmosphere-strength"><span>{t("fx.response")}</span><input aria-label={t("fx.response")} disabled={!settings.glassEdges || lowPerformance} type="range" min="0" max="3" step=".1" value={settings.response} onChange={event => update({ response: Number(event.target.value) })} /><output>{Math.round(pulseDepth(settings.response) * 100)}%</output></label>}
     </div>)}
     {section === "glass" && <label className="atmosphere-strength"><span>{t("fx.intensity")}</span><input aria-label={t("fx.intensity")} type="range" min="0" max="1" step=".05" value={settings.intensity} onChange={event => update({ intensity: Number(event.target.value) })} /><output>{Math.round(settings.intensity * 100)}%</output></label>}
   </div>;

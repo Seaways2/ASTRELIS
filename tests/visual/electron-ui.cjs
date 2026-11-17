@@ -147,7 +147,8 @@ async function main() {
       for (const [x, y] of [[250, 210], [930, 440]]) {
         win.webContents.sendInputEvent({ type: 'mouseMove', x, y });
         await pause(150);
-        pair.push(await evaluate(() => { const shell = document.querySelector('.app-shell'), style = getComputedStyle(shell); return { x: style.getPropertyValue('--fx-light-x'), y: style.getPropertyValue('--fx-light-y'), edges: shell.dataset.fxEdges, motion: shell.dataset.fxMotion }; }));
+        // The pointer light is set per surface, in that surface's own pixels.
+        pair.push(await evaluate(() => { const shell = document.querySelector('.app-shell'), style = getComputedStyle(shell.querySelector('.meters .panel') || shell); return { x: style.getPropertyValue('--fx-light-x'), y: style.getPropertyValue('--fx-light-y'), edges: shell.dataset.fxEdges, motion: shell.dataset.fxMotion }; }));
       }
       if (mode === 'on') { assert.notEqual(pair[0].x, pair[1].x); assert.notEqual(pair[0].y, pair[1].y); }
       else assert.deepEqual(pair[0], pair[1], `Pointer kept animating in ${mode} mode`);

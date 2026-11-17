@@ -126,8 +126,6 @@
 .library-artwork-dialog .film-poster { height: 170px; margin: 0 0 12px; }
 
 .library-artwork-dialog.film-mode { width: min(640px,90%); }
-.artwork-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-.artwork-tabs button[aria-pressed=true] { background: #8ed7f32a; border-color: var(--accent); }
 .film-mode .library-film-match { margin-top: 0; padding-top: 0; border-top: 0; }
 
 .library-batch-trigger { display:flex; align-items:center; gap:7px; border:1px solid #84bdce55; border-radius:5px; padding:7px 10px; color:var(--accent); background:#7ca9ba18; cursor:pointer; }

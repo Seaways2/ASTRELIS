@@ -53,7 +53,7 @@ test("stored tuning values survive upgrades within their ranges", () => {
 });
 
 test("the tuning panel has the four sliders with copy in every language", () => {
-  const app = read("src/App.tsx");
+  const app = read("src/app/VisualTuningPanel.tsx");
   for (const key of ["flashStrength", "glintAmount", "accentShare", "pointerStrength"])
     assert.match(app, new RegExp(`state\\.setVisualSetting\\("${key}", Number\\(e\\.target\\.value\\)\\)`), key);
   assert.match(app, /disabled=\{!state\.visualSettings\.pointerInteraction\} value=\{state\.visualSettings\.pointerStrength\}/);

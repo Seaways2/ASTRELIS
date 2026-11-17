@@ -10,7 +10,8 @@ const modules = [
   "src/app/WithDisplayTime.tsx",
   "src/app/useImmersiveMode.ts",
   "src/app/useVolumeRouting.ts",
-  "src/app/useWindowPresence.ts"
+  "src/app/useWindowPresence.ts",
+  "src/app/VisualTuningPanel.tsx"
 ];
 
 function readAppSource() {

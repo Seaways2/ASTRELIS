@@ -233,7 +233,7 @@ test("the page sends the pointer to the scene only when interaction is on", () =
   const app = read("src/App.tsx");
   assert.match(app, /const visualizerInteractive = state\.visualSettings\.pointerInteraction && !lowPerformanceMode && !reducedMotion && !state\.obsMode;/);
   assert.match(app, /interactive=\{visualizerInteractive\}/);
-  assert.match(app, /state\.setVisualSetting\("pointerInteraction", e\.target\.checked\)/);
+  assert.match(read("src/app/VisualTuningPanel.tsx"), /state\.setVisualSetting\("pointerInteraction", e\.target\.checked\)/);
 });
 
 test("pointer interaction is on by default, survives upgrades as a boolean and has copy in every language", () => {

@@ -92,8 +92,8 @@ declare global {
         importLegacyState(tracks: unknown[], folders: string[], meta: LibraryCommandMeta): Promise<LegacyLibraryImportResult>;
         /** `unauthorized`: requested paths skipped because they have no access grant. */
         openFiles(paths: string[]): Promise<{ tracks: LibraryTrackInfo[]; errors: string[]; unauthorized?: string[] }>;
-        prepare(path: string): Promise<{ ok: boolean; url?: string; path?: string; error?: string }>;
-        prepareDirect(path: string): Promise<{ ok: boolean; codec?: string; error?: string }>;
+        prepare(path: string): Promise<{ ok: boolean; url?: string; path?: string; error?: string; code?: string }>;
+        prepareDirect(path: string): Promise<{ ok: boolean; codec?: string; error?: string; code?: string }>;
         waveform(path: string, requestId?: string): Promise<{ ok: boolean; peaks?: number[]; error?: string }>;
         cancelWaveform(path: string, requestId?: string): void;
         onScanProgress(listener: (progress: LibraryScanProgress) => void): () => void;

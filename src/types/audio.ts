@@ -73,6 +73,8 @@ export interface Track {
   folder?: string;
   location?: { rootId: string; sourcePath: string; canonicalPath: string };
   file?: { size: number; mtimeMs: number; fingerprint?: string };
+  /** The file was not found when the queue last tried to play it. */
+  missing?: boolean;
   tags?: {
     title?: string;
     artists: Array<{ artistId: string; name: string }>;

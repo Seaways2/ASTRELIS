@@ -2,6 +2,7 @@ import path from "node:path";
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import type { AudioCacheMaintenance } from "../audioCacheMaintenance";
 import type { DecodedAudioCache } from "../library/media/DecodedAudioCache";
+import { missingSourceResult, sourceIsMissing } from "../library/media/sourceAvailability";
 
 type PreparedHdmiSource = { path: string; codec: string; analysisPath?: string };
 
@@ -51,8 +52,10 @@ export function registerAudioCacheIpc({
   });
   ipcMain.handle("library:prepare-direct", async (_, input: unknown) => {
     try {
+      const source = authorisedAudio(input);
+      if (await sourceIsMissing(source)) return missingSourceResult(source);
       return await audioCache.use(async () => {
-        const prepared = await prepareHdmiSource(authorisedAudio(input));
+        const prepared = await prepareHdmiSource(source);
         audioCache.protect("prepared-direct", [prepared.path, ...(prepared.analysisPath ? [prepared.analysisPath] : [])]);
         return { ok: true, codec: prepared.codec };
       });

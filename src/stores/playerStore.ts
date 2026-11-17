@@ -4,6 +4,7 @@ import { isVideoFile, isVideoTrack } from "../utils/videoTrack";
 import { parseBlob } from "music-metadata";
 import { mergeScannedLibrary, sanitizeLibraryFolders } from "../utils/libraryCoverMerge";
 import { refreshLibraryThumbnails } from "../utils/libraryThumbnailRefresh";
+import { SOURCE_MISSING, relocateMissingTrack } from "../utils/relocateTrack";
 import type { PageId, RepeatMode, Track, VisualizerMode, VisualizerSettings } from "../types/audio";
 import { DEFAULT_VISUALIZER_MODE, normalizeVisualizerMode } from "../utils/visualizerMode";
 import type { LibraryDerivedIndexSnapshot } from "../library/LibraryQueryService";
@@ -167,7 +168,11 @@ interface PlayerState {
   importLibraryFolder: () => Promise<void>;
   removeLibraryFolder: (folder: string) => Promise<void>;
   rescanLibrary: () => Promise<void>;
-  playTrack: (index: number, options?: { navigateToNowPlaying?: boolean }) => Promise<void>;
+  /**
+   * Plays a queue entry. `skipMissing` lets automatic advancement move past
+   * that many entries whose files are gone instead of stopping on the first.
+   */
+  playTrack: (index: number, options?: { navigateToNowPlaying?: boolean; skipMissing?: number }) => Promise<void>;
   cancelPendingPlay: () => void;
   hasPendingPlay: () => boolean;
   enqueueLibraryTrack: (id: string, playNow?: boolean) => Promise<void>;
@@ -667,11 +672,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       if (track.sourcePath && !isVideoTrack(track) && !get().uiSettings.hdmiDirectEnabled) {
         if (/\.(ape|dsf)$/i.test(track.sourcePath)) set({ libraryError: "正在准备 HiFi 音源…" });
-        const prepared = await window.desktop?.library.prepare(track.sourcePath);
+        let prepared = await window.desktop?.library.prepare(track.sourcePath);
         if (!requestIsCurrent()) return;
+        if (prepared?.code === SOURCE_MISSING) {
+          // The file moved (a tagging tool reorganised the folders, say): the
+          // rescanned library knows where. The entry keeps its id, so the
+          // queue position and the current index stay as they are.
+          const moved = relocateMissingTrack(track, get().libraryTracks);
+          if (moved?.sourcePath && !isFolderLocked(moved.sourcePath)) {
+            prepared = await window.desktop?.library.prepare(moved.sourcePath);
+            if (!requestIsCurrent()) return;
+            if (prepared?.ok) set(state => ({ tracks: state.tracks.map(item => item.id === track.id ? { ...moved, id: track.id } : item) }));
+          }
+          if (!prepared?.ok) {
+            set(state => ({
+              tracks: state.tracks.map(item => item.id === track.id ? { ...item, missing: true } : item),
+              libraryError: `${prepared?.error || "找不到音频文件。"}重新扫描所在文件夹后，可从媒体中心再次加入。`
+            }));
+            const remaining = options?.skipMissing ?? 0;
+            const count = get().tracks.length;
+            if (remaining > 0 && count > 1) {
+              pendingPlayTrackId = "";
+              void get().playTrack((index + 1) % count, { ...options, skipMissing: Math.min(remaining, count) - 1 });
+            }
+            return;
+          }
+        }
         if (!prepared?.ok || !prepared.url) { set({ libraryError: prepared?.error || "HiFi 音源解码失败" }); return; }
+        const ready = prepared;
         set(state => {
-          const tracks = state.tracks.map(item => item.id === track.id ? { ...item, url: prepared.url!, nativePath: prepared.path } : item);
+          const tracks = state.tracks.map(item => item.id === track.id ? { ...item, url: ready.url!, nativePath: ready.path, missing: undefined } : item);
           return { tracks, libraryError: "" };
         });
       }

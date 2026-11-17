@@ -25,10 +25,10 @@ export const PlaylistTable = memo(function PlaylistTable() {
         const index = virtual.offset + visibleIndex;
         const favoriteKey = favoriteTrackKey(track);
         const favorite = Boolean(favoriteKey && favorites.has(favoriteKey));
-        return <div className={`table-row ${index === state.currentIndex ? "active" : ""}`} key={track.id}
+        return <div className={`table-row ${index === state.currentIndex ? "active" : ""} ${track.missing ? "missing" : ""}`} key={track.id} title={track.missing ? t("queue.missingHint") : undefined}
           style={{ position: "absolute", top: index * rowHeight, left: 0, right: 0, height: rowHeight, minHeight: 0 }}
           onDoubleClick={() => void state.playTrack(track.id)}>
-          <span>{String(index + 1).padStart(2, "0")}</span><div><b>{track.name}</b><small>{track.artist} · {track.album}</small></div>
+          <span>{String(index + 1).padStart(2, "0")}</span><div><b>{track.name}</b><small>{track.missing && <em className="missing-tag">{t("queue.missing")}</em>}{track.artist} · {track.album}</small></div>
           <span>{track.format}</span><span>{(track.size / 1024 / 1024).toFixed(1)} MB</span>
           <div className="playlist-row-actions">{favoriteKey && <button className={favorite ? "favorite" : ""} type="button" aria-label={t(favorite ? "library.unfavorite" : "library.favorite")} title={t(favorite ? "library.unfavorite" : "library.favorite")} onClick={event => { event.stopPropagation(); state.toggleFavoriteTrack(track); }} onDoubleClick={event => event.stopPropagation()}><Heart fill={favorite ? "currentColor" : "none"} /></button>}<button type="button" aria-label={t("library.removeTrack")} title={t("library.removeTrack")} onClick={event => { event.stopPropagation(); state.removeTrack(track.id); }} onDoubleClick={event => event.stopPropagation()}><Trash2 /></button></div>
         </div>;

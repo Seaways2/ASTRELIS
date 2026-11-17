@@ -457,7 +457,7 @@ export default function App() {
   const nextLocal = useCallback(() => {
     const latest = usePlayerStore.getState();
     const index = nextQueueIndex(latest.tracks.length, latest.currentIndex, latest.shuffle);
-    if (index >= 0) void latest.playTrack(index, { navigateToNowPlaying: false });
+    if (index >= 0) void latest.playTrack(index, { navigateToNowPlaying: false, skipMissing: latest.tracks.length });
   }, []);
 
   const handleLocalEnded = useCallback((expectedToken?: string) => {
@@ -479,7 +479,7 @@ export default function App() {
       const index = nextQueueIndexAfterEnd(latest.tracks.length, latest.currentIndex, latest.shuffle, latest.repeat);
       if (index >= 0) {
         completedLocalPlaybackToken.current = token;
-        void latest.playTrack(index, { navigateToNowPlaying: false });
+        void latest.playTrack(index, { navigateToNowPlaying: false, skipMissing: latest.tracks.length });
       } else {
         latest.setPlaying(false);
       }

@@ -10,6 +10,7 @@ import { parseAbsolutePath, parseCommandMeta, parseLegacyMutation, parsePathList
 import { sameCanonicalPath, type LocalMediaAccessPolicy } from "../security/ElectronSecurity";
 import { AUDIO_EXTENSIONS, externalAudioPaths } from "../externalOpenPaths";
 import { cachedArtworkUrl, hydrateLibraryTracks, mediaUrl } from "../mediaUrls";
+import { missingSourceResult, sourceIsMissing } from "../library/media/sourceAvailability";
 import type { FolderVisibility } from "../FolderVisibility";
 import type { LibraryDerivedIndexCache } from "../library/derived/LibraryDerivedIndexCache";
 import type { LibraryService } from "../library/LibraryService";
@@ -304,8 +305,11 @@ export function registerLibraryIpc({
   });
   ipcMain.handle("library:prepare", async (_, input: unknown) => {
     try {
+      const source = authorisedAudio(input);
+      // A moved or deleted file gets a plain answer the queue can act on.
+      if (await sourceIsMissing(source)) return missingSourceResult(source);
       return await audioCache.use(async () => {
-        const outputPath = await prepareLocalSource(authorisedAudio(input));
+        const outputPath = await prepareLocalSource(source);
         audioCache.protect("prepared", [outputPath]);
         return { ok: true, path: outputPath, url: mediaUrl(outputPath) };
       });

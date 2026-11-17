@@ -40,11 +40,11 @@ export const QueuePanel = memo(function QueuePanel({ onClose, video = false }: {
       <div ref={virtual.containerRef} style={{ position: "relative", height: virtual.totalHeight }} data-virtual-queue-count={virtual.limit}>
       {tracks.slice(virtual.offset, virtual.offset + virtual.limit).map((track, visibleIndex) => {
         const index = virtual.offset + visibleIndex;
-        return <div className={`queue-row ${index === currentIndex ? "active" : ""}`} key={track.id}
+        return <div className={`queue-row ${index === currentIndex ? "active" : ""} ${track.missing ? "missing" : ""}`} key={track.id} title={track.missing ? t("queue.missingHint") : undefined}
           style={{ position: "absolute", top: index * rowHeight, left: 0, right: 0, height: rowHeight, minHeight: 0 }}
           onDoubleClick={() => void usePlayerStore.getState().playQueuedTrack(track.id)}>
         <span className="track-number">{String(index + 1).padStart(2, "0")}</span>
-        <div><QueueTitle text={track.name} /><small>{tm(track.artist)} · {track.format}</small></div>
+        <div><QueueTitle text={track.name} /><small>{track.missing && <em className="missing-tag">{t("queue.missing")}</em>}{tm(track.artist)} · {track.format}</small></div>
         <button onDoubleClick={event => event.stopPropagation()} onClick={() => removeTrack(track.id)} title={t("queue.remove")}><Trash2 size={15} /></button>
       </div>;})}
       </div>

@@ -238,7 +238,7 @@ test("the page sends the pointer to the scene only when interaction is on", () =
 
 test("pointer interaction is on by default, survives upgrades as a boolean and has copy in every language", () => {
   const store = read("src/stores/playerStore.ts");
-  assert.match(store, /pointerInteraction: true\n\};/);
+  assert.match(store, /pointerInteraction: true,\n  flashStrength: 1,/);
   assert.match(store, /if \(typeof stored\.pointerInteraction !== "boolean"\) stored\.pointerInteraction = defaultVisualizerSettings\.pointerInteraction;/);
   const copy = read("src/i18n/index.ts");
   for (const key of ["visual.pointer", "visual.pointerHint"]) assert.equal(copy.split(`"${key}"`).length - 1, 3, key);

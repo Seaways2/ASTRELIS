@@ -41,8 +41,17 @@ export const defaultVisualizerSettings: VisualizerSettings = {
   asymmetry: .55,
   impulsePropagationSpeed: 1,
   bloomThreshold: .68,
-  pointerInteraction: true
+  pointerInteraction: true,
+  flashStrength: 1,
+  glintAmount: 1,
+  accentShare: .65,
+  pointerStrength: 1
 };
+
+/** Ranges of the tuning sliders; a stored value outside them falls back to the default. */
+export const VISUAL_TUNING_RANGES = {
+  flashStrength: [0, 2], glintAmount: [0, 2], accentShare: [.3, .95], pointerStrength: [.25, 2]
+} as const;
 
 const storedVisualizerSettings = (() => {
   try {
@@ -68,6 +77,10 @@ const storedVisualizerSettings = (() => {
       }
     }
     if (typeof stored.pointerInteraction !== "boolean") stored.pointerInteraction = defaultVisualizerSettings.pointerInteraction;
+    for (const [key, [minimum, maximum]] of Object.entries(VISUAL_TUNING_RANGES) as Array<[keyof typeof VISUAL_TUNING_RANGES, readonly [number, number]]>) {
+      const value = Number(stored[key]);
+      stored[key] = Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, value)) : defaultVisualizerSettings[key];
+    }
     const storedDecaySpeed = Number(stored.decaySpeed);
     stored.decaySpeed = Number.isFinite(storedDecaySpeed)
       ? Math.min(1, Math.max(.05, storedDecaySpeed))

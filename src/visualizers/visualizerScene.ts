@@ -99,6 +99,12 @@ export function createVisualizerScene(
     width: 1, height: 1, ratio: 1, left: 0, top: 0, cssWidth: 1, cssHeight: 1, viewportWidth: 1, viewportHeight: 1
   };
   const size = { width: 1, height: 1 };
+  /** A tuning-panel value, or its default when missing or invalid; clamped to the slider's range. */
+  const tuning = (value: number | undefined, fallback: number, minimum: number, maximum: number) =>
+    Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, value as number)) : fallback;
+  const flashGain = tuning(settings.flashStrength, 1, 0, 2);
+  const accentShare = tuning(settings.accentShare, .65, .3, .95);
+  const pointerGain = tuning(settings.pointerStrength, 1, .25, 2);
   const accentHex = accent.replace("#", "");
   const expandedAccent = accentHex.length === 3
     ? accentHex.split("").map(value => value + value).join("")
@@ -254,7 +260,11 @@ export function createVisualizerScene(
       if (mode === "pulse") {
         const radius = Math.hypot(star.x * size.width * .46, star.y * size.height * .66) / warmReach;
         tint = radius > .45 && jewelRoll < .02 ? "jewel" : pickGalaxyTint(radius, tintRoll);
-      } else tint = tintRoll < .02 ? "jewel" : tintRoll < .13 ? "warm" : tintRoll < .35 ? "ice" : "accent";
+      } else {
+        // The tuning panel sets the accent's share; the rest keeps warm to blue-white at 1:2.
+        const others = 1 - .02 - accentShare;
+        tint = tintRoll < .02 ? "jewel" : tintRoll < .02 + others / 3 ? "warm" : tintRoll < .02 + others ? "ice" : "accent";
+      }
       fieldTintGroups[starTints.indexOf(tint)].stars.push(star);
     });
   };
@@ -467,8 +477,10 @@ export function createVisualizerScene(
   };
 
   // Four-point glints on the brightest stars of the moment: the galaxy's arms
-  // carry the most, the starfield and black hole somewhat fewer.
-  const glintLimit = settings.lowPerformance ? 0 : mode === "waveform" ? 14 : mode === "particles" ? 10 : 8;
+  // carry the most, the starfield and black hole somewhat fewer. The tuning
+  // panel scales the count.
+  const glintLimit = settings.lowPerformance ? 0
+    : Math.round((mode === "waveform" ? 14 : mode === "particles" ? 10 : 8) * tuning(settings.glintAmount, 1, 0, 2));
   const glintColors = { ice: rgba(palette.ice, 1), warm: rgba(palette.warm, 1) };
   /**
    * Keeps the strongest glints, not the first found: filling the slots in
@@ -564,7 +576,7 @@ export function createVisualizerScene(
       // Straight from the beat envelope: lit on the kick, dark again before
       // the next one. A second smoothing stage here used to lag the kick by
       // ~200 ms and never let the scene go dark at dance tempos.
-      const galaxySceneFlash = music.beat * .6;
+      const galaxySceneFlash = music.beat * .6 * flashGain;
       const targetRotationVelocity = .055 * settings.animationSpeed * (1 + galaxyLow * .18 + galaxySceneFlash * .43);
       galaxyRotationVelocity += (targetRotationVelocity - galaxyRotationVelocity)
         * Math.min(1, deltaSeconds * (2.2 + (1 - smoothing) * 3.8));
@@ -603,9 +615,9 @@ export function createVisualizerScene(
       const waveSpeed = scale * .5;
       const waveWidth = scale * .06;
       /** How far the wave pushes a star outwards. */
-      const wavePush = scale * .014;
+      const wavePush = scale * .014 * pointerGain;
       /** How far the ripple raises the light ahead of its front and lowers it behind (1 ± this at most). */
-      const WAVE_SHADE = .7;
+      const WAVE_SHADE = .7 * Math.min(1.4, pointerGain);
       /**
        * Calls `each` for every wave whose front passes (x, y): its push there,
        * and its swell, which is how much the push squeezes the stars (positive
@@ -631,7 +643,7 @@ export function createVisualizerScene(
         return waveShadeOf(swell);
       };
       const wellRadius = scale * .2;
-      const wellStrength = scale * .04 * pointerPresence * (1 + pointerHold * .6);
+      const wellStrength = scale * .04 * pointerGain * pointerPresence * (1 + pointerHold * .6);
       const pullEase = 1 - Math.exp(-deltaSeconds / .22);
       const pullActive = wellStrength > .05 || galaxyPressWaves.length > 0;
       /** Eases a body's pull towards the pointer and out along a wave; returns the well's added light. */
@@ -951,7 +963,7 @@ export function createVisualizerScene(
         const travelingWave = pulseShockwaves.find((wave) => wave.progress < 1);
         if (travelingWave) travelingWave.strength = Math.max(travelingWave.strength, beatStrength);
       }
-      const pulseBeat = music.beat * .72;
+      const pulseBeat = music.beat * .72 * flashGain;
       const envelopeSpeed = music.low > displayedPulseEnergy ? 4.2 : 1.7;
       displayedPulseEnergy += (music.low - displayedPulseEnergy) * Math.min(1, deltaSeconds * envelopeSpeed);
       pulseMidLevel += (music.mid - pulseMidLevel) * Math.min(1, deltaSeconds * (music.mid > pulseMidLevel ? 4.5 : 2));
@@ -998,7 +1010,7 @@ export function createVisualizerScene(
         if (pulseInfall.length > 144) pulseInfall.splice(0, pulseInfall.length - 144);
       }
       const pointerLensReach = scale * .26;
-      const pointerLensPush = scale * .07;
+      const pointerLensPush = scale * .07 * pointerGain;
       followPulseLens(deltaSeconds);
       const pointerLensX = pulseLens.x * width;
       const pointerLensY = pulseLens.y * height;
@@ -1348,15 +1360,15 @@ export function createVisualizerScene(
       // Pointer: the flight turns towards the pointer (the vanishing point
       // follows it and the stars sweep the other way), and a held press warps.
       const steerEase = 1 - Math.exp(-deltaSeconds / .45);
-      starfieldSteerX += ((pointer.x - .5) * pointerPresence - starfieldSteerX) * steerEase;
-      starfieldSteerY += ((pointer.y - .5) * pointerPresence - starfieldSteerY) * steerEase;
+      starfieldSteerX += ((pointer.x - .5) * pointerPresence * Math.min(1.5, pointerGain) - starfieldSteerX) * steerEase;
+      starfieldSteerY += ((pointer.y - .5) * pointerPresence * Math.min(1.5, pointerGain) - starfieldSteerY) * steerEase;
       const warp = pointerHold;
       const cx = width / 2 + starfieldSteerX * width * .5, cy = height / 2 + starfieldSteerY * height * .5;
       const perspective = Math.min(width, height) * .64;
       // The same kick detector as the galaxy and black hole. The old one
       // averaged 94–1300 Hz, so it missed kicks and flashed on vocals.
       music.update(data, audio.meters().sampleRate, now / 1000, deltaSeconds);
-      const starBeatFlash = music.beat * .62;
+      const starBeatFlash = music.beat * .62 * flashGain;
       // Flight speed has inertia: it picks up over ~half a second and coasts
       // down over a second, instead of jerking with every change in level.
       const targetPace = .13 + music.level * .34 + starBeatFlash * .05;

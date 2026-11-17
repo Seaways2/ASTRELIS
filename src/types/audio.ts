@@ -43,6 +43,14 @@ export interface VisualizerSettings {
   bloomThreshold: number;
   /** Hover and press effects on the galaxy, starfield and black hole. */
   pointerInteraction: boolean;
+  /** Beat flash of the galaxy, starfield and black hole (×, 0–2). */
+  flashStrength: number;
+  /** How many four-point glints the particle scenes may show (×, 0–2). */
+  glintAmount: number;
+  /** Share of the starfield's stars in the theme colour (0.3–0.95). */
+  accentShare: number;
+  /** Strength of the pointer effects (×, 0.25–2). */
+  pointerStrength: number;
 }
 
 // Derived for rendering only; resource policy is owned by the system settings.

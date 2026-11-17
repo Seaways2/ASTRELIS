@@ -84,7 +84,7 @@ test("Galaxy Spiral borrows independently rotating elliptical motes from Black H
 test("Galaxy Spiral shares one beat flash across dust, stars, motes, and core", () => {
   // Straight from the shared beat envelope: a second smoothing stage lagged
   // the kick by ~200 ms and kept the scene lit between beats.
-  assert.match(canvas, /const galaxySceneFlash = music\.beat \* [\d.]+;/);
+  assert.match(canvas, /const galaxySceneFlash = music\.beat \* [\d.]+ \* flashGain;/);
   // Flash amounts and fades are tuned against behaviour in visualizer-dynamics.test.cjs, not pinned here.
   assert.doesNotMatch(canvas, /galaxySceneGlow|galaxyBeatTarget/);
 });
@@ -142,7 +142,7 @@ test("Galaxy Spiral adds crisp jewel stars, coloured stars, glints and core diff
   assert.match(canvas, /layerContext\.globalAlpha = \(jewel \? \.9 : brightNode \? \.34/);
   // Live stars are drawn per colour group, four fill-style changes per frame.
   assert.match(canvas, /galaxyLiveStarGroups\.forEach\(group => \{ context\.fillStyle = group\.color;/);
-  assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0 : mode === "waveform" \? 14 :/);
+  assert.match(canvas, /const glintLimit = settings\.lowPerformance \? 0\s*: Math\.round\(\(mode === "waveform" \? 14 :/);
   // The strongest glints win, and each fades in from the threshold.
   assert.match(canvas, /if \(glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0\)/);
   assert.match(canvas, /glints\.sort\(\(a, b\) => b\.strength - a\.strength\);\s*glints\.length = glintLimit;/);

@@ -21,7 +21,7 @@ test("Starfield Motion maps the shared effect controls to star count and size", 
 
 test("Starfield Motion gives every star a shared low-frequency beat flash", () => {
   const canvas = read("src/visualizers/visualizerScene.ts");
-  assert.match(canvas, /const starBeatFlash = music\.beat \* \.62;/);
+  assert.match(canvas, /const starBeatFlash = music\.beat \* \.62 \* flashGain;/);
   assert.match(canvas, /musicalFlash = Math\.min\(1\.4,[\s\S]*starBeatFlash \* \(\.4 \+ particle\.response \* \.22\)/);
 });
 

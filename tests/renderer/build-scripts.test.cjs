@@ -16,7 +16,7 @@ test("the native build re-runs itself from a mapped drive under a non-ASCII path
   assert.match(build, /"scripts\\build-native\.ps1"\), "-Configuration", \$Configuration\)/);
   // The mapping is always removed, and the build's exit code is passed on.
   assert.match(build, /\} finally \{\s*& subst "\$\(\$drive\):" \/d \| Out-Null\s*\}\s*exit \$exitCode/);
-  assert.doesNotMatch(build, /[\u0000-\u0008]/, "no stray control characters");
+  assert.ok(![...build].some(character => character.charCodeAt(0) < 9), "no stray control characters");
 });
 
 test("the release and native builds share one drive-letter helper", () => {

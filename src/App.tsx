@@ -40,7 +40,7 @@ import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
 import { resolveVisualizerSettings } from "./utils/visualizerSettings";
 import { useI18n } from "./i18n";
 import type { PageId } from "./types/audio";
-import { contrastPeakColor } from "./utils/color";
+import { contrastPeakColor, readableAccent } from "./utils/color";
 import { amplitudeToFaderPercent } from "./utils/volumeFaderScale";
 import { nativeStatusCompletesTrack, nextQueueIndex, nextQueueIndexAfterEnd, PlaybackEndLatch } from "./utils/playbackEndLatch";
 import {
@@ -91,6 +91,11 @@ export default function App() {
     const channel = (dim: number, bright: number) => Math.round(dim + (bright - dim) * mix);
     return `rgb(${channel(178, 239)} ${channel(198, 247)} ${channel(202, 248)})`;
   }, [state.uiSettings.windowOpacity]);
+  // The light theme reads the accent as text and icons on a pale window: a pale
+  // accent is deepened just enough to be legible there. Visualizers and the
+  // swatches keep the colour as chosen.
+  const interfaceAccent = useMemo(() => lightTheme ? readableAccent(state.accent, lightSurface) : state.accent,
+    [lightTheme, state.accent, lightSurface]);
   const current = state.tracks[state.currentIndex];
   const onlinePlaybackSession = Boolean(state.onlineMedia && (state.onlineMedia.playing
     || (!state.playing && (state.activePage === "online" || audioEngine.analysisMode === "online"))));
@@ -1192,7 +1197,8 @@ export default function App() {
   return <main
     className={`app-shell ${videoSidebarMode ? `video-layout ${queueOpen ? "video-queue-open" : ""} ${videoVolumeOpen ? "video-volume-open" : ""}` : ""} ${visualsVisible ? "" : "visuals-suspended"} ${lightTheme ? "theme-light" : "theme-dark"} ${maximized ? "maximized" : ""} ${transientPopoverOpen ? "popover-open" : ""} ${dragging ? "dragging" : ""} ${state.obsMode ? "obs-mode" : ""} ${!state.obsMode && !lowPerformanceMode && state.uiSettings.glassMaterial !== "none" ? (!customBackgroundActive ? "native-glass" : "css-glass") : "glass-off"} ${immersiveMode ? "immersive-mode" : ""} ${compactMode ? "compact-mode" : ""} ${customBackgroundActive ? "has-custom-background" : ""} ${motionEnabled ? "" : "animations-off"} ${lowPerformanceMode ? "low-performance-mode" : ""} ${gpuEffectsActive ? `gpu-effects-on gpu-effects-${gpuEffectsQuality}` : ""}`}
     style={{
-      "--accent": state.accent,
+      "--accent": interfaceAccent,
+      "--accent-raw": state.accent,
       "--meter-peak": contrastPeakColor(state.accent),
       "--window-opacity": lowPerformanceMode ? 1 : state.uiSettings.windowOpacity,
       "--custom-background-brightness": 1,
@@ -1237,7 +1243,7 @@ export default function App() {
     }}
   >
     <AmbientBackground enabled={!state.obsMode && !lowPerformanceMode}
-      accent={state.accent} light={lightTheme} lightSurface={lightSurface}
+      accent={interfaceAccent} light={lightTheme} lightSurface={lightSurface}
       opacity={state.uiSettings.windowOpacity} customBackground={customBackgroundActive}
       gpu={gpuEffectsActive} quality={gpuEffectsQuality} />
     {customBackgroundActive && <BackgroundSlideshow url={state.uiSettings.customBackgroundUrl} />}
@@ -1434,7 +1440,7 @@ export default function App() {
         <div className="transport-progress">
           <WithDisplayTime online={onlineSession}>{displayTime => <>
           <time>{formatTime(displayTime)}</time>
-          <div className="timeline transport-timeline"><WaveformTimeline videoHandle={videoActive && !onlineSession} url={onlineSession || videoActive ? undefined : current?.url} sourcePath={onlineSession || videoActive ? undefined : current?.sourcePath || current?.nativePath} liveKey={onlineSession ? state.onlineMedia?.trackId || undefined : undefined} readOnly={onlineSession} livePlaying={onlinePlaying} currentTime={displayTime} duration={displayDuration} accent={state.accent} lowPerformance={lowPerformanceMode} onSeek={seek} /></div>
+          <div className="timeline transport-timeline"><WaveformTimeline videoHandle={videoActive && !onlineSession} url={onlineSession || videoActive ? undefined : current?.url} sourcePath={onlineSession || videoActive ? undefined : current?.sourcePath || current?.nativePath} liveKey={onlineSession ? state.onlineMedia?.trackId || undefined : undefined} readOnly={onlineSession} livePlaying={onlinePlaying} currentTime={displayTime} duration={displayDuration} accent={interfaceAccent} lowPerformance={lowPerformanceMode} onSeek={seek} /></div>
           </>}</WithDisplayTime>
           <time>{onlineSession && displayDuration <= 0 ? "--:--" : formatTime(displayDuration)}</time>
           {videoSidebarMode || videoActive ? null : (compactMode && !hdmiDirect) ? <WithStoreVolume>{(volume, muted) => <label className="compact-volume" title={`${t("channel.mainVolume")} ${muted ? 0 : Math.round(volume * 100)}%`}>
@@ -1455,7 +1461,7 @@ export default function App() {
             volume={volume}
             muted={muted}
             restoreVolume={lastAudibleVolume.current}
-            accent={state.accent}
+            accent={interfaceAccent}
             glowStrength={effectiveGlowStrength}
             windowOpacity={lowPerformanceMode ? 1 : state.uiSettings.windowOpacity}
             lightSurface={lightSurface}

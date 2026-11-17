@@ -551,3 +551,15 @@
 .app-shell :is(.table-row, .queue-row).missing:hover { opacity: .8; }
 .app-shell .missing-tag { display: inline-block; margin-right: 6px; padding: 0 5px; border: 1px solid color-mix(in srgb, #e18072 55%, transparent); border-radius: 3px; color: #e18072; font-style: normal; font-size: .9em; line-height: 1.5; }
 .app-shell.theme-light .missing-tag { color: #b5473a; border-color: color-mix(in srgb, #b5473a 50%, transparent); }
+
+/* Light theme: the visualizers add light, which cannot show on a pale window.
+   Their stage becomes a deep-space screen set into the light interface, so the
+   galaxy, starfield and black hole look as they do in the dark theme. A custom
+   background keeps showing through, OBS keeps its own transparent stage, and
+   immersive mode keeps the light theme's own look. */
+.app-shell.theme-light:not(.has-custom-background):not(.obs-mode):not(.immersive-mode) :is(.visual-area:not(.overview-active), .visual-module) {
+  background: radial-gradient(125% 100% at 50% 42%, #17303a 0%, #0d1d25 55%, #08141a 100%);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05), 0 14px 34px -22px rgba(16, 39, 46, .6);
+}
+.app-shell.theme-light:not(.has-custom-background):not(.obs-mode):not(.immersive-mode) .visual-area:not(.overview-active)::before { opacity: 0; }

@@ -145,26 +145,30 @@ test("galaxy: hovering gathers and lights the stars near the pointer, and lets g
 
 test("galaxy: a press sends a density wave outwards at its own speed", () => {
   const [px, py] = [WIDTH * .3, HEIGHT * .5];
-  // 0.5 s after the press the front is half a scale-unit per second away.
+  // 0.5 s after the press the front is half a scale-unit per second away; the
+  // stars just ahead of it are the brightest.
   const front = SCALE * .5 * .5;
-  const ring = run => { const probe = lightNear(px, py, front - SCALE * .05, front + SCALE * .05, within(1.47, 1.53)); simulate("waveform", { ...run, observe: probe.observe }); return probe.total.value; };
-  const base = ring({ seconds: 1.6, pointerAt: hover(.3, .5, .9) });
-  const pressed = ring({ seconds: 1.6, pointerAt: hover(.3, .5, .9, Infinity, 1, 1.05) });
-  assert.ok(pressed > base * 1.2, "the stars on the wave front should light up");
+  const ahead = run => { const probe = lightNear(px, py, front, front + SCALE * .06, within(1.47, 1.53)); simulate("waveform", { ...run, observe: probe.observe }); return probe.total.value; };
+  const base = ahead({ seconds: 1.6, pointerAt: hover(.3, .5, .9) });
+  const pressed = ahead({ seconds: 1.6, pointerAt: hover(.3, .5, .9, Infinity, 1, 1.05) });
+  assert.ok(pressed > base * 1.2, `the stars on the wave front should light up (×${(pressed / base).toFixed(2)})`);
 });
 
-test("galaxy: the press wave ripples the stars outwards without drawing an edge", () => {
+test("galaxy: the press wave ripples the stars and their light, without drawing an edge", () => {
   const [px, py] = [WIDTH * .3, HEIGHT * .5];
   const front = SCALE * .5 * .5;
   const band = (inner, outer, run) => { const probe = lightNear(px, py, front + SCALE * inner, front + SCALE * outer, within(1.47, 1.53)); simulate("waveform", { ...run, observe: probe.observe }); return probe.total.value; };
   const base = { seconds: 1.6, pointerAt: hover(.3, .5, .9) };
   const pressed = { seconds: 1.6, pointerAt: hover(.3, .5, .9, Infinity, 1, 1.05) };
-  // Only a soft lift on the front: no bright ring.
-  const lift = band(-.05, .05, pressed) / band(-.05, .05, base);
-  assert.ok(lift < 1.6, `the wave front should stay soft (light ×${lift.toFixed(2)})`);
-  // The stars it passes are pushed outwards: light moves from behind the front to ahead of it.
-  const shift = (band(.0, .06, pressed) / band(.0, .06, base)) / (band(-.06, 0, pressed) / band(-.06, 0, base));
-  assert.ok(shift > 1.03, `the wave should push the stars outwards (ahead/behind ×${shift.toFixed(3)})`);
+  // The light rises where the ripple bunches the stars, just ahead of its front,
+  // and falls where it thins them, just behind: a bright band trailed by a dim one.
+  const ahead = band(0, .06, pressed) / band(0, .06, base);
+  const behind = band(-.06, 0, pressed) / band(-.06, 0, base);
+  assert.ok(ahead > 1.2 && ahead < 2.2, `stars ahead of the front should brighten softly (×${ahead.toFixed(2)})`);
+  assert.ok(behind < .85, `stars behind the front should dim (×${behind.toFixed(2)})`);
+  // Away from the band the field is untouched.
+  const beyond = band(.2, .3, pressed) / band(.2, .3, base);
+  assert.ok(Math.abs(beyond - 1) < .08, `the ripple should not reach past its band (×${beyond.toFixed(3)})`);
   const scene = read("src/visualizers/visualizerScene.ts");
   assert.doesNotMatch(scene, /context\.arc\(wave\.x, wave\.y/, "the wave front is not drawn as a ring");
   assert.match(scene, /const waveWidth = scale \* \.06;/);

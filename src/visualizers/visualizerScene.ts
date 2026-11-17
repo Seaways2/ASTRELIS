@@ -589,8 +589,9 @@ export function createVisualizerScene(
       // Pointer: a gravity well bends the live stars and motes towards it (the
       // cached arm textures stay put), and each press sends a density wave
       // out across the field. The wave is felt rather than drawn: a broad,
-      // soft band nudges the stars it passes outwards and barely lights them,
-      // so the field ripples without a visible edge.
+      // soft band nudges the stars it passes outwards, so the field ripples
+      // without a visible edge. Their light follows the ripple: stars bunch up
+      // and brighten just ahead of the front, and thin out and dim behind it.
       for (const press of presses) {
         galaxyPressWaves.push({ x: press.x * width, y: press.y * height, age: 0 });
         if (galaxyPressWaves.length > 4) galaxyPressWaves.shift();
@@ -601,25 +602,39 @@ export function createVisualizerScene(
       }
       const waveSpeed = scale * .5;
       const waveWidth = scale * .06;
-      /** How far the wave pushes a star outwards, and how much light it adds: a step below the well. */
+      /** How far the wave pushes a star outwards. */
       const wavePush = scale * .014;
-      const waveLight = .25;
-      /** Calls `each` for every wave whose front passes (x, y), with its strength there. */
-      const pressWaveBands = (x: number, y: number, each: (band: number, dx: number, dy: number, distance: number) => void) => {
+      /** How far the ripple raises the light ahead of its front and lowers it behind (1 ± this at most). */
+      const WAVE_SHADE = .7;
+      /**
+       * Calls `each` for every wave whose front passes (x, y): its push there,
+       * and its swell, which is how much the push squeezes the stars (positive
+       * just ahead of the front, where they bunch up; negative behind it).
+       */
+      const pressWaveBands = (x: number, y: number, each: (band: number, dx: number, dy: number, distance: number, swell: number) => void) => {
         for (const wave of galaxyPressWaves) {
           const dx = x - wave.x, dy = y - wave.y;
           const distance = Math.hypot(dx, dy) || 1;
           const offset = (distance - wave.age * waveSpeed) / waveWidth;
           if (offset * offset >= 9) continue;
           const fade = Math.min(1, wave.age / .08) * Math.pow(1 - wave.age / GALAXY_WAVE_SECONDS, 1.5);
-          each(Math.exp(-offset * offset) * fade, dx, dy, distance);
+          const band = Math.exp(-offset * offset) * fade;
+          each(band, dx, dy, distance, 2 * offset * band);
         }
+      };
+      const waveShadeOf = (swell: number) => Math.max(.3, Math.min(1.8, 1 + swell * WAVE_SHADE));
+      /** The ripple's light at (x, y) as a factor: above 1 where it bunches the stars, below where it thins them. */
+      const pressWaveShade = (x: number, y: number) => {
+        if (!galaxyPressWaves.length) return 1;
+        let swell = 0;
+        pressWaveBands(x, y, (band, dx, dy, distance, waveSwell) => { swell += waveSwell; });
+        return waveShadeOf(swell);
       };
       const wellRadius = scale * .2;
       const wellStrength = scale * .04 * pointerPresence * (1 + pointerHold * .6);
       const pullEase = 1 - Math.exp(-deltaSeconds / .22);
       const pullActive = wellStrength > .05 || galaxyPressWaves.length > 0;
-      /** Eases a body's pull towards the pointer and out along a wave; returns its added light. */
+      /** Eases a body's pull towards the pointer and out along a wave; returns the well's added light. */
       const pointerPull = (body: { pullX: number; pullY: number }, x: number, y: number) => {
         if (!pullActive && body.pullX === 0 && body.pullY === 0) return 0;
         let targetX = 0, targetY = 0, lift = 0;
@@ -638,7 +653,6 @@ export function createVisualizerScene(
         pressWaveBands(x, y, (band, dx, dy, distance) => {
           targetX += dx / distance * band * wavePush;
           targetY += dy / distance * band * wavePush;
-          lift += band * waveLight;
         });
         body.pullX += (targetX - body.pullX) * pullEase;
         body.pullY += (targetY - body.pullY) * pullEase;
@@ -670,12 +684,13 @@ export function createVisualizerScene(
         }
         // The well bends the static field too (its presence is already eased),
         // and a press wave pushes it outwards as the band passes.
-        let wellX = 0, wellY = 0, wellLift = 0, waveLift = 0;
-        if (galaxyPressWaves.length) pressWaveBands(x, y, (band, dx, dy, distance) => {
+        let wellX = 0, wellY = 0, wellLift = 0, swell = 0;
+        if (galaxyPressWaves.length) pressWaveBands(x, y, (band, dx, dy, distance, waveSwell) => {
           wellX += dx / distance * band * wavePush;
           wellY += dy / distance * band * wavePush;
-          waveLift += band * waveLight;
+          swell += waveSwell;
         });
+        const shade = swell ? waveShadeOf(swell) : 1;
         if (wellStrength > .05) {
           const dx = pointerX - x, dy = pointerY - y;
           const distance = Math.hypot(dx, dy);
@@ -687,12 +702,11 @@ export function createVisualizerScene(
             wellLift = falloff * pointerPresence;
           }
         }
-        const lift = waveLift + wellLift;
-        context.globalAlpha = Math.min(.46,
+        context.globalAlpha = Math.min(.46 * shade,
           (.045 + depth * .075 + energy * star.response * .075 + sparkle * (.11 + galaxyHigh * .18) + backgroundBeatFlash * .62)
-          * barOpacity) + Math.min(.55, lift * .55) * barOpacity;
+          * barOpacity * shade) + Math.min(.55, wellLift * .55) * barOpacity;
         context.beginPath();
-        context.arc(x + wellX, y + wellY, backgroundStarRadius * (1 + lift * .6), 0, Math.PI * 2);
+        context.arc(x + wellX, y + wellY, backgroundStarRadius * (1 + wellLift * .6) * (1 + (shade - 1) * .35), 0, Math.PI * 2);
         context.fill();
       }); });
 
@@ -749,18 +763,19 @@ export function createVisualizerScene(
         const orbitX = cx + Math.cos(angle) * radius;
         const orbitY = cy + Math.sin(angle) * radius * .68;
         const pointerLift = pointerPull(star, orbitX, orbitY);
+        const shade = pressWaveShade(orbitX, orbitY);
         const x = orbitX + star.pullX;
         const y = orbitY + star.pullY;
         const energy = music.bin(star.frequency);
         const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * star.twinkleSpeed + star.phase)), 8);
         const sharedBeatFlash = galaxySceneFlash * (.4 + star.response * .22);
-        const starSize = Math.max(.48, (star.size + sparkle * .72 + sharedBeatFlash * .62) * ratio * effectSize) * (1 + pointerLift * .6);
+        const starSize = Math.max(.48, (star.size + sparkle * .72 + sharedBeatFlash * .62) * ratio * effectSize) * (1 + pointerLift * .6) * (1 + (shade - 1) * .35);
         if (galaxyGlow > 0 && (sparkle > .08 || sharedBeatFlash > .04)) {
           context.globalAlpha = Math.min(.2, (.018 + sparkle * .045 + sharedBeatFlash * .095) * galaxyGlow) * barOpacity;
           const haloSize = starSize * (1.8 + galaxyGlow * .32);
           context.fillRect(x - haloSize / 2, y - haloSize / 2, haloSize, haloSize);
         }
-        context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash + pointerLift * .5) * barOpacity * star.ridgeLift);
+        context.globalAlpha = Math.min(1, (.16 + star.response * .2 + energy * .22 + sparkle * (.24 + galaxyHigh * .42) + sharedBeatFlash + pointerLift * .5) * barOpacity * star.ridgeLift * shade);
         context.fillRect(x - starSize / 2, y - starSize / 2, starSize, starSize);
         const glintStrength = sparkle * (.55 + galaxyHigh * .6) + sharedBeatFlash * .5;
         if (glintStrength > GLINT_THRESHOLD && glintLimit && galaxyGlow > 0)
@@ -780,20 +795,21 @@ export function createVisualizerScene(
         const orbitX = cx + cos * orbit;
         const orbitY = cy + sin * orbit * (.46 + Math.abs(mote.tilt) * .34) + cos * orbit * mote.tilt * .12;
         const pointerLift = pointerPull(mote, orbitX, orbitY);
+        const shade = pressWaveShade(orbitX, orbitY);
         const x = orbitX + mote.pullX;
         const y = orbitY + mote.pullY;
         if (x < 0 || x > width || y < 0 || y > height) return;
         const energy = music.bin(mote.frequency);
         const sparkle = Math.pow(Math.max(0, Math.sin(twinkleTime * (1.5 + mote.response * 3.2) + mote.phase)), 9);
         const moteBeatFlash = galaxySceneFlash * (.4 + mote.response * .22);
-        const moteRadius = Math.max(.5, mote.size * ratio * (1.1 + sparkle * .78 + moteBeatFlash * .5) * effectSize) * (1 + pointerLift * .6);
+        const moteRadius = Math.max(.5, mote.size * ratio * (1.1 + sparkle * .78 + moteBeatFlash * .5) * effectSize) * (1 + pointerLift * .6) * (1 + (shade - 1) * .35);
         if (galaxyGlow > 0 && (sparkle > .06 || moteBeatFlash > .025)) {
           context.globalAlpha = Math.min(.25, (.02 + sparkle * .055 + moteBeatFlash * .15) * galaxyGlow) * barOpacity;
           context.beginPath();
           context.arc(x, y, moteRadius * (1.8 + galaxyGlow * .38), 0, Math.PI * 2);
           context.fill();
         }
-        context.globalAlpha = Math.min(1, (.17 + energy * mote.response * .34 + sparkle * (.3 + galaxyHigh * .46) + moteBeatFlash + pointerLift * .5) * barOpacity);
+        context.globalAlpha = Math.min(1, (.17 + energy * mote.response * .34 + sparkle * (.3 + galaxyHigh * .46) + moteBeatFlash + pointerLift * .5) * barOpacity * shade);
         context.beginPath();
         context.arc(x, y, moteRadius, 0, Math.PI * 2);
         context.fill();

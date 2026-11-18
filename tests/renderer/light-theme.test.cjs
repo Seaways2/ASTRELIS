@@ -50,10 +50,17 @@ test("the interface uses the readable accent only in the light theme; visualizer
   assert.match(app, /<VisualizerCanvas mode=\{state\.visualizer\} accent=\{state\.accent\}/);
 });
 
-test("in the light theme the visualizers play on a deep-space stage", () => {
+test("in the light theme the visualizers are drawn as ink, with no stage or edge", () => {
   const modules = read("src/styles/workspace-modules.css");
-  const rule = modules.match(/\.app-shell\.theme-light:not\(\.has-custom-background\):not\(\.obs-mode\):not\(\.immersive-mode\) :is\(\.visual-area:not\(\.overview-active\), \.visual-module\) \{([^}]*)\}/);
-  assert.ok(rule, "light-theme stage rule missing");
-  assert.match(rule[1], /background: radial-gradient\([^;]*#08141a 100%\);/);
-  assert.match(rule[1], /border-radius: 12px;/);
+  assert.match(modules, /\.app-shell\.theme-light:not\(\.has-custom-background\):not\(\.obs-mode\) \.visual-area \.visualizer-canvas \{\s*filter: invert\(1\) hue-rotate\(180deg\) saturate\(1\.45\) contrast\(\.86\);\s*\}/);
+  // The dark stage that read as an old TV set is gone.
+  assert.doesNotMatch(modules, /#08141a|deep-space screen/);
+  // The page tells the scene, which paints the black hole's silhouette to show dark after inversion.
+  const app = read("src/App.tsx");
+  assert.match(app, /const visualizerInk = lightTheme && !customBackgroundActive && !state\.obsMode;/);
+  assert.match(app, /interactive=\{visualizerInteractive\} ink=\{visualizerInk\} \/>/);
+  const canvas = read("src/visualizers/VisualizerCanvas.tsx");
+  assert.match(canvas, /backgroundOpacity, interactive, ink,\s*settings:/);
+  assert.match(canvas, /playbackActive, visible, interactive, ink,/);
+  assert.match(read("src/visualizers/visualizerScene.ts"), /const shade = \(red: number, green: number, blue: number, alpha: number\) => options\.ink\s*\? `rgba\(\$\{255 - red\}/);
 });

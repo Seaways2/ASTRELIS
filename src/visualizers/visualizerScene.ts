@@ -24,6 +24,12 @@ export interface VisualizerSceneOptions {
   backgroundOpacity: number;
   /** Pointer interaction (see VisualizerPointer); off unless the page enables it. */
   interactive?: boolean;
+  /**
+   * The page shows the canvas inverted, as ink on a light page (the light
+   * theme). Light still adds up as usual; only what must stay dark, the black
+   * hole's silhouette, is painted in the colour that inverts back to dark.
+   */
+  ink?: boolean;
 }
 
 /**
@@ -1329,10 +1335,13 @@ export function createVisualizerScene(
 
       context.globalCompositeOperation = "source-over";
       const darkness = context.createRadialGradient(cx - coreRadius * .12, cy - coreRadius * .16, coreRadius * .06, cx, cy, coreRadius * 1.16);
-      darkness.addColorStop(0, "rgba(0,0,0,.94)");
-      darkness.addColorStop(.42, "rgba(0,2,3,.82)");
-      darkness.addColorStop(.72, "rgba(1,5,7,.46)");
-      darkness.addColorStop(1, "rgba(2,8,10,0)");
+      // As ink the page inverts the canvas: the silhouette is painted light so it shows dark.
+      const shade = (red: number, green: number, blue: number, alpha: number) => options.ink
+        ? `rgba(${255 - red},${255 - green},${255 - blue},${alpha})` : `rgba(${red},${green},${blue},${alpha})`;
+      darkness.addColorStop(0, shade(0, 0, 0, .94));
+      darkness.addColorStop(.42, shade(0, 2, 3, .82));
+      darkness.addColorStop(.72, shade(1, 5, 7, .46));
+      darkness.addColorStop(1, shade(2, 8, 10, 0));
       context.fillStyle = darkness;
       context.globalAlpha = pulseOpacity;
       context.beginPath();

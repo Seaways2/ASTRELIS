@@ -18,6 +18,8 @@ interface VisualizerCanvasProps {
   backgroundOpacity?: number;
   /** Hover and press effects (see VisualizerPointer); the page turns them off for ECO, OBS and reduced motion. */
   interactive?: boolean;
+  /** The page shows this canvas inverted, as ink (the light theme); see VisualizerSceneOptions.ink. */
+  ink?: boolean;
 }
 
 /** The scene itself lives in visualizerScene.ts and normally draws in a worker (see VisualizerHost). */
@@ -32,7 +34,8 @@ export function VisualizerCanvas({
   backgroundUrl,
   backgroundBrightness = 1,
   backgroundOpacity = 1,
-  interactive = false
+  interactive = false,
+  ink = false
 }: VisualizerCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   const host = useRef<VisualizerHost>();
@@ -66,14 +69,14 @@ export function VisualizerCanvas({
     const current = host.current;
     if (!current || !visible) return;
     current.configure({
-      mode, accent, glowStrength, playbackActive, backgroundBrightness, backgroundOpacity, interactive,
+      mode, accent, glowStrength, playbackActive, backgroundBrightness, backgroundOpacity, interactive, ink,
       settings: { smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance,
         flashStrength, glintAmount, accentShare, pointerStrength }
     });
     if (interactive) current.pointer({ ...pointerState.current, pressed: false });
     return () => current.stop();
   }, [
-    mode, accent, glowStrength, backgroundBrightness, backgroundOpacity, playbackActive, visible, interactive,
+    mode, accent, glowStrength, backgroundBrightness, backgroundOpacity, playbackActive, visible, interactive, ink,
     smoothing, sensitivity, barCount, barOpacity, lineWidth, animationSpeed, decaySpeed, peakHoldMs, lowPerformance,
     flashStrength, glintAmount, accentShare, pointerStrength, canvasGeneration
   ]);

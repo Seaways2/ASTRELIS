@@ -75,11 +75,12 @@
 .library-folder-entry .cover-tile > span { display: none; }
 .library-view-details .library-folder-badge { display: none; }
 
-/* Cover Flow overlaps cards: use a dense local glass sheet for readable labels. */
+/* Cover Flow overlaps cards: a dense sheet keeps labels readable. No backdrop
+   blur: the cards are near-opaque, and blurring behind seven overlapping 3D
+   cards (and their reflections) over the animated background made this the
+   only view that stuttered. */
 .app-shell .music-library .media-flow .media-flow-item .library-entry {
   background: linear-gradient(145deg, rgba(29, 47, 55, .94), rgba(10, 21, 27, .97));
-  -webkit-backdrop-filter: blur(18px) saturate(115%);
-  backdrop-filter: blur(18px) saturate(115%);
   border-color: rgba(155, 199, 212, .24);
   box-shadow: inset 0 1px 0 rgba(211, 240, 250, .08), 0 10px 28px rgba(0, 0, 0, .3);
 }
@@ -89,7 +90,6 @@
 .app-shell.theme-light .music-library .media-flow .media-flow-item .library-entry { background: linear-gradient(145deg, rgba(242, 248, 251, .95), rgba(219, 233, 239, .98)); }
 .app-shell.theme-light .media-flow .library-entry-title { color: #1b3339; }
 .app-shell.theme-light .media-flow .library-entry-primary { color: #46616c; }
-.app-shell.low-performance-mode .music-library .media-flow .media-flow-item .library-entry { -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 .library-artwork-trigger { display: grid; place-items: center; width: 32px; height: 30px; flex: 0 0 32px; border: 1px solid #84bdce55; border-radius: 5px; background: #142730; color: var(--accent); cursor: pointer; }
 .library-artwork-trigger svg { width: 16px; height: 16px; }
@@ -226,16 +226,21 @@
 .media-flow-item:not(.selected) .library-folder-badge,
 .media-flow-item:not(.selected) .library-entry-media > span { opacity:0; }
 .media-flow-item:not(.selected) .library-entry-title { opacity:.58; font-weight:500; }
-.media-flow-item:not(.selected) .library-entry-media { filter:brightness(.82) saturate(.9); }
+/* Dim side covers with a shade layer whose opacity the compositor animates;
+   an animated filter repainted every cover on each step. */
+.media-flow-item .library-entry-media::after { content:""; position:absolute; inset:0; z-index:3; pointer-events:none; background:#000; opacity:0; transition:opacity 260ms ease; }
+.media-flow-item:not(.selected) .library-entry-media::after { opacity:.18; }
 .media-flow-item.selected .library-entry-title { font-weight:550; }
-.media-flow-item .library-entry-media { border-radius:5px; transition:filter 260ms ease; }
+.media-flow-item .library-entry-media { border-radius:5px; }
+.media-flow .media-flow-item { will-change:transform; }
 .media-flow-item > div { -webkit-box-reflect:below 2px linear-gradient(to top,rgba(255,255,255,.22),transparent 28%); }
 .app-shell .media-flow .library-folder-badge { border-color:#ffffff16; background:#0b151ddd; font-size:10px; padding:4px 6px; }
 .media-flow-navigation span { opacity:.7; font-size:11px; letter-spacing:.06em; }
 .media-flow-slider::-webkit-slider-thumb { width:12px; height:12px; margin-top:-4px; box-shadow:0 0 5px color-mix(in srgb,var(--accent) 20%,transparent); }
 .app-shell.theme-light .music-library .media-flow .media-flow-item .library-entry { background:linear-gradient(180deg,#f0f5f8fa,#dfe8edfa); border-color:#45616b22; }
-@media(prefers-reduced-motion:reduce) { .media-flow .media-flow-item,.media-flow-item .library-entry-media { transition:none; } }
-.animations-off .media-flow .media-flow-item,.low-performance-mode .media-flow .media-flow-item { transition:none; }
+@media(prefers-reduced-motion:reduce) { .media-flow .media-flow-item,.media-flow-item .library-entry-media::after { transition:none; } }
+.animations-off .media-flow .media-flow-item,.low-performance-mode .media-flow .media-flow-item,
+.animations-off .media-flow-item .library-entry-media::after,.low-performance-mode .media-flow-item .library-entry-media::after { transition:none; }
 
 /* Keep the reflected floor visible instead of fading immediately at the card edge. */
 .media-flow-stage { -webkit-mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 12px),transparent 100%); mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 12px),transparent 100%); }

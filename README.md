@@ -5,7 +5,8 @@
 （只更新源码，未打安装包。）
 
 - 项目以 GNU AGPL v3（`AGPL-3.0-only`）开源，许可证全文见 `LICENSE`，源码在 https://github.com/Seaways2/ASTRELIS 。
-- `LICENSE-STATUS.md` 改为写明项目许可证和 JUCE 的 AGPLv3 授权路线；FFmpeg / mpv 不在仓库里，公开发布带它们的安装包前仍要附上对应源码或源码提供说明。
+- `LICENSE-STATUS.md` 改为写明项目许可证和 JUCE 的 AGPLv3 授权路线；FFmpeg / mpv 不在仓库里，`THIRD-PARTY-NOTICES.md` 开头列出它们各自的源码和构建来源，GitHub Releases 上的安装包按这份说明发布。
+- 2.18.3 安装包已发布到 GitHub Releases（`v2.18.3`）。
 
 ## 2.18.3 批量匹配只在当前文件夹内
 

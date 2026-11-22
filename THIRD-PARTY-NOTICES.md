@@ -1,5 +1,20 @@
 # Third-party dependency record
 
+## Corresponding source for bundled GPL executables
+
+ASTRELIS installers published at https://github.com/Seaways2/ASTRELIS/releases ship two unmodified third-party GPL executables. Their corresponding source is available from these places, and will stay listed here for every published installer:
+
+- **FFmpeg** `ffmpeg.exe`, build `2025-11-12-git-6cdd2cbe32-full_build-www.gyan.dev` (GPLv3, `--enable-gpl --enable-version3`).
+  - FFmpeg source at that commit: https://github.com/FFmpeg/FFmpeg/tree/6cdd2cbe32
+  - Build provider and its build notes / library list: https://www.gyan.dev/ffmpeg/builds/ and https://github.com/GyanD/codexffmpeg/releases
+  - Licence: https://ffmpeg.org/legal.html
+- **mpv** `mpv.exe`, `mpv v0.41.0-1087-ge470f8986` (GPLv2 or later), from https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20260928
+  - mpv source at that commit: https://github.com/mpv-player/mpv/tree/e470f8986e
+  - Build recipe that fetches and builds every bundled library: https://github.com/shinchiro/mpv-winbuild-cmake/tree/20260928
+  - Upstream copyright and GPL text are shipped next to the binary (`video-engine/LICENSE-Copyright`, `video-engine/LICENSE.GPL`).
+
+If any of these links stop working, open an issue at https://github.com/Seaways2/ASTRELIS/issues and a copy of the source will be provided.
+
 Status date: 2026-08-11  
 Status: engineering inventory; final legal notices remain a release gate
 

@@ -13,7 +13,7 @@ The source code is published at https://github.com/Seaways2/ASTRELIS. Anyone who
 ## Third-party components
 
 1. **JUCE 8** (native plugin host): used under its AGPLv3 route, which matches the project licence. JUCE itself is not committed to this repository; it is placed in `native-host/third_party/JUCE` for local builds.
-2. **FFmpeg and mpv** (bundled executables): not committed to this repository. Before an installer that contains them is published, the exact upstream source archives or a written source offer, build configuration and licence texts must accompany it (FFmpeg/mpv GPL obligations).
+2. **FFmpeg and mpv** (bundled, unmodified executables): not committed to this repository. Installers that contain them are published with the source locations listed in `THIRD-PARTY-NOTICES.md` ("Corresponding source for bundled GPL executables"), plus an offer to provide a copy on request.
 3. **ASIO SDK**: not used. Any future use needs its own licence and trademark review.
 
 See `THIRD-PARTY-NOTICES.md` for the component inventory.

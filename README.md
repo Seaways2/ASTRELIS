@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.4
+# ASTRELIS 2.18.5
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,16 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.5 窗口还原与封面流流畅度
+
+（只更新源码，未打安装包。）
+
+修复 2.18.3 测试报告里的两个问题：
+
+- 改过 Windows 缩放比例、分辨率或换过显示器后，双击标题栏和最大化按钮只能放大、缩不回来。原因是这种透明窗口的「最大化」由 Electron 模拟，缩放变化后窗口和屏幕可用区域会差 1 像素左右，程序就一直认为窗口没最大化。现在窗口在 4 像素误差内盖住可用区域，就算铺满屏幕，再按一次就会还原到之前的浮动尺寸。
+- 3D 封面流卡顿：去掉封面卡片背后的毛玻璃模糊（卡片本来就几乎不透明，看起来没有变化）；两侧封面变暗改用一层半透明遮罩，不再逐帧重绘滤镜。倒影保留。
+- 工程：新增 `maximizeToggleRestores()`（`electron/windowStateMachine.ts`），`fillsDisplay()` 允许误差；补充窗口还原和封面流 CSS 的回归测试。
 
 ## 2.18.4 开源：AGPL-3.0
 

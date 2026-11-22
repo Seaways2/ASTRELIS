@@ -1,6 +1,7 @@
 import { LibraryMenu, LibrarySelect, LibraryFolderManager } from "./LibraryMenu";
 import { useFolderProtection } from "./useFolderProtection";
 import { hiddenByFolders } from "../utils/folderVisibility";
+import { batchMatchFolder, batchMatchTracks } from "../utils/batchMatchScope";
 import { useMatchTask } from "../stores/matchTaskStore";
 import { MediaFlow } from "./MediaFlow";
 import { mosaicGridSize, mosaicSlots } from "./mosaicLayout";
@@ -200,15 +201,14 @@ export const MusicLibrary = memo(function MusicLibrary() {
     locale: resolvedLanguage
   });
   function openBatch() {
-    const batchListIds=facet!=="文件夹"?new Set(viewModel.trackPage(0,viewModel.trackTotal).items.map(item=>item.id)):null;
-    const tracks=usePlayerStore.getState().libraryTracks.filter(track=>{
-      if(hiddenByFolders(track.sourcePath,hiddenFolders))return false;
-      if(facet!=="文件夹")return !!batchListIds?.has(track.id);
-      const source=(track.sourcePath||"").replace(/\\/g,"/").toLowerCase();
-      const prefix=folderPath.replace(/\\/g,"/").replace(/\/$/,"").toLowerCase();
-      return !prefix||source.startsWith(prefix+"/");
-    });
-    useMatchTask.getState().open({kind:"batch",tracks,scope:facet==="文件夹"?folderPath||t("media.libraryAll"):t("media.currentList"),initialMusic:mediaFilter==="audio"});
+    const folderFacet=facet==="文件夹";
+    // Search hits and categories are matched as listed; folders add their own subtree limit.
+    const listIds=!folderFacet||deferredQuery?new Set(viewModel.trackPage(0,viewModel.trackTotal).items.map(item=>item.id)):null;
+    const focused=folderFacet&&!folderPath&&!deferredQuery&&libraryView==="flow"?entriesAt(selectedFlowIndex,1)[0]:undefined;
+    const folder=folderFacet?batchMatchFolder(folderPath,focused?.kind==="folder"?focused.item.path:undefined):"";
+    const tracks=batchMatchTracks({tracks:usePlayerStore.getState().libraryTracks,hiddenFolders,folder,listIds});
+    const place=folderFacet?folder||t("media.libraryAll"):t("media.currentList");
+    useMatchTask.getState().open({kind:"batch",tracks,scope:folderFacet&&deferredQuery?`${place} · ${t("media.currentList")}`:place,initialMusic:mediaFilter==="audio"});
   }
   const { stats: libraryStats } = viewModel;
   const visibleMediaCount = useMemo(() => state.libraryTracks.reduce((count, track) => count + Number(!hiddenByFolders(track.sourcePath, hiddenFolders)), 0), [state.libraryTracks, hiddenFolders]);

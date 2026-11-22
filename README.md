@@ -45,7 +45,7 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 
 ## 2.18.5 窗口还原与封面流流畅度
 
-（只更新源码，未打安装包。）
+安装包：`release\ASTRELIS-2.18.5-Setup-x64.exe`。
 
 修复 2.18.3 测试报告里的两个问题：
 

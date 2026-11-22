@@ -1,5 +1,5 @@
 import { fillsDisplay, fitWindowBounds, fittedUiZoom } from "./windowFit";
-import { WindowStateMachine, type WindowSnapshot } from "./windowStateMachine";
+import { WindowStateMachine, maximizeToggleRestores, type WindowSnapshot } from "./windowStateMachine";
 import { FolderVisibility } from "./FolderVisibility";
 import { restoreVisibleLibrary } from "./library/migration/RestoreVisibleLibrary";
 import { VstStateProfiles } from "./vstStateProfiles";
@@ -308,13 +308,14 @@ const describeWindow = (window: BrowserWindow) =>
 
 /**
  * Maximize, or restore to real floating bounds (titlebar button and caption
- * double-click). `wasMaximized` is the state when the gesture arrived: by the
- * time a caption gesture is handled Windows may already have acted on it (a
- * default SC_RESTORE), and toggling the state read then would undo it.
+ * double-click). `restores` is decided when the gesture arrived: by the time a
+ * caption gesture is handled Windows may already have acted on it (a default
+ * SC_RESTORE), and toggling the state read then would undo it. It counts a
+ * window that fills the screen without isMaximized() as maximized.
  */
-function toggleMaximize(window: BrowserWindow, source: "button" | "caption", wasMaximized = window.isMaximized()) {
+function toggleMaximize(window: BrowserWindow, source: "button" | "caption", restores = maximizeToggleRestores(windowSnapshot(window))) {
   const before = describeWindow(window);
-  if (!wasMaximized) {
+  if (!restores) {
     if (!window.isMaximized()) window.maximize();
   } else {
     const restore = windowState.restoreBounds(windowSnapshot(window));
@@ -502,14 +503,14 @@ function createWindow() {
       return;
     }
     // Read before Windows' own handling of the command runs.
-    const wasMaximized = hookedWindow.isMaximized();
+    const restores = maximizeToggleRestores(windowSnapshot(hookedWindow));
     setImmediate(() => {
       if (mainWindow !== hookedWindow || hookedWindow.isDestroyed()) return;
       if (compactActive) {
         writeLog("WINDOW", `caption double-click 0x${command.toString(16)} ignored in compact mode`);
         return;
       }
-      toggleMaximize(hookedWindow, "caption", wasMaximized);
+      toggleMaximize(hookedWindow, "caption", restores);
     });
   });
 

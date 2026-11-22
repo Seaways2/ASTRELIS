@@ -3,7 +3,7 @@
 // fullscreen from the library, restore, snap, compact and immersive mode.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { WindowStateMachine, windowPresentation, windowFillsScreen } = require("../../dist-electron/windowStateMachine");
+const { WindowStateMachine, windowPresentation, windowFillsScreen, maximizeToggleRestores } = require("../../dist-electron/windowStateMachine");
 
 const work = { x: 0, y: 0, width: 2200, height: 1400 };
 const screenBounds = { x: 0, y: 0, width: 2200, height: 1440 };
@@ -51,6 +51,21 @@ test("a window that fills the screen without a reported state flips the contour 
   assert.equal(machine.fillsScreen, true);
   assert.equal(machine.observe(snapshot({ bounds: work })).changed, false, "no repeated notification");
   assert.deepEqual(machine.observe(snapshot({ bounds: { ...floating, x: 300 } })), { filling: false, changed: true });
+});
+
+test("the maximize toggle restores a window that fills the screen even when Electron says it is not maximized", () => {
+  const offByOne = { x: 0, y: 0, width: work.width - 1, height: work.height + 1 };
+  assert.equal(maximizeToggleRestores(snapshot()), false);
+  assert.equal(maximizeToggleRestores(snapshot({ bounds: work, maximized: true })), true);
+  assert.equal(maximizeToggleRestores(snapshot({ bounds: offByOne })), true, "scale change: maximized=false");
+  assert.equal(maximizeToggleRestores(snapshot({ bounds: screenBounds })), true, "HTML fullscreen / snap");
+  assert.equal(maximizeToggleRestores(snapshot({ bounds: offByOne, compact: true })), false, "modes keep their own handling");
+  // The nearly-full rectangle is not remembered as the floating size.
+  const machine = new WindowStateMachine();
+  machine.reset(snapshot());
+  machine.observe(snapshot());
+  assert.deepEqual(machine.observe(snapshot({ bounds: offByOne })), { filling: true, changed: true });
+  assert.deepEqual(machine.restoreBounds(snapshot({ bounds: offByOne })), floating);
 });
 
 test("only floating bounds are remembered", () => {

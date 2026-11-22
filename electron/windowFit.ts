@@ -13,16 +13,25 @@ export function fittedUiZoom(width:number,height:number,specialMode=false) {
 }
 
 export type DisplayAreas = { bounds?: FitBounds; workArea: FitBounds };
-const sameBounds = (a: FitBounds, b: FitBounds) =>
-  a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
+/**
+ * DIP rounding slack. After a display scale or resolution change the emulated
+ * maximize lands a pixel or so off the work area (1821/1822/1823 x 912/913 in
+ * the 2.18.3 field log), and Electron then reports isMaximized() === false.
+ */
+const FILL_TOLERANCE = 4;
 
 /**
  * Electron emulates maximize and fullscreen for a transparent thickFrame:false
- * window by resizing it to the work area or the display. Such bounds are never
- * a usable "restore" size.
+ * window by resizing it to the work area or the display. A window that covers
+ * the work area (the display bounds contain it) fills the screen, and such
+ * bounds are never a usable "restore" size.
  */
 export function fillsDisplay(bounds: FitBounds, display: DisplayAreas) {
-  return sameBounds(bounds, display.workArea) || Boolean(display.bounds && sameBounds(bounds, display.bounds));
+  const area = display.workArea;
+  return bounds.x <= area.x + FILL_TOLERANCE && bounds.y <= area.y + FILL_TOLERANCE
+    && bounds.x + bounds.width >= area.x + area.width - FILL_TOLERANCE
+    && bounds.y + bounds.height >= area.y + area.height - FILL_TOLERANCE;
 }
 
 /**

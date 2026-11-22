@@ -251,6 +251,7 @@ function windowHarness(t, preferences = {}) {
     screen: { on() {}, removeListener() {}, getDisplayMatching: () => ({workArea:{x:0,y:0,width:2200,height:1400}}), getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 2200, height: 1400 } }] },
     BrowserWindow: FakeWindow, mainWindow: null, rendererAcceptsExternalFiles: false,
     WindowStateMachine: require("../../dist-electron/windowStateMachine").WindowStateMachine,
+    maximizeToggleRestores: require("../../dist-electron/windowStateMachine").maximizeToggleRestores,
     videoScreenRestore: undefined, compactActive: false, immersiveActive: false,
     trayConcealed: false, isQuitting: false, resolveAppIconPath: () => null,
     app: { quit: () => { context.quitCalls++; } }, quitCalls: 0,
@@ -432,4 +433,26 @@ test("restore after fullscreen-while-maximized returns to the last floating boun
   // The saved state no longer records the work area as the normal size.
   doubleClick(); h.flush();
   assert.deepEqual(JSON.parse(fs.readFileSync(h.stateFile, "utf8")), { ...floating, maximized: true });
+});
+
+test("after a display scale change a screen-filling window that reports maximized=false still restores", t => {
+  // 2.18.3 field log: once the scale changed, the emulated maximize missed the work area
+  // by a pixel, isMaximized() stayed false, and every double-click or button press
+  // maximized again, so the window could never shrink back.
+  const h = windowHarness(t), w = h.window, hook = w.windowMessageHook;
+  const floating = { x: 100, y: 90, width: 1300, height: 850 }, nearlyWork = { x: 0, y: 0, width: 2199, height: 1401 };
+  w.maximize = () => { w.bounds = { ...nearlyWork }; w.emit("resize"); };
+  w.setBounds = bounds => { w.bounds = { ...bounds }; w.emit("resize"); };
+  w.bounds = { ...floating }; w.emit("resize");
+  const doubleClick = () => { const buffer = Buffer.alloc(8); buffer.writeUInt32LE(0xF032); hook.callback(buffer); h.quit(); };
+  doubleClick();
+  assert.deepEqual(w.bounds, nearlyWork);
+  assert.equal(w.isMaximized(), false, "Electron does not report the emulated state");
+  doubleClick();
+  assert.deepEqual(w.bounds, floating, "the caption double-click restores");
+  w.maximize();
+  h.context.toggleMaximize(w, "button");
+  assert.deepEqual(w.bounds, floating, "the titlebar button restores");
+  const log = h.context.windowLog.join("\n");
+  assert.match(log, /toggle maximize \(caption\): maximized=false fullscreen=false bounds=\{"x":0,"y":0,"width":2199,"height":1401\} -> maximized=false fullscreen=false bounds=\{"width":1300,"height":850,"x":100,"y":90\}/);
 });

@@ -43,6 +43,16 @@ export function windowFillsScreen(window: WindowSnapshot) {
   return window.maximized || window.fullScreen || fillsDisplay(window.bounds, window.display);
 }
 
+/**
+ * Whether the maximize toggle (titlebar button, caption double-click) should
+ * restore. isMaximized() alone is not enough: after a display scale change the
+ * emulated maximize misses the work area by a pixel and Electron reports false,
+ * so the toggle kept maximizing a window that already filled the screen.
+ */
+export function maximizeToggleRestores(window: WindowSnapshot) {
+  return window.maximized || windowPresentation(window) === "covering";
+}
+
 export type WindowMode = "compact" | "immersive";
 
 /**

@@ -36,3 +36,23 @@ test("restorable normal bounds never return a screen-filling rectangle", () => {
   assert.equal(fillsDisplay(fallback, display), false);
   assert.deepEqual(fallback, { x: 240, y: 129, width: 1440, height: 774 });
 });
+
+test("a window a few DIPs off the work area after a scale change still fills it", () => {
+  const { fillsDisplay, restorableNormalBounds } = require("../../dist-electron/windowFit");
+  const display = { bounds: { x: 0, y: 0, width: 1823, height: 960 }, workArea: { x: 0, y: 0, width: 1822, height: 912 } };
+  for (const bounds of [
+    { x: 0, y: 0, width: 1821, height: 912 },
+    { x: 0, y: 0, width: 1823, height: 913 },
+    { x: 1, y: 0, width: 1820, height: 911 },
+    { x: 0, y: 0, width: 2342, height: 1188 }, // larger than the display while the scale settles
+    { x: -8, y: -8, width: 1838, height: 928 }
+  ]) assert.equal(fillsDisplay(bounds, display), true, JSON.stringify(bounds));
+  for (const bounds of [
+    { x: 0, y: 0, width: 1812, height: 912 },
+    { x: 0, y: 20, width: 1822, height: 892 },
+    { x: 300, y: 120, width: 1238, height: 673 }
+  ]) assert.equal(fillsDisplay(bounds, display), false, JSON.stringify(bounds));
+  // A nearly-full rectangle is never handed back as the restore size.
+  const floating = { x: 300, y: 120, width: 1238, height: 673 };
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 1821, height: 912 }, display, floating), floating);
+});

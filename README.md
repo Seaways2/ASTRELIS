@@ -1,5 +1,48 @@
 # ASTRELIS 2.18.4
 
+[中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
+
+![ASTRELIS](docs/screenshots/01-now-playing.jpg)
+
+| | |
+|---|---|
+| ![媒体中心 / メディアセンター / Media center](docs/screenshots/02-media-center.jpg) | ![视频播放 / 動画再生 / Video](docs/screenshots/03-video.jpg) |
+| ![VST 插件 / VST プラグイン / VST plugins](docs/screenshots/04-vst-plugins.jpg) | ![主题色 / テーマカラー / Theme colours](docs/screenshots/05-theme-violet.jpg) |
+
+![环形频谱 / リングスペクトラム / Ring spectrum](docs/screenshots/06-ring-spectrum.jpg)
+
+## 中文
+
+ASTRELIS 是一款 Windows 上的本地音乐与视频播放器，带实时音频可视化和 VST3 插件机架。
+
+- **实时可视化**：银河旋涡、星空律动、黑洞脉冲、柱状 / 镜像 / 环形频谱，跟随节拍和响度柔和起伏；可全屏，可调主题色。
+- **VST3 插件**：独立的原生音频宿主（JUCE）加载插件，音乐和视频都能走插件链。
+- **媒体中心**：按文件夹、艺术家、专辑浏览本地音乐和视频，3D 封面流，在线匹配封面和元数据。
+- **视频播放**：基于 mpv，支持多音轨、外挂字幕、字幕同步、视频音效和 HDMI 直通。
+- 从 [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest) 下载 Windows x64 安装包。以 [GNU AGPL v3](LICENSE) 开源。
+
+## 日本語
+
+ASTRELIS は Windows 向けのローカル音楽・動画プレーヤーです。リアルタイムのオーディオビジュアライザーと VST3 プラグインラックを備えています。
+
+- **リアルタイムビジュアライザー**：銀河の渦、星空、ブラックホール、バー / ミラー / リングスペクトラム。ビートと音量に合わせてやわらかく変化し、全画面表示やテーマカラーの変更もできます。
+- **VST3 プラグイン**：独立したネイティブオーディオホスト（JUCE）でプラグインを読み込み、音楽にも動画にもプラグインチェーンをかけられます。
+- **メディアセンター**：ローカルの音楽と動画をフォルダー・アーティスト・アルバム別に表示。3D カバーフロー、カバー画像とメタデータのオンラインマッチ。
+- **動画再生**：mpv ベース。複数の音声トラック、外部字幕、字幕の同期調整、動画用エフェクト、HDMI パススルーに対応。
+- Windows x64 インストーラーは [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest) からダウンロードできます。[GNU AGPL v3](LICENSE) のオープンソースです。
+
+## English
+
+ASTRELIS is a local music and video player for Windows, with real-time audio visualizers and a VST3 plugin rack.
+
+- **Real-time visualizers**: galaxy, starfield, black hole, and bar / mirror / ring spectrums that rise and fall softly with the beat and loudness; full screen and custom theme colours.
+- **VST3 plugins**: a separate native audio host (JUCE) loads plugins, and both music and video can run through the plugin chain.
+- **Media center**: browse local music and videos by folder, artist or album, with a 3D cover flow and online matching of covers and metadata.
+- **Video playback**: built on mpv, with multiple audio tracks, external subtitles, subtitle sync, video audio effects and HDMI passthrough.
+- Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
+
+---
+
 ## 2.18.4 开源：AGPL-3.0
 
 （只更新源码，未打安装包。）
@@ -7,6 +50,7 @@
 - 项目以 GNU AGPL v3（`AGPL-3.0-only`）开源，许可证全文见 `LICENSE`，源码在 https://github.com/Seaways2/ASTRELIS 。
 - `LICENSE-STATUS.md` 改为写明项目许可证和 JUCE 的 AGPLv3 授权路线；FFmpeg / mpv 不在仓库里，`THIRD-PARTY-NOTICES.md` 开头列出它们各自的源码和构建来源，GitHub Releases 上的安装包按这份说明发布。
 - 2.18.3 安装包已发布到 GitHub Releases（`v2.18.3`）。
+- README 开头加上中日英三语简介和截图（`docs/screenshots/`，媒体中心截图里的文件名已打码）。
 
 ## 2.18.3 批量匹配只在当前文件夹内
 

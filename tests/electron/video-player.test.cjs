@@ -31,6 +31,7 @@ test('video formats stay available in the renderer and file picker',()=>{
 test('video engine isolates config, scripts, audio output and optional encoded passthrough',()=>{
   const normal=videoArguments('pipe',false,'log');
   assert.ok(normal.includes('--no-config'));assert.ok(normal.includes('--load-scripts=no'));
+  assert.ok(normal.includes('--sub-font=Microsoft YaHei'));
   assert.ok(normal.includes('--audio-spdif='));assert.ok(normal.includes('--audio-exclusive=no'));
   const direct=videoArguments('pipe',true,'log');
   assert.ok(direct.includes('--audio-spdif=ac3,dts,eac3'));assert.ok(direct.includes('--audio-exclusive=yes'));

@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.7
+# ASTRELIS 2.18.8
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,12 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.8 修复中文字幕字形和粗细混排
+
+（只更新源码，未打安装包。）
+
+嵌入播放和电影模式的普通文本字幕默认使用微软雅黑，避免同一行简体中文因字体回退而粗细不一。
 
 ## 2.18.7 全屏封面流的倒影不再拖慢画面
 

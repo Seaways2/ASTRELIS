@@ -46,7 +46,7 @@ export function videoArguments(pipe: string, direct: boolean, log: string, paren
   return ["--no-config", "--load-scripts=no", "--ytdl=no", "--idle=yes", "--keep-open=yes", "--force-window=yes",
     "--title=ASTRELIS · Video", "--autofit=85%x85%", "--hwdec=auto-safe", rackAudio ? "--ao=null" : "--ao=wasapi",
     "--audio-fallback-to-null=no", direct ? "--volume=100" : "--volume=50", "--volume-max=100", "--save-position-on-quit=no", "--input-media-keys=no",
-    "--input-ipc-server=" + pipe, "--log-file=" + log,
+    "--sub-font=Microsoft YaHei", "--input-ipc-server=" + pipe, "--log-file=" + log,
     ...(parent ? ["--wid="+parent,"--osc=no","--osd-level=0","--input-default-bindings=no","--input-vo-keyboard=yes","--input-cursor=yes","--drag-and-drop=no","--pause=yes"] : []),
     ...(direct ? ["--audio-spdif=ac3,dts,eac3", "--audio-exclusive=yes"] : ["--audio-spdif=", "--audio-exclusive=no"])];
 }

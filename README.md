@@ -45,7 +45,7 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 
 ## 2.18.6 高缩放（4K 225%～300%）下的封面流与媒体库
 
-（只更新源码，未打安装包。）
+安装包：`release\ASTRELIS-2.18.6-Setup-x64.exe`。
 
 按测试机（GTX 1060，4K 显示器，Windows 缩放 225%～300%）的《升级档案》修改：
 

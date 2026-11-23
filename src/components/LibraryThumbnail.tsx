@@ -1,9 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { COVER_FLOW_FRAMING_EVENT, getCoverFlowPosition, hasCustomCoverFlowPosition, shouldAutoCropCoverFlow } from "../utils/coverFlowFraming";
 import { LIBRARY_THUMBNAILS_REFRESH_EVENT } from "../utils/libraryThumbnailRefresh";
+import { createThumbnailQueue, createThumbnailStore, isAbandonedThumbnail } from "../utils/libraryThumbnailCache";
+import { canReuseOriginal, capThumbnailTier, nextThumbnailTier, requiredThumbnailSide, sufficientThumbnailTiers, thumbnailFallbackOrder, thumbnailTierFor, type ThumbnailBox, type ThumbnailFit, type ThumbnailSize } from "../utils/libraryThumbnailTier";
 
-type ThumbnailSize = 256 | 512 | 1024;
-type CachedThumbnail = { url: string; weight: number };
+type ReadyThumbnail = { url: string; size: ThumbnailSize };
+type ThumbnailFitting = { box: ThumbnailBox; fit: ThumbnailFit };
 type ArtworkAttention = { focusY: number; topScore: number; bottomScore: number };
 
 function estimateArtworkAttention(image: HTMLImageElement): ArtworkAttention | undefined {
@@ -59,10 +61,13 @@ function updateEntryLabelPlacement(entry: HTMLElement) {
 }
 
 // Keep ordinary library images small and cap the renderer's decoded thumbnail cache.
-const cache = new Map<string, Promise<string>>();
-const ready = new Map<string, CachedThumbnail>();
+const cache = new Map<string, Promise<ReadyThumbnail>>();
 const failed = new Set<string>();
 const dimensions = new Map<string, number>();
+// Decoded source long side: caps the tier so small covers are not asked for at 1024.
+const sourceSide = new Map<string, number>();
+// Last measured tier per cover, so a remount prefers the tier it showed before measuring again.
+const lastTierBySource = new Map<string, ThumbnailSize>();
 // Smart framing reads image pixels back on the main thread. A mosaic mounts
 // hundreds of tiles, so each cover is analysed once and remembered.
 const attentionBySource = new Map<string, ArtworkAttention>();
@@ -70,9 +75,13 @@ const attentionBySource = new Map<string, ArtworkAttention>();
 // to Chromium's own discardable image cache. Budgeting blobs at their decoded
 // size capped a 512px video mosaic at ~128 covers, so a zoomed-out fullscreen
 // mosaic (400+ covers) kept revoking and re-reading thumbnails it was showing.
-const MAX_READY_WEIGHT = 96 * 1024 * 1024;
-const MAX_SOURCE_METADATA = 512;
-let readyWeight = 0;
+// Tiers follow device pixels now and a 1024 webp is 3-4x a 512 one, so the
+// budget grows with it; covers on screen are pinned and never evicted.
+const MAX_READY_WEIGHT = 160 * 1024 * 1024;
+// Small numbers and objects per source; the ratio and side feed tier selection,
+// so large libraries must not lose them while paging.
+const MAX_SOURCE_METADATA = 2048;
+const store = createThumbnailStore({ maxWeight: MAX_READY_WEIGHT, revoke: url => URL.revokeObjectURL(url) });
 function cacheKey(source: string, size: ThumbnailSize) { return `${size}\0${source}`; }
 function rememberSourceValue<T>(values: Map<string, T>, key: string, value: T) {
   values.delete(key);
@@ -93,58 +102,50 @@ function rememberFailure(key: string) {
   }
 }
 function getReadyThumbnail(source: string, size: ThumbnailSize) {
-  const key = cacheKey(source, size), cached = ready.get(key);
-  if (!cached) return undefined;
-  ready.delete(key);
-  ready.set(key, cached);
-  return cached.url;
+  return store.get(cacheKey(source, size));
+}
+/** First ready tier in display order, so a cover never waits blank while a cached tier exists. */
+function readyThumbnailFor(source: string, requested: ThumbnailSize): ReadyThumbnail | undefined {
+  for (const size of thumbnailFallbackOrder(requested)) {
+    const url = getReadyThumbnail(source, size);
+    if (url) return { url, size };
+  }
+  return undefined;
+}
+function hasSufficientThumbnail(source: string, requested: ThumbnailSize) {
+  return sufficientThumbnailTiers(requested).some(size => store.has(cacheKey(source, size)));
 }
 function invalidateThumbnail(source: string, size: ThumbnailSize) {
-  const key = cacheKey(source, size), cached = ready.get(key);
+  const key = cacheKey(source, size);
   cache.delete(key);
-  if (cached) {
-    ready.delete(key);
-    readyWeight -= cached.weight;
-    URL.revokeObjectURL(cached.url);
-  }
+  store.invalidate(key);
   failed.delete(key);
 }
 function invalidateRefreshedThumbnails(event: Event) {
   const sources = (event as CustomEvent<{ sources?: string[] }>).detail?.sources;
   sources?.forEach(source => {
     attentionBySource.delete(source);
+    sourceSide.delete(source);
     invalidateThumbnail(source, 256);
     invalidateThumbnail(source, 512);
     invalidateThumbnail(source, 1024);
   });
 }
 function keepThumbnail(source: string, size: ThumbnailSize, blob: Blob) {
-  const key = cacheKey(source, size), previous = ready.get(key);
-  if (previous) { readyWeight -= previous.weight; URL.revokeObjectURL(previous.url); }
   const url = URL.createObjectURL(blob), weight = Math.max(1, blob.size);
-  ready.set(key, { url, weight });
-  readyWeight += weight;
-  while (readyWeight > MAX_READY_WEIGHT && ready.size > 1) {
-    const oldestKey = ready.keys().next().value;
-    if (oldestKey === undefined) break;
-    const oldest = ready.get(oldestKey)!;
-    ready.delete(oldestKey);
-    readyWeight -= oldest.weight;
-    URL.revokeObjectURL(oldest.url);
-  }
-  return url;
+  return store.keep(cacheKey(source, size), url, weight);
 }
 function framingFor(source: string) {
   const ratio = dimensions.get(source) ?? 1;
   return { source, ratio, position: getCoverFlowPosition(source, ratio), crop: hasCustomCoverFlowPosition(source) || shouldAutoCropCoverFlow(ratio) };
 }
 function releaseThumbnails() {
-  ready.forEach(item => URL.revokeObjectURL(item.url));
-  ready.clear();
+  store.clear();
   failed.clear();
   dimensions.clear();
+  sourceSide.clear();
+  lastTierBySource.clear();
   cache.clear();
-  readyWeight = 0;
 }
 window.addEventListener("pagehide", releaseThumbnails);
 window.addEventListener(LIBRARY_THUMBNAILS_REFRESH_EVENT, invalidateRefreshedThumbnails);
@@ -153,55 +154,90 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
   window.removeEventListener(LIBRARY_THUMBNAILS_REFRESH_EVENT, invalidateRefreshedThumbnails);
   releaseThumbnails();
 });
-let active = 0;
 const MAX_ACTIVE_THUMBNAILS = 6;
-const waiting: Array<() => void> = [];
-async function thumbnail(source: string, size: ThumbnailSize): Promise<string> {
+// Interest is per source: a card claims its cover when it intersects and releases it on unmount.
+const queue = createThumbnailQueue(MAX_ACTIVE_THUMBNAILS);
+async function thumbnail(source: string, requested: ThumbnailSize, fitting?: ThumbnailFitting): Promise<ReadyThumbnail> {
+  const size = capThumbnailTier(requested, sourceSide.get(source));
   const available = getReadyThumbnail(source, size);
-  if (available) return available;
+  if (available) return { url: available, size };
   const key = cacheKey(source, size), existing = cache.get(key);
   if (existing) return existing;
   if (failed.has(key)) throw new Error("Thumbnail unavailable");
-  const task = (async () => {
-    await new Promise<void>(resolve => {
-      const start = () => { active++; resolve(); };
-      if (active < MAX_ACTIVE_THUMBNAILS) start(); else waiting.push(start);
-    });
-    try {
-      if (source.startsWith("auralis-media://local/")) {
-        try {
-          const diskThumbnail = await fetch(`${source}.thumb-${size}.png`);
-          if (diskThumbnail.ok) return keepThumbnail(source, size, await diskThumbnail.blob());
-        } catch { /* An absent or unreadable sidecar falls back to the original artwork. */ }
-      }
-      const response = await fetch(source);
-      if (!response.ok) throw new Error(`Artwork: ${response.status}`);
-      const bitmap = await createImageBitmap(await response.blob());
+  const task = queue.run(source, async (): Promise<ReadyThumbnail> => {
+    // Electron writes only the 256px sidecar (ArtworkCache.cacheArtworkThumbnail);
+    // probing 512/1024 was a guaranteed 404 before every larger thumbnail.
+    if (size === 256 && source.startsWith("auralis-media://local/")) {
       try {
-        const scale = Math.min(1, size / Math.max(bitmap.width, bitmap.height));
-        const canvas = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
-        const context = canvas.getContext("2d");
-        if (!context) throw new Error("Thumbnail canvas unavailable");
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        const blob = await canvas.convertToBlob({ type: "image/webp", quality: size === 256 ? .82 : .9 });
-        return keepThumbnail(source, size, blob);
-      } finally { bitmap.close(); }
-    } finally {
-      active--;
-      waiting.shift()?.();
+        const diskThumbnail = await fetch(`${source}.thumb-${size}.png`);
+        if (diskThumbnail.ok) return { url: keepThumbnail(source, size, await diskThumbnail.blob()), size };
+      } catch { /* An absent or unreadable sidecar falls back to the original artwork. */ }
     }
-  })();
+    const response = await fetch(source);
+    if (!response.ok) throw new Error(`Artwork: ${response.status}`);
+    const original = await response.blob();
+    const bitmap = await createImageBitmap(original);
+    try {
+      const side = Math.max(bitmap.width, bitmap.height), ratio = bitmap.width / bitmap.height;
+      rememberSourceValue(sourceSide, source, side);
+      rememberSourceValue(dimensions, source, ratio);
+      // The card measured its tier with a guessed (square or 16:9) ratio; once the real aspect
+      // reaches it the card asks again, so size for the real aspect now instead of encoding twice.
+      const wanted = fitting ? nextThumbnailTier(size, thumbnailTierFor(requiredThumbnailSide(fitting.box, ratio, fitting.fit))) : size;
+      // Kept under the tier the source can fill, which is the key later requests are capped to.
+      // Video frames are at most 512px on disk (VideoLibraryProbe), so video cards stay at 512.
+      const tier = capThumbnailTier(wanted, side);
+      const ready = getReadyThumbnail(source, tier);
+      if (ready) return { url: ready, size: tier };
+      // Video frames (512px), MusicBrainz covers (256px) and many embedded covers
+      // already fit: their own bytes need no canvas and no convertToBlob readback.
+      if (canReuseOriginal(original.type, original.size, side, tier)) return { url: keepThumbnail(source, tier, original), size: tier };
+      const scale = Math.min(1, tier / side);
+      const canvas = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
+      // A CPU-backed canvas: the default accelerated one paid a GPU ReadbackImagePixels on every
+      // convertToBlob (the archive's 37 readbacks while paging), larger now that tiers reach 1024.
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Thumbnail canvas unavailable");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await canvas.convertToBlob({ type: "image/webp", quality: tier === 256 ? .82 : .9 });
+      return { url: keepThumbnail(source, tier, blob), size: tier };
+    } finally { bitmap.close(); }
+  });
   cache.set(key, task);
   task.then(() => {
     if (cache.get(key) === task) cache.delete(key);
-  }, () => {
+  }, error => {
     if (cache.get(key) === task) {
       cache.delete(key);
-      rememberFailure(key);
+      // A job skipped because its cards left is not a broken cover.
+      if (!isAbandonedThumbnail(error)) rememberFailure(key);
     }
   });
   return task;
 }
+
+// One observer for every cover; device-pixel-content-box reports the box in
+// physical pixels at any Windows scaling, ignoring 3D cover-flow transforms.
+const sizeCallbacks = new WeakMap<Element, (box: ThumbnailBox) => void>();
+let sizeObserver: ResizeObserver | undefined;
+function deviceBox(entry: ResizeObserverEntry): ThumbnailBox {
+  const device = entry.devicePixelContentBoxSize?.[0];
+  if (device) return { width: device.inlineSize, height: device.blockSize };
+  const scale = window.devicePixelRatio || 1;
+  return { width: entry.contentRect.width * scale, height: entry.contentRect.height * scale };
+}
+function observeDeviceSize(element: Element, callback: (box: ThumbnailBox) => void) {
+  sizeObserver ??= new ResizeObserver(entries => entries.forEach(entry => sizeCallbacks.get(entry.target)?.(deviceBox(entry))));
+  sizeCallbacks.set(element, callback);
+  try { sizeObserver.observe(element, { box: "device-pixel-content-box" }); }
+  catch { sizeObserver.observe(element); }
+  return () => {
+    sizeObserver?.unobserve(element);
+    if (sizeCallbacks.get(element) === callback) sizeCallbacks.delete(element);
+  };
+}
+// Resize, maximise and zoom animations would walk a card through every tier; upgrade once the size settles.
+const TIER_UPGRADE_DELAY = 150;
 
 export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFlow = false, highResolution = false, smartFocus = false, fullscreen = false }: { source: string; coverFlow?: boolean; highResolution?: boolean; smartFocus?: boolean; fullscreen?: boolean }) {
   const image = useRef<HTMLImageElement>(null);
@@ -212,15 +248,51 @@ export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFl
     return known ? { source, focusY: known.focusY } : undefined;
   });
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [tier, setTier] = useState<ThumbnailSize>();
+  const fitting = useRef<ThumbnailFitting>();
   const currentFraming = framing.source === source ? framing : framingFor(source);
-  const requestedSize: ThumbnailSize = highResolution ? 512 : 256;
-  const settledUrl = result?.source === source
-    && (result.url === source || getReadyThumbnail(source, result.size) === result.url)
-    ? result.url
-    : undefined;
-  const displayUrl = getReadyThumbnail(source, requestedSize)
-    ?? (requestedSize !== 256 ? getReadyThumbnail(source, 256) : undefined)
-    ?? (settledUrl && (result?.size === requestedSize || requestedSize !== 256 && result?.size === 256) ? settledUrl : undefined);
+  // Until the first load, highResolution only hints that a video frame is 16:9.
+  const ratioHint = dimensions.get(source) ?? (highResolution ? 16 / 9 : 1);
+  const fallbackTier: ThumbnailSize = highResolution ? 512 : 256;
+  // Nothing is requested before the cover has been measured, so no guessed tier is generated.
+  const requestedSize = tier === undefined ? undefined : capThumbnailTier(tier, sourceSide.get(source));
+  const shown = readyThumbnailFor(source, requestedSize ?? lastTierBySource.get(source) ?? fallbackTier);
+  const displayKey = shown ? cacheKey(source, shown.size) : undefined;
+  // The original artwork stands in only after every thumbnail tier failed.
+  const displayUrl = shown?.url ?? (result?.source === source && result.url === source ? source : undefined);
+
+  useEffect(() => {
+    const element = image.current;
+    if (!element) return;
+    let timer = 0;
+    // A collapsed box (hidden, or a view that does not size the image) gets no initial
+    // observation. Resize observations are delivered in the frame after observe(), before
+    // the second animation frame, so the old fixed tier applies only if nothing was measured.
+    let frame = window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => { frame = 0; setTier(current => current ?? fallbackTier); });
+    });
+    const stopObserving = observeDeviceSize(element, box => {
+      window.clearTimeout(timer);
+      if (!(box.width > 0) || !(box.height > 0)) { setTier(current => current ?? fallbackTier); return; }
+      const fit = getComputedStyle(element).objectFit === "contain" ? "contain" : "cover";
+      fitting.current = { box, fit };
+      const measured = thumbnailTierFor(requiredThumbnailSide(box, ratioHint, fit));
+      setTier(current => current ?? measured);
+      timer = window.setTimeout(() => setTier(current => nextThumbnailTier(current, measured)), TIER_UPGRADE_DELAY);
+    });
+    return () => { window.clearTimeout(timer); window.cancelAnimationFrame(frame); stopObserving(); };
+    // crop and coverFlow switch object-fit through classes without resizing the box.
+  }, [ratioHint, fallbackTier, currentFraming.crop, coverFlow]);
+
+  useEffect(() => {
+    if (tier !== undefined) rememberSourceValue(lastTierBySource, source, tier);
+  }, [source, tier]);
+
+  useEffect(() => {
+    if (!displayKey) return;
+    store.pin(displayKey);
+    return () => store.unpin(displayKey);
+  }, [displayKey]);
 
   useEffect(() => {
     const onRefresh = (event: Event) => {
@@ -279,7 +351,6 @@ export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFl
   }, [source, smartFocus]);
 
   useEffect(() => {
-    let cancelled = false;
     setFraming(framingFor(source));
     const onFramingChange = (event: Event) => {
       const detail = (event as CustomEvent<{ source: string; position?: number }>).detail;
@@ -293,24 +364,32 @@ export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFl
         : current);
     };
     if (coverFlow) window.addEventListener(COVER_FLOW_FRAMING_EVENT, onFramingChange);
-    if (getReadyThumbnail(source, requestedSize)) return () => window.removeEventListener(COVER_FLOW_FRAMING_EVENT, onFramingChange);
+    return () => window.removeEventListener(COVER_FLOW_FRAMING_EVENT, onFramingChange);
+  }, [source, coverFlow, refreshVersion]);
+
+  useEffect(() => {
+    // The requested tier or the one above is enough; anything else only bridges the wait.
+    if (requestedSize === undefined || hasSufficientThumbnail(source, requestedSize)) return;
+    let cancelled = false;
+    let release: (() => void) | undefined;
+    const request = (size: ThumbnailSize, retry = true) => {
+      // The 256 fallback after a failed larger tier must not be upgraded back into it.
+      void thumbnail(source, size, size === requestedSize ? fitting.current : undefined).then(ready => {
+        if (!cancelled) setResult({ source, ...ready });
+      }).catch(error => {
+        if (cancelled) return;
+        // This card holds a claim, so a skip means it joined a shared task abandoned just before; ask once more.
+        if (isAbandonedThumbnail(error)) { if (retry) request(size, false); return; }
+        if (size !== 256) request(256);
+        else setResult({ source, size: 256, url: source });
+      });
+    };
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return;
       observer.disconnect();
-      void thumbnail(source, requestedSize).then(url => {
-        if (!cancelled) setResult({ source, size: requestedSize, url });
-      }).catch(() => {
-        if (cancelled) return;
-        if (requestedSize === 256) {
-          setResult({ source, size: 256, url: source });
-          return;
-        }
-        void thumbnail(source, 256).then(url => {
-          if (!cancelled) setResult({ source, size: 256, url });
-        }).catch(() => {
-          if (!cancelled) setResult({ source, size: 256, url: source });
-        });
-      });
+      // Releasing on unmount lets the queue skip covers that fast paging only passed through.
+      release ??= queue.claim(source);
+      request(requestedSize);
     }, { root: fullscreen
       ? image.current?.closest<HTMLElement>(".music-library.library-mosaic-fullscreen")
         ?? image.current?.closest<HTMLElement>(".library-infinite-viewport")
@@ -323,10 +402,10 @@ export const LibraryThumbnail = memo(function LibraryThumbnail({ source, coverFl
     if (image.current) observer.observe(image.current);
     return () => {
       cancelled = true;
+      release?.();
       observer.disconnect();
-      window.removeEventListener(COVER_FLOW_FRAMING_EVENT, onFramingChange);
     };
-  }, [source, coverFlow, requestedSize, refreshVersion, fullscreen]);
+  }, [source, requestedSize, refreshVersion, fullscreen]);
 
   const focusY = smartFraming?.source === source ? smartFraming.focusY : 50;
   return <img draggable={false} ref={image} className={coverFlow ? `library-thumbnail-flow${currentFraming.crop ? " library-thumbnail-flow-cropped" : ""}` : undefined}

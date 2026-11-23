@@ -1,0 +1,9 @@
+# Keep LF in every checkout: several tests read sources and assume LF,
+# and core.autocrlf=true on Windows would otherwise turn them into CRLF.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.webp binary

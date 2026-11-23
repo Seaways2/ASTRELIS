@@ -16,7 +16,7 @@
 .media-flow-navigation button:disabled { opacity: .3; }
 .media-flow-navigation span { font-variant-numeric: tabular-nums; color: #9cb5bc; }
 @media (prefers-reduced-motion: reduce) { .media-flow-item { transition: none; } }
-.low-performance-mode .media-flow-item { transition: none; -webkit-box-reflect: none; }
+.low-performance-mode .media-flow-item { transition: none; }
 .library-media-filter { display: flex; gap: 5px; }
 .library-media-filter button { padding: 7px 12px; background: transparent; color: inherit; border: 1px solid #729da333; }
 .library-media-filter button.active { color: var(--accent); border-color: var(--accent); }
@@ -24,7 +24,6 @@
 
 .media-flow-item.selected .library-entry { border-color: var(--accent); }
 .animations-off .media-flow-item { transition: none; }
-.low-performance-mode .media-flow .library-entry { -webkit-box-reflect: none; }
 
 .media-flow .library-entry-media.library-art img { object-fit: contain; }
 .media-flow-item:not(.selected) .library-entry-actions { visibility: hidden; }
@@ -50,9 +49,6 @@
 .media-flow .library-entry-title { margin-top: 5px; }
 .media-flow-navigation { flex-basis: 42px; height: 42px; }
 
-/* Reflect the complete card wrapper, including its border and rounded corners. */
-.media-flow-item > div { -webkit-box-reflect: below 2px linear-gradient(to top, rgba(255,255,255,.22), transparent 28%); }
-.low-performance-mode .media-flow-item > div { -webkit-box-reflect: none; }
 .media-flow-navigation { position: relative; z-index: 20; }
 
 /* Fade reflected content before the viewport edge; navigation stays unmasked. */
@@ -256,7 +252,6 @@
 .media-flow-item.selected .library-entry-title { font-weight:550; }
 .media-flow-item .library-entry-media { border-radius:5px; }
 .media-flow .media-flow-item { will-change:transform; }
-.media-flow-item > div { -webkit-box-reflect:below 2px linear-gradient(to top,rgba(255,255,255,.22),transparent 28%); }
 .app-shell .media-flow .library-folder-badge { border-color:#ffffff16; background:#0b151ddd; font-size:10px; padding:4px 6px; }
 .media-flow-navigation span { opacity:.7; font-size:11px; letter-spacing:.06em; }
 .media-flow-slider::-webkit-slider-thumb { width:12px; height:12px; margin-top:-4px; box-shadow:0 0 5px color-mix(in srgb,var(--accent) 20%,transparent); }
@@ -267,8 +262,18 @@
 
 /* Keep the reflected floor visible instead of fading immediately at the card edge. */
 .media-flow-stage { -webkit-mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 12px),transparent 100%); mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 12px),transparent 100%); }
-.media-flow-item > div { -webkit-box-reflect:below 2px linear-gradient(to top,rgba(255,255,255,.15),transparent 32%); }
-.low-performance-mode .media-flow-item > div { -webkit-box-reflect:none; }
+/* The floor reflection (MediaFlow.tsx): the card's bottom 32%, flipped, 2px
+   below it, fading from 15% to nothing, the look the old box-reflect gave.
+   The copy flips in place and the box clips it, so only that strip is painted. */
+.media-flow-reflection { position:absolute; left:0; right:0; top:calc(100% + 2px); height:32%; overflow:hidden; pointer-events:none; -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.15),transparent); mask-image:linear-gradient(to bottom,rgba(0,0,0,.15),transparent); }
+.media-flow-reflection > div { transform:scaleY(-1); }
+/* Under the card and its shadow, as box-reflect painted it (the item's 3D
+   transform makes it the stacking context). */
+.media-flow-reflection { z-index:-1; }
+/* A running opacity transition would composite the shade separately and turn the
+   mask into a render surface while paging; at 15% the snap is not visible. */
+.media-flow-reflection .library-entry-media::after { transition:none; }
+.low-performance-mode .media-flow-reflection { display:none; }
 
 /* Reflection uses the navigation backdrop, without reducing the poster area. */
 .library-flow-layout .media-flow-stage { overflow:visible; -webkit-mask-image:none; mask-image:none; }

@@ -33,6 +33,27 @@ test("cover flow cards switch off the panel glass they inherit from surfaces.css
   assert.ok(css.indexOf(override.selector) > css.lastIndexOf("backdrop-filter: blur"), "nothing later in MediaFlow.css blurs again");
 });
 
+test("the floor reflection is a masked copy, not -webkit-box-reflect", () => {
+  // 2.18.6 field trace (4K, 300%, fullscreen): box-reflect rasterized its gradient
+  // mask at full card size and sent it with every compositor frame, 6-18 MB, 18 fps;
+  // a plain mask-image measured 59 fps and 0 MB. Its "none" value is also invalid in
+  // Chromium 130, so low-performance mode never switched it off.
+  assert.doesNotMatch(css, /box-reflect/);
+  const reflection = rules.find(rule => rule.selector === ".media-flow-reflection");
+  assert.ok(reflection, "reflection rule");
+  for (const pattern of [/position:absolute/, /top:calc\(100% \+ 2px\)/, /height:32%/, /overflow:hidden/, /pointer-events:none/,
+    /-webkit-mask-image:linear-gradient\(to bottom,rgba\(0,0,0,\.15\),transparent\)/, /(^|;)\s*mask-image:linear-gradient\(to bottom,rgba\(0,0,0,\.15\),transparent\)/])
+    assert.match(reflection.body.replace(/\s+/g, " ").replace(/: /g, ":"), pattern);
+  assert.ok(rules.some(rule => rule.selector === ".media-flow-reflection > div" && /transform:\s*scaleY\(-1\)/.test(rule.body)));
+  assert.ok(rules.some(rule => rule.selector === ".low-performance-mode .media-flow-reflection" && /display:\s*none/.test(rule.body)), "low-performance mode removes it");
+  assert.ok(rules.some(rule => rule.selector === ".media-flow-reflection" && /z-index:\s*-1/.test(rule.body)), "painted under the card's shadow");
+  assert.ok(rules.some(rule => rule.selector === ".media-flow-reflection .library-entry-media::after" && /transition:\s*none/.test(rule.body)), "no composited child under the mask");
+  const view = fs.readFileSync(path.join(__dirname, "../../src/components/MediaFlow.tsx"), "utf8");
+  assert.match(view, /<div className="media-flow-reflection" aria-hidden="true" \{\.\.\.\{ inert: "" \}\}><div>\{child\}<\/div><\/div><\/div>;/);
+  // The real card comes first, so lookups for the card still find it.
+  assert.ok(view.indexOf('style={distance ? { pointerEvents: "none" } : undefined}>{child}</div>') < view.indexOf("media-flow-reflection"));
+});
+
 test("side covers dim through a shade layer, not an animated filter", () => {
   const filtered = rules.filter(rule => /media-flow-item/.test(rule.selector) && /(^|;|\s)filter\s*:/.test(rule.body));
   assert.deepEqual(filtered.map(rule => rule.selector), []);

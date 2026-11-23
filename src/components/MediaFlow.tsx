@@ -86,7 +86,11 @@ export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, vi
         style={{ transform: `translateX(calc(-50% + ${distance} * var(--flow-spacing, 180px))) translateZ(${-Math.abs(distance) * 45}px) rotateY(${distance === 0 ? 0 : distance > 0 ? -30 : 30}deg)`, zIndex: 10 - Math.abs(distance), opacity: Math.abs(distance) > visibleRadius ? 0 : 1 }}
         onContextMenu={e => onItemContextMenu?.(index, e)}
         onClickCapture={e => { if (distance) { e.preventDefault(); e.stopPropagation(); select(index); } }}
-><div {...(distance ? { inert: "" } : {})} style={distance ? { pointerEvents: "none" } : undefined}>{child}</div></div>;
+><div {...(distance ? { inert: "" } : {})} style={distance ? { pointerEvents: "none" } : undefined}>{child}</div>
+        {/* The floor reflection is a flipped, clipped copy under a plain mask-image:
+            -webkit-box-reflect rasterized its gradient mask at full card size and
+            sent it with every compositor frame (6-18 MB at 300%, 18 fps in fullscreen). */}
+        <div className="media-flow-reflection" aria-hidden="true" {...{ inert: "" }}><div>{child}</div></div></div>;
     })}</div>
     <div className="media-flow-navigation"><input className="media-flow-slider" type="range" min={0} max={Math.max(0, count - 1)} step={1} value={selected} disabled={count < 2} aria-label="MediaFlow" aria-valuetext={`${count ? selected + 1 : 0} / ${count}`} onChange={e => select(Number(e.target.value))} /><span>{count ? selected + 1 : 0} / {count}</span></div>
   </section>;

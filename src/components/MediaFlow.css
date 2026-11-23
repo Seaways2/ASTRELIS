@@ -262,11 +262,15 @@
 
 /* Keep the reflected floor visible instead of fading immediately at the card edge. */
 .media-flow-stage { -webkit-mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 12px),transparent 100%); mask-image:linear-gradient(to bottom,#000 0,#000 calc(100% - 12px),transparent 100%); }
-/* The floor reflection (MediaFlow.tsx): the card's bottom 32%, flipped, 2px
-   below it, fading from 15% to nothing, the look the old box-reflect gave.
-   The copy flips in place and the box clips it, so only that strip is painted. */
-.media-flow-reflection { position:absolute; left:0; right:0; top:calc(100% + 2px); height:32%; overflow:hidden; pointer-events:none; -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.15),transparent); mask-image:linear-gradient(to bottom,rgba(0,0,0,.15),transparent); }
-.media-flow-reflection > div { transform:scaleY(-1); }
+/* The floor reflection (MediaFlow.tsx): the artwork only, flipped, 2px below
+   the card, fading from 15% to nothing over 32% of the card height. The cover
+   (inset by the card's 1px border and 8px padding, as tall as the card's artwork
+   row, --flow-art-height) flips in place, so its bottom edge meets the floor,
+   and the box clips it, so only that strip is painted. No text or buttons are
+   mirrored into the navigation strip. */
+.media-flow-reflection { position:absolute; left:9px; right:9px; top:calc(100% + 2px); height:32%; overflow:hidden; pointer-events:none; -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.15),transparent); mask-image:linear-gradient(to bottom,rgba(0,0,0,.15),transparent); }
+.media-flow-reflection > div { height:var(--flow-art-height, 190px); transform:scaleY(-1); }
+.media-flow-reflection .cover-tile::before { display:none; }
 /* Under the card and its shadow, as box-reflect painted it (the item's 3D
    transform makes it the stacking context). */
 .media-flow-reflection { z-index:-1; }

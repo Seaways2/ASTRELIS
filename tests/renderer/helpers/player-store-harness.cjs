@@ -47,7 +47,7 @@ function loadPlayerStore({ desktop, parseBlob = async () => ({ common: {} }), in
     : require(name);
   Function("exports", "module", "require", "localStorage", "window", "URL", javascript)(
     module.exports, module, requireModule, localStorage, { desktop, clearTimeout() {}, setTimeout(fn) { savedCallback = fn; return 1; }, addEventListener(name, fn) { events[name] = fn; } }, URL);
-  return { store: module.exports.usePlayerStore, persisted, revoked, flush: () => savedCallback(), events, thumbnailRefreshes };
+  return { store: module.exports.usePlayerStore, exports: module.exports, persisted, revoked, flush: () => savedCallback(), events, thumbnailRefreshes };
 }
 const makeTrack = id => ({
   id, name: id, artist: "Artist", album: "Album", format: "APE", size: 100,

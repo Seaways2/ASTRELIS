@@ -86,7 +86,9 @@
           "wma",
           "dts",
           "ac3",
-          "eac3"
+          "eac3",
+          "wv",
+          "tta"
         ],
         "name": "ASTRELIS Audio",
         "description": "Audio file",

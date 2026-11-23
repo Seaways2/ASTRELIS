@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
+import { libraryPathKey, libraryPathWithin } from "../libraryPaths";
 import type {
   Album,
   Artist,
@@ -38,8 +39,13 @@ function digest(namespace: string, value: string) {
 }
 
 function rootId(rootPath: string) {
-  const canonical = path.resolve(rootPath).replace(/\//g, "\\").replace(/\\+$/, "").toLocaleLowerCase();
-  return crypto.createHash("sha256").update(canonical).digest("hex");
+  return crypto.createHash("sha256").update(libraryPathKey(rootPath)).digest("hex");
+}
+
+/** Identity of one copy among several files with the same content. */
+export function mediaInstanceId(mediaId: string, canonicalPath: string, occurrence = 0) {
+  const locationKey = canonicalPath.replace(/\//g, "\\").toLocaleLowerCase();
+  return digest("media-instance", `${mediaId}:${locationKey}:${occurrence}`);
 }
 
 export function artistReference(name: string): ArtistReference {
@@ -52,10 +58,10 @@ export function albumIdentity(title: string, albumArtist: string | undefined, co
 }
 
 function owningRoot(sourcePath: string, folders: string[]) {
-  const canonical = path.resolve(sourcePath).replace(/\//g, "\\").toLocaleLowerCase();
+  const canonical = libraryPathKey(sourcePath);
   return [...folders]
-    .map(folder => ({ folder, canonical: path.resolve(folder).replace(/\//g, "\\").replace(/\\+$/, "").toLocaleLowerCase() }))
-    .filter(root => canonical === root.canonical || canonical.startsWith(root.canonical + "\\"))
+    .map(folder => ({ folder, canonical: libraryPathKey(folder) }))
+    .filter(root => libraryPathWithin(canonical, root.canonical))
     .sort((left, right) => right.canonical.length - left.canonical.length)[0]?.folder || path.dirname(sourcePath);
 }
 
@@ -137,7 +143,7 @@ export function disambiguateMediaIds<T extends TrackRecord>(tracks: T[]): T[] {
     const occurrenceKey = `${track.mediaId}:${locationKey}`;
     const occurrence = occurrences.get(occurrenceKey) || 0;
     occurrences.set(occurrenceKey, occurrence + 1);
-    const mediaId = digest("media-instance", `${occurrenceKey}:${occurrence}`);
+    const mediaId = mediaInstanceId(track.mediaId, track.location.canonicalPath, occurrence);
     return { ...track, id: mediaId, mediaId };
   });
 }

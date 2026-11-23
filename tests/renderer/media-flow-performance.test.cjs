@@ -49,9 +49,54 @@ test("the floor reflection is a masked copy, not -webkit-box-reflect", () => {
   assert.ok(rules.some(rule => rule.selector === ".media-flow-reflection" && /z-index:\s*-1/.test(rule.body)), "painted under the card's shadow");
   assert.ok(rules.some(rule => rule.selector === ".media-flow-reflection .library-entry-media::after" && /transition:\s*none/.test(rule.body)), "no composited child under the mask");
   const view = fs.readFileSync(path.join(__dirname, "../../src/components/MediaFlow.tsx"), "utf8");
-  assert.match(view, /<div className="media-flow-reflection" aria-hidden="true" \{\.\.\.\{ inert: "" \}\}><div>\{child\}<\/div><\/div><\/div>;/);
+  assert.match(view, /\{reflections\?\.\[i\] \? <div className="media-flow-reflection" aria-hidden="true" \{\.\.\.\{ inert: "" \}\}><div>\{reflections\[i\]\}<\/div><\/div> : null\}<\/div>;/);
   // The real card comes first, so lookups for the card still find it.
-  assert.ok(view.indexOf('style={distance ? { pointerEvents: "none" } : undefined}>{child}</div>') < view.indexOf("media-flow-reflection"));
+  assert.ok(view.indexOf('style={distance ? { pointerEvents: "none" } : undefined}>{child}</div>') < view.indexOf('className="media-flow-reflection"'));
+});
+
+test("the reflection mirrors only the artwork, never the card's text or buttons", () => {
+  // 2.18.7: the reflection was a second copy of the whole card, so the path, the
+  // title and "+ add layer" showed up reversed under the slider and every card
+  // (thumbnails, observers, buttons) was mounted twice.
+  const view = fs.readFileSync(path.join(__dirname, "../../src/components/MediaFlow.tsx"), "utf8");
+  assert.doesNotMatch(view, /media-flow-reflection[^\n]*\{child\}/, "the card itself is not reflected");
+  const library = fs.readFileSync(path.join(__dirname, "../../src/components/MusicLibrary.tsx"), "utf8");
+  assert.match(library, /reflections=\{visibleEntries\.map\(renderFlowReflection\)\}/);
+  const start = library.indexOf("const renderFlowReflection = ");
+  assert.ok(start > 0, "renderFlowReflection exists");
+  const body = library.slice(start, library.indexOf("\n  };", start));
+  assert.match(body, /LibraryThumbnail/);
+  for (const forbidden of [/library-entry-title/, /library-entry-primary/, /library-entry-actions/, /library-folder-badge/, /<button/, /renderLibraryEntry/, /\{count\}/])
+    assert.doesNotMatch(body, forbidden);
+  assert.ok(rules.some(rule => rule.selector === ".media-flow-reflection > div" && /height:\s*var\(--flow-art-height/.test(rule.body)), "sized to the cover, not the card");
+});
+
+test("the reflected cover has the card's artwork size, so both crop alike", () => {
+  // The reflection used --flow-cover-height (card - 100), 26px taller than the
+  // card's artwork row, so object-fit: cover cut a different part of the image.
+  const view = fs.readFileSync(path.join(__dirname, "../../src/components/MediaFlow.tsx"), "utf8");
+  const constant = name => Number(new RegExp(`export const ${name} = (\\d+);`).exec(view)[1]);
+  assert.match(view, /setProperty\("--flow-art-height", `\$\{cardHeight - \(compact \? FLOW_COMPACT_TEXT_ROWS : FLOW_TEXT_ROWS\)\}px`\)/);
+  const px = value => value.split(/\s+/).filter(Boolean).reduce((sum, part) => sum + (/^\d+px$/.test(part) ? Number.parseFloat(part) : 0), 0);
+  const nonArt = (rows, gap) => {
+    const tracks = rows.trim().split(/\s+(?![^(]*\))/);
+    assert.match(tracks[0], /^minmax\(0,\s*1fr\)$/, "the artwork is the flexible first row");
+    return 2 * 1 + 2 * 8 + px(tracks.slice(1).join(" ")) + (tracks.length - 1) * gap;
+  };
+  const card = rules.find(rule => rule.selector === ".media-flow .library-entry" && /grid-template-rows/.test(rule.body)).body;
+  assert.match(card, /padding:\s*8px/);
+  assert.match(css, /\.media-flow \.library-entry \{[^}]*border: 1px solid/);
+  const gap = Number(/(^|;)\s*gap:\s*(\d+)px/.exec(card)[2]);
+  assert.equal(nonArt(/grid-template-rows:\s*([^;]+);/.exec(card)[1], gap), constant("FLOW_TEXT_ROWS"));
+  const compact = rules.find(rule => rule.selector === ".flow-compact .library-entry").body;
+  assert.equal(nonArt(/grid-template-rows:\s*([^;]+);/.exec(compact)[1], Number(/gap:\s*(\d+)px/.exec(compact)[1])), constant("FLOW_COMPACT_TEXT_ROWS"));
+  const reflection = rules.find(rule => rule.selector === ".media-flow-reflection" && /left:/.test(rule.body)).body;
+  assert.match(reflection, /left:9px; right:9px;/, "inset by the card's border and padding");
+  const library = fs.readFileSync(path.join(__dirname, "../../src/components/MusicLibrary.tsx"), "utf8");
+  const start = library.indexOf("const renderFlowReflection = ");
+  const body = library.slice(start, library.indexOf("\n  };", start));
+  assert.equal((body.match(/<LibraryThumbnail /g) || []).length, (body.match(/fullscreen=\{previewFullscreen\}/g) || []).length,
+    "reflected thumbnails observe the same root as the cards");
 });
 
 test("side covers dim through a shade layer, not an animated filter", () => {

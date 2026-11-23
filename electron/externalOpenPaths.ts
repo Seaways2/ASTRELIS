@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { videoExtensions } from "./videoPlayer";
+import { AUDIO_EXTENSIONS } from "./library/media/audioFormats";
 
-export const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".ape", ".dsf", ".aiff", ".aif", ".opus", ".wma", ".dts", ".ac3", ".eac3"]);
+// One list for the scanner, file associations at runtime and playback checks.
+export { AUDIO_EXTENSIONS, FFMPEG_DECODED_AUDIO_EXTENSIONS, needsDecodedAudio } from "./library/media/audioFormats";
 
 export function externalAudioPaths(argv: string[], workingDirectory = process.cwd()) {
   const unique = new Map<string, string>();

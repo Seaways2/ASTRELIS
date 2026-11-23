@@ -43,6 +43,8 @@ import type { PageId } from "./types/audio";
 import { contrastPeakColor, readableAccent } from "./utils/color";
 import { amplitudeToFaderPercent } from "./utils/volumeFaderScale";
 import { nativeStatusCompletesTrack, nextQueueIndex, nextQueueIndexAfterEnd, PlaybackEndLatch } from "./utils/playbackEndLatch";
+import { bindWebPlaybackEvents } from "./utils/webPlaybackEvents";
+import { isNativeEngineLost, nativeEngineLostNotice, nativeOutputNotice, nativeReplyOf, type NativeOutputNotice } from "./utils/nativeEngineNotice";
 import {
   probeGpuVisualCapabilities,
   type GpuVisualQuality
@@ -62,7 +64,6 @@ export default function App() {
   const setVideoRack = (enabled: boolean) => { localStorage.setItem("astrelis.video.rack", String(enabled)); setVideoRackEnabled(enabled); };
   const [videoLanding, setVideoLanding] = useState(false);
   const [lastVideoId, setLastVideoId] = useState<string>();
-  const videoBookmarks = useRef(new Map<string, number>());
   const videoTransition = useRef<Promise<unknown>>(Promise.resolve());
   const videoActiveRef = useRef(false);
   const { t, tm, resolvedLanguage } = useI18n();
@@ -152,6 +153,23 @@ export default function App() {
   const localNativeReady = useRef(false);
   const localPlaybackEndLatch = useRef(new PlaybackEndLatch());
   const completedLocalPlaybackToken = useRef("");
+  // Play request whose source the shared audio element currently holds, and
+  // the last one whose failure was already reported.
+  const localWebSourceToken = useRef("");
+  const failedLocalPlaybackToken = useRef("");
+  // Play request whose native source could not be loaded, and the one whose
+  // native host exited under it (Play loads that one again).
+  const failedNativeLoadToken = useRef("");
+  const nativeEngineLostToken = useRef("");
+  // The request whose lost-host notice was shown, and one whose stop waits
+  // for a pending choice to settle.
+  const nativeEngineLostNoticeToken = useRef("");
+  const nativeEngineLostWait = useRef("");
+  // Play request whose video could not be opened (Play opens it again).
+  const videoOpenFailedToken = useRef("");
+  // The native output condition last shown, so a poll never repeats it.
+  const [outputNotice, setOutputNotice] = useState<NativeOutputNotice | null>(null);
+  const outputNoticeId = useRef("");
   const localTrackTransitionGeneration = useRef(0);
   const [queueOpen, setQueueOpen] = useState(false);
   const closeQueue = useCallback(() => setQueueOpen(false), []);
@@ -410,7 +428,9 @@ export default function App() {
       audioEngine.clearOnlineAnalysis();
       if (native) {
         const result = await window.desktop?.nativeAudio.command({type:"play",routeSource:"local",routeSessionId,routeAction:"transport"});
-        if (!result?.ok) throw new Error(result?.error || "原生播放失败");
+        // {ok:false} (NATIVE_ENGINE_LOST, say) is a failed start; the reply
+        // rides along so callers can tell a lost host from other failures.
+        if (!result?.ok) throw Object.assign(new Error(result?.error || "原生播放失败"), { nativeReply: result });
       } else await audioEngine.play();
     });
   }, []);
@@ -445,7 +465,13 @@ export default function App() {
     return transition;
   }, []);
   useEffect(() => { void usePlayerStore.getState().hydrateLibrary(); }, []);
-  useEffect(() => { void useVstRackStore.getState().initialize(); void usePlayerStore.getState().restoreQueues(); }, []);
+  useEffect(() => {
+    void useVstRackStore.getState().initialize();
+    // A file opened from Explorer meanwhile may clear the library notice; the
+    // kept queue file is worth telling about in any case.
+    void usePlayerStore.getState().restoreQueues().then(restored => { if (!restored) setDeviceError(t("queue.restoreFailed")); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
+  }, []);
   useEffect(() => {
     const dispose = window.desktop?.externalOpen.onFiles(paths => {
       void usePlayerStore.getState().openExternalFiles(paths).then(() => {
@@ -494,7 +520,10 @@ export default function App() {
     if (isVideoTrack(track) && latest.repeat === "one") { void latest.playTrack(latest.currentIndex, { navigateToNowPlaying: false }); return; }
 
     if (latest.repeat !== "one") {
-      const index = nextQueueIndexAfterEnd(latest.tracks.length, latest.currentIndex, latest.shuffle, latest.repeat);
+      // A video queue ends after its last video: looping back would start an
+      // unrelated video (or the same film again) that nobody chose.
+      const repeat = isVideoTrack(track) ? "off" : latest.repeat;
+      const index = nextQueueIndexAfterEnd(latest.tracks.length, latest.currentIndex, latest.shuffle, repeat);
       if (index >= 0) {
         completedLocalPlaybackToken.current = token;
         void latest.playTrack(index, { navigateToNowPlaying: false, skipMissing: latest.tracks.length });
@@ -533,6 +562,7 @@ export default function App() {
         latest.setTiming(0, latest.duration);
       } catch (error) {
         if (!replayIsCurrent()) return;
+        if (nativeReplay && isNativeEngineLost(error)) { reportNativeEngineLost(token, error); return; }
         usePlayerStore.getState().setPlaying(false);
         setDeviceError(error instanceof Error ? error.message : "单曲循环重新播放失败");
       } finally {
@@ -541,6 +571,80 @@ export default function App() {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount
   }, []);
+
+  // The Web Audio source of play request `token` failed to load or decode.
+  const handleLocalPlaybackError = useCallback((token: string) => {
+    const latest = usePlayerStore.getState();
+    const track = latest.tracks[latest.currentIndex];
+    if (!track || `${track.id}:${latest.localPlayRequest}` !== token || failedLocalPlaybackToken.current === token) return;
+    const mediaError = audioEngine.element.error;
+    // MEDIA_ERR_ABORTED: loading was stopped on purpose (a newer source).
+    if (mediaError?.code === 1) return;
+    failedLocalPlaybackToken.current = token;
+    console.error(`[playback] cannot play ${track.sourcePath || track.name}: MediaError ${mediaError?.code ?? "?"} ${mediaError?.message || ""}`.trim());
+    const skipped = latest.skipUnplayableTrack();
+    setDeviceError(t(skipped ? "playback.failedSkipped" : "playback.failed", { name: track.name }));
+  }, [t]);
+  // play() was rejected. AbortError: a newer load or pause replaced the
+  // request. NotSupportedError: the element reports it through "error".
+  const handleWebPlayRejection = useCallback((error: unknown) => {
+    const name = (error as { name?: unknown } | undefined)?.name;
+    if (name === "AbortError" || name === "NotSupportedError") return;
+    usePlayerStore.getState().setPlaying(false);
+    setDeviceError(error instanceof Error && error.message ? error.message : t("playback.startFailed"));
+  }, [t]);
+  // The native host exited under play request `token` and could not be
+  // restored (main tries once by itself). Stop instead of showing "playing"
+  // without sound, say so once, and let Play load the track on a new host.
+  const reportNativeEngineLost = useCallback((token: string, reply?: unknown) => {
+    const isCurrent = () => {
+      const latest = usePlayerStore.getState();
+      const track = latest.tracks[latest.currentIndex];
+      return Boolean(track && `${track.id}:${latest.localPlayRequest}` === token);
+    };
+    if (!isCurrent()) return;
+    localNativeReady.current = false;
+    useVstRackStore.getState().markNativeUnavailable();
+    // Play on this request loads the track again on a new host (transport
+    // effect), also when a pending choice below fails and leaves it current.
+    nativeEngineLostToken.current = token;
+    const stop = () => {
+      if (!isCurrent()) return;
+      // A track the user just chose is loading: its load starts a new host.
+      // If it cannot be prepared (a chosen entry only reports that), this
+      // request stays current without a backend: stop it once that settles.
+      if (usePlayerStore.getState().hasPendingPlay()) {
+        if (nativeEngineLostWait.current === token) return;
+        nativeEngineLostWait.current = token;
+        const settle = () => {
+          if (!isCurrent() || nativeEngineLostToken.current !== token) { nativeEngineLostWait.current = ""; return; }
+          if (usePlayerStore.getState().hasPendingPlay()) { window.setTimeout(settle, 250); return; }
+          nativeEngineLostWait.current = "";
+          stop();
+        };
+        window.setTimeout(settle, 250);
+        return;
+      }
+      usePlayerStore.getState().setPlaying(false);
+      if (nativeEngineLostNoticeToken.current === token) return;
+      nativeEngineLostNoticeToken.current = token;
+      const rack = useVstRackStore.getState().rack;
+      const loss = reply instanceof Error ? nativeReplyOf(reply) : reply as Parameters<typeof nativeEngineLostNotice>[1];
+      console.error(`[playback] native host lost: ${loss?.error || (reply instanceof Error ? reply.message : "unknown")}`);
+      setDeviceError(nativeEngineLostNotice(t, loss, id => rack.find(item => item.formatSpecificPluginId === id)?.name || id));
+    };
+    stop();
+  }, [t]);
+  // A native play request failed: a lost host is reported as such, anything
+  // else stops with its message.
+  const handleNativePlayFailure = useCallback((token: string, error: unknown) => {
+    if (isNativeEngineLost(error)) { reportNativeEngineLost(token, error); return; }
+    const latest = usePlayerStore.getState();
+    const track = latest.tracks[latest.currentIndex];
+    if (!track || `${track.id}:${latest.localPlayRequest}` !== token) return;
+    latest.setPlaying(false);
+    setDeviceError(error instanceof Error && error.message ? error.message : t("playback.startFailed"));
+  }, [reportNativeEngineLost, t]);
 
   const rememberedOutputLabel = (id: string) => {
     if (id === "default") return "";
@@ -563,7 +667,20 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!current) { setVideoPreparing(""); ++localBackendGeneration.current; videoTransition.current = videoTransition.current.catch(() => undefined).then(async () => { await window.desktop?.video.control("close"); }); return; }
+    localWebSourceToken.current = "";
+    if (!current) {
+      setVideoPreparing(""); ++localBackendGeneration.current; localNativeReady.current = false;
+      // The queue emptied under a playing track (its last row was removed):
+      // silence the source it was using instead of leaving it audible.
+      const previous = playbackBackend.current, routeSessionId = localRouteSession.current;
+      if (previous.trackId) {
+        playbackBackend.current = { native: false };
+        if (previous.native && routeSessionId) void window.desktop?.nativeAudio.command({ type: "pause", routeSource: "local", routeSessionId, routeAction: "release" });
+        else audioEngine.stop();
+      }
+      videoTransition.current = videoTransition.current.catch(() => undefined).then(async () => { await window.desktop?.video.control("close"); });
+      return;
+    }
     const backendGeneration = ++localBackendGeneration.current;
     if (videoActive) {
       setVideoPreparing("video.preparing.stop");
@@ -573,7 +690,9 @@ export default function App() {
       const positionAtSwitch = usePlayerStore.getState().currentTime;
       videoTransition.current = videoTransition.current.catch(() => undefined).then(async () => {
         if (backendGeneration !== localBackendGeneration.current) return;
-        const resumePosition = videoState?.playbackToken === token ? videoState.position : positionAtSwitch || videoBookmarks.current.get(current.id) || 0;
+        // The store's position is the only bookmark: leaving the video queue
+        // saved it, and choosing the video again from the top cleared it.
+        const resumePosition = videoState?.playbackToken === token ? videoState.position : positionAtSwitch;
         await window.desktop?.video.control("close");
         await audioEngine.pause();
         audioEngine.stopNativePcmCapture(); audioEngine.resetAnalysis();
@@ -595,7 +714,14 @@ export default function App() {
         const latest = usePlayerStore.getState();
         if (!videoDirect) await prepareControl("volume", latest.muted ? 0 : latest.volume * 100);
         await prepareControl(latest.playing ? "play" : "pause");
-      }).catch(error => { if (backendGeneration === localBackendGeneration.current) { state.setPlaying(false); setDeviceError(String(error)); } }).finally(() => { if (backendGeneration === localBackendGeneration.current) setVideoPreparing(""); });
+      }).catch(error => {
+        if (backendGeneration !== localBackendGeneration.current) return;
+        // Play on this item opens it again (transport effect).
+        videoOpenFailedToken.current = token;
+        state.setPlaying(false);
+        // String(error) of an Error whose message is already "Error: …" doubled the prefix.
+        setDeviceError((error instanceof Error ? error.message : String(error)).replace(/^(?:Error:\s*)+/, "") || t("video.failed"));
+      }).finally(() => { if (backendGeneration === localBackendGeneration.current) setVideoPreparing(""); });
       return;
     }
     setVideoPreparing("");
@@ -659,7 +785,11 @@ export default function App() {
           await window.desktop?.nativeAudio.command({ type: "enable", enabled: true });
           if (backendSuperseded()) return;
           const vst = useVstRackStore.getState();
-          if (!hdmiDirect) await window.desktop?.nativeAudio.command({ type: "rack", plugins: vst.nativeEnabled ? toNativeRackPayload(vst.rack) : [] });
+          if (!hdmiDirect) {
+            const rackReply = await window.desktop?.nativeAudio.command({ type: "rack", plugins: vst.nativeEnabled ? toNativeRackPayload(vst.rack) : [] });
+            // A host started for this load (after one exited) has the rack again.
+            if (rackReply) useVstRackStore.setState({ runtimeReady: Boolean(rackReply.ok) });
+          }
           if (backendSuperseded()) return;
           const loaded = await window.desktop?.nativeAudio.command({
             type: "load", path: current.nativePath,
@@ -668,7 +798,18 @@ export default function App() {
             routeSource: "local", routeSessionId, routeAction: "prepare"
           });
           if (backendSuperseded()) return;
-          if (!loaded?.ok) { setDeviceError(loaded?.error || "原生引擎无法加载音频"); state.setPlaying(false); return; }
+          if (!loaded?.ok) {
+            // Play on this request reports it again instead of a silent
+            // "playing" (localNativeReady stays false, so nothing would start).
+            failedNativeLoadToken.current = playbackToken;
+            console.error(`[playback] native load failed for ${current.sourcePath || current.name}: ${loaded?.error || "unknown"}`);
+            const live = usePlayerStore.getState();
+            // An automatic or Next request moves past it, as on Web Audio.
+            const skipped = live.playing && !live.hasPendingPlay() && live.skipUnplayableTrack();
+            if (!skipped) live.setPlaying(false);
+            setDeviceError(skipped ? t("playback.failedSkipped", { name: current.name }) : loaded?.error || "原生引擎无法加载音频");
+            return;
+          }
           if (resumePosition > 0) await window.desktop?.nativeAudio.command({ type: "seek", position: resumePosition });
           if (backendSuperseded()) return;
           {
@@ -683,8 +824,11 @@ export default function App() {
           audioEngine.useNativeAnalysis();
         } catch (error) {
           if (!backendSuperseded()) {
-            usePlayerStore.getState().setPlaying(false);
-            setDeviceError(error instanceof Error ? error.message : "声源切换失败");
+            if (isNativeEngineLost(error)) reportNativeEngineLost(playbackToken, error);
+            else {
+              usePlayerStore.getState().setPlaying(false);
+              setDeviceError(error instanceof Error ? error.message : "声源切换失败");
+            }
           }
         } finally {
           finishTrackTransition();
@@ -707,14 +851,17 @@ export default function App() {
           await window.desktop?.nativeAudio.command({ type: "enable", enabled: false });
           if (backendSuperseded()) return;
           audioEngine.useLocalAnalysis();
+          localWebSourceToken.current = playbackToken;
           audioEngine.load(current.url);
           if (resumePosition > 0) {
-            const restorePosition = () => audioEngine.seek(resumePosition);
+            // The element is shared: if this source is replaced before its
+            // metadata arrives, the next source must not jump to this position.
+            const restorePosition = () => { if (!backendSuperseded()) audioEngine.seek(resumePosition); };
             audioEngine.element.addEventListener("loadedmetadata", restorePosition, { once: true });
           }
           if (usePlayerStore.getState().playing) {
             try { await playExclusive(false); }
-            catch { usePlayerStore.getState().setPlaying(false); }
+            catch (error) { if (!backendSuperseded()) handleWebPlayRejection(error); }
           }
         } finally {
           finishTrackTransition();
@@ -733,6 +880,16 @@ export default function App() {
       const token = `${current.id}:${state.localPlayRequest}`;
       if (!videoPreparing && videoState?.ready && videoState.playbackToken === token)
         void window.desktop?.video.control(state.playing ? "play" : "pause");
+      // Play after this item failed to open opens it again (a new play
+      // request) instead of showing "running" with nothing playing. A failure
+      // the player reported itself is retried by VideoView.
+      const viewShowsFailure = Boolean(videoState?.error) && !videoState?.ready && videoState?.playbackToken === token;
+      if (state.playing && !videoPreparing && videoOpenFailedToken.current === token && !viewShowsFailure && !state.hasPendingPlay()) {
+        videoOpenFailedToken.current = "";
+        // A new request for the same entry that keeps its position: choosing
+        // it again (playTrack) would start from the top and drop the bookmark.
+        state.reloadCurrentTrack();
+      }
       return;
     }
     if (state.onlineMedia?.playing) {
@@ -753,6 +910,17 @@ export default function App() {
       audioEngine.clearOnlineAnalysis();
       audioEngine.useLocalAnalysis();
     }
+    // Starting again after the queue ended is a new run of the same request:
+    // its completion must be able to stop (or advance) playback once more.
+    const playToken = `${current.id}:${state.localPlayRequest}`;
+    const timing = usePlayerStore.getState();
+    // A native reader that played to the end stays there; Play after the
+    // queue ended starts the track again instead of silent "playing".
+    const nativeRewind = startedLocal && nativePlayback && localNativeReady.current
+      && timing.duration > 0 && timing.currentTime >= timing.duration - .05;
+    // Rewinding releases the latch only after the seek: a status reply that
+    // was requested before it still reports the end and would stop again.
+    if (startedLocal && !nativeRewind) localPlaybackEndLatch.current.release(playToken);
     if (localTrackTransitionGeneration.current === localBackendGeneration.current) {
       previousLocalPlaying.current = state.playing;
       return;
@@ -761,14 +929,43 @@ export default function App() {
       // Loading owns the initial play decision. Transport effects may only
       // address a backend that has completed enable/rack/load successfully.
       if (localNativeReady.current) {
-        if (state.playing) void playExclusive(true, localRouteSession.current).catch(() => state.setPlaying(false));
+        if (state.playing) {
+          const routeSessionId = localRouteSession.current;
+          void (async () => {
+            if (nativeRewind) {
+              await window.desktop?.nativeAudio.command({ type: "seek", position: 0 });
+              localPlaybackEndLatch.current.release(playToken);
+            }
+            await playExclusive(true, routeSessionId);
+          })().catch(error => handleNativePlayFailure(playToken, error));
+        }
         else void window.desktop?.nativeAudio.command({type:"pause",routeSource:"local",routeSessionId:localRouteSession.current,routeAction:"transport"});
+      } else if (startedLocal && !usePlayerStore.getState().hasPendingPlay()) {
+        // No backend holds this request's source, so Play alone would show
+        // "playing" without sound. A host that exited is replaced by loading
+        // the track again from where it stopped; a source that could not be
+        // loaded is reported again.
+        if (nativeEngineLostToken.current === playToken) usePlayerStore.getState().reloadCurrentTrack();
+        else if (failedNativeLoadToken.current === playToken) {
+          state.setPlaying(false);
+          setDeviceError(t("playback.failed", { name: current.name }));
+        }
       }
       previousLocalPlaying.current = state.playing;
       return;
     }
     if (state.playing) {
-      playExclusive(false).catch(() => state.setPlaying(false));
+      // Like Native: the load chain starts a source it is loading. Playing the
+      // element before then would replay the previous (or a cleared) track.
+      if (localWebSourceToken.current === playToken) {
+        // A source that failed to load cannot start (play() rejects without a
+        // new "error" event): Play reports it again instead of silent "playing".
+        if (failedLocalPlaybackToken.current !== playToken) playExclusive(false).catch(handleWebPlayRejection);
+        else if (!usePlayerStore.getState().hasPendingPlay()) {
+          state.setPlaying(false);
+          setDeviceError(t("playback.failed", { name: current.name }));
+        }
+      }
     } else audioEngine.pause();
     previousLocalPlaying.current = state.playing;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
@@ -851,6 +1048,15 @@ export default function App() {
         // analysisSource back to a stale Native spectrum.
         if (!statusStillCurrent()) return;
         if (!status?.ok) {
+          // The host exited and main could not restore it: stop and say so
+          // once (this poll stops with localNativeReady); Play reloads. Main
+          // answers every later status the same way (a direct source has no
+          // restore plan), so this comes before the HDMI branch too.
+          if (isNativeEngineLost(status)) {
+            if (hdmiDirect) setDirectOutputLabel("");
+            reportNativeEngineLost(statusTrackToken, status);
+            return;
+          }
           if (hdmiDirect) {
             usePlayerStore.getState().setPlaying(false);
             setDirectOutputLabel("");
@@ -865,6 +1071,14 @@ export default function App() {
           return;
         }
         statusFailures = 0;
+        // A missing, stalled or substituted output device is reported beside
+        // ok:true: the backend is fine and main reopens the device when it
+        // returns, so it is a notice, never markNativeUnavailable.
+        const output = nativeOutputNotice(t, status);
+        if ((output?.id || "") !== outputNoticeId.current) {
+          outputNoticeId.current = output?.id || "";
+          setOutputNotice(output);
+        }
         if (analysisNeeded) audioEngine.setNativeAnalysis(status);
         // Analysis packets run at ~30 Hz; keep React timing updates near 6 Hz
         // so the canvas remains imperative and the application UI stays calm.
@@ -887,21 +1101,24 @@ export default function App() {
         window.clearInterval(timer);
       };
     }
+    if (!current) return;
     const sync = () => {
       const currentTime = audioEngine.element.currentTime;
       const mediaDuration = audioEngine.element.duration;
       const duration = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : metadataDuration;
       state.setTiming(currentTime, duration);
     };
-    const cleanups = [
-      audioEngine.on("timeupdate", sync), audioEngine.on("loadedmetadata", sync),
-      audioEngine.on("ended", () => handleLocalEnded(`${current.id}:${state.localPlayRequest}`)),
-      audioEngine.on("play", () => state.setPlaybackObserved(true)),
-      audioEngine.on("pause", () => state.setPlaybackObserved(false))
-    ];
-    return () => cleanups.forEach((cleanup) => cleanup());
+    // Events of the previous source (its fade-out pause, a late end) are
+    // ignored until this request's source is loaded into the element.
+    const token = `${current.id}:${state.localPlayRequest}`;
+    return bindWebPlaybackEvents(audioEngine, token, () => localWebSourceToken.current, {
+      sync,
+      ended: () => handleLocalEnded(token),
+      observed: playing => state.setPlaybackObserved(playing),
+      failed: () => handleLocalPlaybackError(token)
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the list names the changes that should re-run this; it reads the latest store state when it runs, and depending on the whole store would re-run it on every update
-  }, [handleLocalEnded, nativePlayback, state.localPlayRequest, current?.id, metadataDuration, hdmiDirect, analysisNeeded, videoActive]);
+  }, [handleLocalEnded, handleLocalPlaybackError, nativePlayback, state.localPlayRequest, current?.id, metadataDuration, hdmiDirect, analysisNeeded, videoActive]);
 
   const onlineAction = async (action: "toggle" | "stop" | "previous" | "next" | "seek" | "shuffle" | "repeat", value?: number) => {
     if (onlineTransportPending.current) return;
@@ -1187,6 +1404,18 @@ export default function App() {
     const timer = window.setTimeout(() => setVstNotice(""), 6500);
     return () => window.clearTimeout(timer);
   }, [vstNotice, windowBackgrounded, pageVisible]);
+  // A substitute device is a passing notice; a lost or stalled one stays until
+  // the device is back (the status poll clears it) or it is closed.
+  useEffect(() => {
+    if (!outputNotice || outputNotice.persistent || windowBackgrounded || !pageVisible) return;
+    const timer = window.setTimeout(() => setOutputNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [outputNotice, windowBackgrounded, pageVisible]);
+  useEffect(() => {
+    if (nativePlayback && !hdmiDirect) return;
+    outputNoticeId.current = "";
+    setOutputNotice(null);
+  }, [nativePlayback, hdmiDirect]);
 
   const importFiles = (files: File[]) => state.addTracks(files);
   const deviceName = devices.find((device) => device.id === deviceId)?.label || t("common.defaultOutput");
@@ -1344,7 +1573,7 @@ export default function App() {
             else { state.setPlaying(false); state.setCurrentIndex(-1); state.setTiming(0, 0); setVideoLanding(true); }
           }}><Film /> {t("video.title")}</button>
           <button className="import-button file-import-button" onClick={() => fileRef.current?.click()}><Import /> {t("common.importFiles")}</button>
-          <input ref={fileRef} type="file" multiple accept="audio/*,video/*,.mp4,.mkv,.mov,.m4v,.webm,.avi,.ts,.m2ts,.mpg,.mpeg,.wmv,.asf,.flv,.ogv,.3gp,.3g2,.f4v,.vob,.mxf,.rm,.rmvb,.mts,.m2t,.m1v,.m2v,.divx,.mpe,.m2p,.qt,.tp,.trp,.vro,.mpv,.flac,.m4a,.ape,.dsf,.aiff,.aif,.opus,.wma,.dts,.ac3,.eac3" hidden onChange={(event) => { void importFiles(Array.from(event.target.files || [])); event.target.value = ""; }} />
+          <input ref={fileRef} type="file" multiple accept="audio/*,video/*,.mp4,.mkv,.mov,.m4v,.webm,.avi,.ts,.m2ts,.mpg,.mpeg,.wmv,.asf,.flv,.ogv,.3gp,.3g2,.f4v,.vob,.mxf,.rm,.rmvb,.mts,.m2t,.m1v,.m2v,.divx,.mpe,.m2p,.qt,.tp,.trp,.vro,.mpv,.flac,.m4a,.ape,.dsf,.aiff,.aif,.opus,.wma,.dts,.ac3,.eac3,.wv,.tta" hidden onChange={(event) => { void importFiles(Array.from(event.target.files || [])); event.target.value = ""; }} />
         </div>
       </aside>
 
@@ -1359,7 +1588,7 @@ export default function App() {
           </div>
         </div>
         <div className={`visual-area visual-mode-${state.visualizer} visual-transition-${state.uiSettings.visualTransition} ${visualStopped ? "visual-stopped" : ""} ${visualSwitchPhase === "idle" ? "" : `visual-switch-${visualSwitchPhase}`}`}>
-          {videoLanding ? <div className="video-empty-mode"><Film /><h2>{t("video.title")}</h2><p>{t("video.empty")}</p><div><button className="import-button" onClick={() => fileRef.current?.click()}><Import />{t("common.importFiles")}</button><button onClick={() => { setVideoLanding(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("nowPlaying"); }}>{t("video.return")}</button></div></div> : videoActive ? <VideoView preparing={videoPreparing} onFullscreen={()=>void detachVideo()} windowBusy={videoWindowBusy} onBack={() => { if (current) { setLastVideoId(current.id); videoBookmarks.current.set(current.id, videoState?.position || 0); } state.setPlaying(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("library"); }} state={videoState} direct={videoDirect} setDirect={setVideoDirect} rackEnabled={videoRackEnabled} setRackEnabled={setVideoRack} visible={pageVisible && !windowBackgrounded && !channelStripOpen && !dragging && !compactMode} /> : <div className="visualizer-transition-layer" key={`${state.visualizer}-${immersiveMode}`}>
+          {videoLanding ? <div className="video-empty-mode"><Film /><h2>{t("video.title")}</h2><p>{t("video.empty")}</p><div><button className="import-button" onClick={() => fileRef.current?.click()}><Import />{t("common.importFiles")}</button><button onClick={() => { setVideoLanding(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("nowPlaying"); }}>{t("video.return")}</button></div></div> : videoActive ? <VideoView preparing={videoPreparing} onFullscreen={()=>void detachVideo()} windowBusy={videoWindowBusy} onBack={() => { if (current) setLastVideoId(current.id); state.setPlaying(false); closeQueue(); setVideoVolumeOpen(false); state.switchQueue("music"); state.setActivePage("library"); }} state={videoState} direct={videoDirect} setDirect={setVideoDirect} rackEnabled={videoRackEnabled} setRackEnabled={setVideoRack} visible={pageVisible && !windowBackgrounded && !channelStripOpen && !dragging && !compactMode} /> : <div className="visualizer-transition-layer" key={`${state.visualizer}-${immersiveMode}`}>
             <VisualizerCanvas mode={state.visualizer} accent={state.accent} settings={effectiveVisualSettings} glowStrength={effectiveGlowStrength} playbackActive={lowPerformanceMode ? false : playbackActive} visible={visualsVisible} backgroundUrl={customBackgroundActive ? state.uiSettings.customBackgroundUrl : undefined} backgroundBrightness={1} backgroundOpacity={1 - state.uiSettings.windowOpacity} interactive={visualizerInteractive} ink={visualizerInk} />
           </div>}
           {!videoActive && visualSettingsOpen && <VisualTuningPanel onClose={() => setVisualSettingsOpen(false)} />}
@@ -1527,6 +1756,7 @@ export default function App() {
     </div>}
     {activeError && <div className="error-toast" role="status" aria-live="polite"><div><b>{t("common.operationFailed")}</b><span>{tm(activeError)}</span></div><button title={t("common.close")} onClick={dismissError}><X /></button></div>}
     {vstNotice && <div className="vst-notice-toast" role="status" aria-live="polite"><Power /><div><b>{t("vst.modeNotice")}</b><span>{vstNotice}</span></div><button title={t("common.close")} onClick={() => setVstNotice("")}><X /></button></div>}
+    {outputNotice && <div className="vst-notice-toast output-notice-toast" role="status" aria-live="polite"><Volume2 /><div><b>{t("native.outputNotice")}</b><span>{outputNotice.text}</span></div><button title={t("common.close")} onClick={() => setOutputNotice(null)}><X /></button></div>}
     {dragging && !immersiveMode && <div className="drop-overlay"><div><Zap /><b>{t("drop.releaseImport")}</b><span>{t("drop.addToQueue")}</span></div></div>}
     <LibraryMatchTaskHost/>
   </main>;

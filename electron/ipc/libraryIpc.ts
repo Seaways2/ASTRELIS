@@ -6,9 +6,10 @@ import { videoExtensions } from "../videoPlayer";
 import type { LibraryCommandMeta } from "../library/types";
 import { cacheArtwork, removeArtworkThumbnailFiles } from "../library/media/ArtworkCache";
 import { sanitizeLibraryRoots } from "../library/reconcile/LibraryReconciler";
+import { libraryFolderArgument, rescanCoversRegisteredRoots } from "../library/libraryPaths";
 import { parseAbsolutePath, parseCommandMeta, parseLegacyMutation, parsePathList, parseRescanRequest } from "../library/validation/LibraryIpcValidator";
 import { sameCanonicalPath, type LocalMediaAccessPolicy } from "../security/ElectronSecurity";
-import { AUDIO_EXTENSIONS, externalAudioPaths } from "../externalOpenPaths";
+import { AUDIO_EXTENSIONS, externalAudioPaths, needsDecodedAudio } from "../externalOpenPaths";
 import { cachedArtworkUrl, hydrateLibraryTracks, mediaUrl } from "../mediaUrls";
 import { missingSourceResult, sourceIsMissing } from "../library/media/sourceAvailability";
 import type { FolderVisibility } from "../FolderVisibility";
@@ -34,6 +35,23 @@ export interface LibraryIpcDeps {
   writeLog(level: string, message: string): void;
   /** Settles once the persisted library folders are registered as roots. */
   libraryRootsReady: Promise<void>;
+}
+
+/** Matches QueueStore's MAX_TRACKS: every queue it saves must restore. */
+export const OPEN_FILES_LIMIT = 20_000;
+const OPEN_FILES_CONCURRENCY = 8;
+
+/** Maps in input order with at most `limit` calls running. */
+export async function mapLimited<T, R>(items: readonly T[], limit: number, mapper: (item: T) => Promise<R>) {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await mapper(items[index]);
+    }
+  }));
+  return results;
 }
 
 /** Media library scanning, persistence, file actions and artwork. */
@@ -70,7 +88,7 @@ export function registerLibraryIpc({
     signal?: AbortSignal
   ) => {
     requestedRoots.forEach(root => localMediaAccess?.registerRoot(root));
-    const scan = await libraryScanner.scanRoots(scannedRoots, progress => { if (!event.sender.isDestroyed()) event.sender.send("library:scan-progress", progress); }, signal);
+    const scan = await libraryScanner.scanRoots(scannedRoots, progress => { if (!event.sender.isDestroyed()) event.sender.send("library:scan-progress", progress); }, signal, requestedRoots);
     if (signal?.aborted) return null;
     activeLibraryScans.delete(meta.requestId);
     writeLog("LIBRARY", JSON.stringify({
@@ -111,7 +129,7 @@ export function registerLibraryIpc({
     scanCompatibilityResult(event, [parseAbsolutePath(folder, "scan folder")])
   );
   ipcMain.handle("library:remove-folder", async (_, folder: unknown, meta: unknown) => {
-    const root = parseAbsolutePath(folder, "library folder");
+    const root = parseAbsolutePath(libraryFolderArgument(folder), "library folder");
     const command = parseCommandMeta(meta);
     const current = await libraryService.getSnapshot();
     if (current.status === "error" || !current.snapshot) throw new Error("Library snapshot unavailable");
@@ -154,10 +172,11 @@ export function registerLibraryIpc({
       throw new Error(`${current.error?.code || "LIBRARY_UNKNOWN_ERROR"}: ${current.error?.message || "音乐库加载失败"}`);
     const authoritativeRoots = sanitizeLibraryRoots(current.snapshot?.folders || []);
     authoritativeRoots.forEach(root => localMediaAccess?.registerRoot(root));
-    if (roots.length !== authoritativeRoots.length
-      || roots.some(root => !authoritativeRoots.some(authoritative => sameCanonicalPath(root, authoritative))))
+    // The renderer folds a nested root (a junction kept as a root of its own)
+    // into its parent; the request still means "every registered root".
+    if (!rescanCoversRegisteredRoots(roots, authoritativeRoots, sameCanonicalPath))
       throw new Error("LIBRARY_INVALID_SCHEMA: 只能重新扫描已登记的音乐库目录");
-    return await scanAndCommit(event, roots, roots, request.meta, controller.signal);
+    return await scanAndCommit(event, authoritativeRoots, authoritativeRoots, request.meta, controller.signal);
     } finally { activeLibraryScans.delete(request.meta.requestId); event.sender.removeListener("destroyed", stopOnClose); }
   });
   ipcMain.handle("library:cancel-scan", (event, requestId: unknown) => {
@@ -168,7 +187,9 @@ export function registerLibraryIpc({
     return { ok: true };
   });
   ipcMain.handle("library:open-files", async (_, input: unknown) => {
-    const visiblePaths = parsePathList(input, "audio paths").filter(file => !folderVisibility.blocked(file));
+    // Queue restore sends every saved local path at once; QueueStore keeps up to
+    // 20,000 tracks, so a lower limit here rejected the whole restore.
+    const visiblePaths = parsePathList(input, "audio paths", OPEN_FILES_LIMIT).filter(file => !folderVisibility.blocked(file));
     // Paths without a grant (e.g. queue entries saved before grants were
     // persisted) are skipped and reported, so one stale entry no longer
     // fails the whole batch. Nothing about them is read or returned.
@@ -182,7 +203,9 @@ export function registerLibraryIpc({
     const sourcePaths = externalAudioPaths(requestedPaths);
     const metadataModule = await importMusicMetadata();
     const errors: string[] = [];
-    const tracks = await Promise.all(sourcePaths.map(async sourcePath => {
+    // A bounded number of files at a time: thousands of parallel parses stalled
+    // the main process during queue restore.
+    const tracks = await mapLimited(sourcePaths, OPEN_FILES_CONCURRENCY, async sourcePath => {
       const stat = await fs.promises.stat(sourcePath);
       if (videoExtensions.includes(path.extname(sourcePath).slice(1).toLowerCase())) return {
         id: crypto.createHash("sha1").update(sourcePath.toLowerCase()).digest("hex"),
@@ -212,10 +235,10 @@ export function registerLibraryIpc({
         id: crypto.createHash("sha1").update(sourcePath.toLowerCase()).digest("hex"),
         name, artist, album, genre, year, duration, coverUrl,
         format: path.extname(sourcePath).slice(1).toUpperCase(), size: stat.size,
-        sourcePath, nativePath: /\.(ape|dsf|wma)$/i.test(sourcePath) ? undefined : sourcePath,
+        sourcePath, nativePath: needsDecodedAudio(sourcePath) ? undefined : sourcePath,
         url: mediaUrl(sourcePath), folder: path.dirname(sourcePath)
       };
-    }));
+    });
     return { tracks, errors: errors.slice(0, 20), unauthorized };
   });
   ipcMain.handle("library:file-action", async (event, id: unknown, action: unknown) => {

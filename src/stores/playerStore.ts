@@ -144,7 +144,8 @@ interface PlayerState {
   queueBookmarks: Record<string, number>;
   switchQueue(kind: "music" | "video"): void;
   addQueueTracks(tracks: Track[]): void;
-  restoreQueues(): Promise<void>;
+  /** Resolves false when the saved queue could not be loaded (it is then kept on disk). */
+  restoreQueues(): Promise<boolean>;
   libraryTracks: Track[];
   libraryDerivedIndexCache: LibraryDerivedIndexSnapshot | null;
   favoriteTrackKeys: string[];
@@ -188,6 +189,17 @@ interface PlayerState {
   playTrack: (index: number, options?: { navigateToNowPlaying?: boolean; skipMissing?: number }) => Promise<void>;
   cancelPendingPlay: () => void;
   hasPendingPlay: () => boolean;
+  /**
+   * The current entry cannot be decoded. Moves on when its play request was
+   * allowed to skip entries (automatic advancement, Next); otherwise stops.
+   * Returns whether another entry is being started.
+   */
+  skipUnplayableTrack: () => boolean;
+  /**
+   * Loads the current entry again as a new play request, from the position it
+   * has now (its backend was lost, e.g. the native host exited).
+   */
+  reloadCurrentTrack: () => void;
   enqueueLibraryTrack: (id: string, playNow?: boolean) => Promise<void>;
   enqueueLibraryTracks: (ids: string[]) => void;
   enqueueStreamTrack: (track: Track, playNow?: boolean) => Promise<void>;
@@ -319,6 +331,11 @@ const storedUiSettings = (() => {
 })();
 
 const extension = (name: string) => name.split(".").pop()?.toUpperCase() ?? "AUDIO";
+// Audio the player accepts: electron/library/media/audioFormats.ts AUDIO_EXTENSIONS.
+export const AUDIO_FILE_PATTERN = /\.(mp3|wav|flac|aac|ogg|m4a|ape|dsf|aiff|aif|opus|wma|dts|ac3|eac3|wv|tta)$/i;
+// Audio Chromium cannot play, which library.prepare decodes with ffmpeg first
+// (main.ts prepareLocalSource): FFMPEG_DECODED_AUDIO_EXTENSIONS plus AIFF.
+export const WEB_DECODED_AUDIO_PATTERN = /\.(ape|dsf|wma|dts|ac3|eac3|wv|tta|aiff|aif)$/i;
 const cleanName = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
 const libraryCommandMeta = (expectedRevision: number): LibraryCommandMeta => ({
   requestId: typeof crypto.randomUUID === "function"
@@ -326,11 +343,37 @@ const libraryCommandMeta = (expectedRevision: number): LibraryCommandMeta => ({
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
   expectedRevision
 });
-const libraryScanMessage = (scan: LibraryScanCommitResponse["scan"]) => {
-  const incompleteRoots = scan.roots.filter(root => root.status !== "complete");
-  if (incompleteRoots.length) return `${incompleteRoots.length} 个音乐目录未完整扫描，旧曲目已安全保留`;
-  const metadataFailures = scan.failures.filter(failure => failure.stage === "metadata").length;
-  return metadataFailures ? `${metadataFailures} 个文件的标签未能完整读取，旧分类信息已尽量保留` : "";
+/**
+ * What a scan could not do, one source text per kind (translateMessage maps
+ * each, joined by "；"): folders it could not finish, links leading out of the
+ * library, files it skipped (unreadable or empty), files without a readable
+ * audio stream, and files whose tags could not be read.
+ */
+export const libraryScanMessage = (scan: Pick<LibraryScanCommitResponse["scan"], "roots" | "failures">) => {
+  const failures = scan.failures || [];
+  const outsideLinks = failures.filter(failure => failure.code === "ELINKOUTSIDE");
+  const pathKey = (value: string) => value.replace(/\//g, "\\").replace(/\\+$/, "").toLocaleLowerCase();
+  const linkKeys = new Set(outsideLinks.map(failure => pathKey(failure.path)));
+  const within = (value: string, root: string) => pathKey(value) === pathKey(root) || pathKey(value).startsWith(`${pathKey(root)}\\`);
+  // A root whose only gaps are links out of the library is reported as those
+  // links, not as a folder that failed to scan. Unreadable files (stat) and a
+  // metadata reader that failed to load also make a root partial.
+  const onlyOutsideLinks = (root: LibraryRootScanResult) => root.status === "partial"
+    && root.unreadableDirectories.length > 0
+    && root.unreadableDirectories.every(directory => linkKeys.has(pathKey(directory)))
+    && !failures.some(failure => within(failure.path, root.path)
+      && ((failure.stage === "stat" && failure.code !== "EMPTY_FILE") || (failure.stage === "metadata" && pathKey(failure.path) === pathKey(root.path))));
+  const incompleteRoots = scan.roots.filter(root => root.status !== "complete" && !onlyOutsideLinks(root));
+  const skippedFiles = failures.filter(failure => failure.stage === "stat").length;
+  const noAudio = failures.filter(failure => failure.stage === "metadata" && failure.code === "NO_AUDIO_STREAM").length;
+  const tagFailures = failures.filter(failure => failure.stage === "metadata" && failure.code !== "NO_AUDIO_STREAM").length;
+  return [
+    incompleteRoots.length ? `${incompleteRoots.length} 个音乐目录未完整扫描，旧曲目已安全保留` : "",
+    outsideLinks.length ? `${outsideLinks.length} 个链接指向媒体库之外，已跳过` : "",
+    skippedFiles ? `${skippedFiles} 个文件无法读取或是空文件，已跳过` : "",
+    noAudio ? `${noAudio} 个文件没有可读取的音频内容，可能已损坏` : "",
+    tagFailures ? `${tagFailures} 个文件的标签未能完整读取，旧分类信息已尽量保留` : ""
+  ].filter(Boolean).join("；");
 };
 
 const LEGACY_LIBRARY_TRACKS_KEY = "auralis.library.tracks";
@@ -375,8 +418,85 @@ const cancelPendingPlay = () => {
   pendingPlayTrackId = "";
 };
 
+// How many unplayable entries the current play request may still skip, and
+// which play request (localPlayRequest) that budget belongs to.
+let playbackSkip = { request: -1, remaining: 0 };
+// Past the end only with repeat-all, as when a song ends normally.
+const skipTargetIndex = (index: number, count: number, repeat: RepeatMode) =>
+  index + 1 < count ? index + 1 : repeat === "all" ? 0 : -1;
+
+// Queue bookmarks resume the selected entry of a queue after a music/video
+// queue switch or a restart, and let a video continue where it was left. A song
+// chosen, or reached by Next, Previous or auto-advance, starts from the top.
+// `resumeTrackId` names the entry a switch or restore positioned on its bookmark.
+let resumeTrackId = "";
+const withoutBookmarks = (bookmarks: Record<string, number>, ids: Set<string>) =>
+  Object.fromEntries(Object.entries(bookmarks).filter(([id]) => !ids.has(id)));
+const leavePosition = (bookmarks: Record<string, number>, track: Track | undefined, time: number, duration: number) => {
+  if (!track) return bookmarks;
+  const rest = withoutBookmarks(bookmarks, new Set([track.id]));
+  const finished = duration > 0 && time >= duration - .5;
+  return isVideoTrack(track) && time > 0 && !finished ? { ...rest, [track.id]: time } : rest;
+};
+const entryPosition = (track: Track | undefined, bookmarks: Record<string, number>) =>
+  track && isVideoTrack(track) ? bookmarks[track.id] || 0 : 0;
+
+// Episodes of a series share a folder and their file names sort naturally
+// (S01E02 before S01E10). Only names with an episode marker form a run, so a
+// folder of unrelated films is never queued as a series.
+const EPISODE_MARKER = /(?:^|[^a-z0-9])(?:s\d{1,2}[\s._-]*e\d{1,4}|ep?[\s._-]?\d{1,4}|第\s*\d{1,4}\s*[集话話])(?!\d)|\[\d{1,3}(?:v\d)?\]|\s-\s\d{1,3}(?:v\d)?(?=[\s[(.]|$)/i;
+const splitMediaPath = (path: string) => {
+  const normal = path.replace(/\//g, "\\");
+  const cut = normal.lastIndexOf("\\");
+  return { folder: normal.slice(0, cut + 1).toLowerCase(), name: normal.slice(cut + 1) };
+};
+const episodeOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+/** The series name before the episode marker ("Breaking.Bad.S01E02" -> "breakingbad"), or null without a marker. */
+const seriesName = (name: string) => {
+  const marker = EPISODE_MARKER.exec(name);
+  return marker ? name.slice(0, marker.index).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "") : null;
+};
+/** The episode and the ones after it of the same series in its folder; just the item when it is not an episode. */
+const followingEpisodes = (source: Track, library: Track[]) => {
+  if (!source.sourcePath) return [source];
+  const origin = splitMediaPath(source.sourcePath);
+  // A folder such as Downloads can hold several series side by side.
+  const series = seriesName(origin.name);
+  if (series === null) return [source];
+  const season = library
+    .filter(track => track.sourcePath && isVideoTrack(track))
+    .map(track => ({ track, path: splitMediaPath(track.sourcePath!) }))
+    .filter(({ path }) => path.folder === origin.folder && seriesName(path.name) === series)
+    .sort((a, b) => episodeOrder.compare(a.path.name, b.path.name))
+    .map(({ track }) => track);
+  const start = season.findIndex(track => track.id === source.id);
+  return start < 0 ? [source] : season.slice(start);
+};
+/** Puts the entries `ids` together in that order where the first one was queued, or at the end. */
+const placeRun = (list: Track[], ids: string[]) => {
+  const wanted = new Set(ids);
+  const run = ids.flatMap(id => list.filter(track => track.id === id));
+  const at = list.findIndex(track => track.id === ids[0]);
+  const rest = list.filter(track => !wanted.has(track.id));
+  const insertAt = at < 0 ? rest.length : list.slice(0, at).filter(track => !wanted.has(track.id)).length;
+  return [...rest.slice(0, insertAt), ...run, ...rest.slice(insertAt)];
+};
+
 const QUEUE_STORAGE_KEY = "astrelis.queues.v1";
 let queuesRestored = false;
+// While the saved queue is loading, a snapshot would replace it on disk with
+// whatever was queued in the meantime (an external open, say).
+let queueRestore: Promise<boolean> | undefined;
+let queueRestoreInFlight = false;
+let queueRestoreFailed = false;
+// The saved queue could not be loaded: it stays on disk until the user changes
+// the playlist on purpose (add, remove, clear). Opening a file from Explorer
+// or restoring does not count, so neither replaces the queue that failed.
+const acceptUserQueueEdit = () => {
+  if (!queueRestoreFailed) return;
+  queueRestoreFailed = false;
+  queuesRestored = true;
+};
 
 // A fader drag changes the volume on every pointermove; persist only the value
 // it settles on instead of writing localStorage synchronously each time.
@@ -428,48 +548,88 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const tracks = state.inactiveTracks;
     const index = tracks.findIndex(track => track.id === queueSelection[kind]);
     const currentIndex = index >= 0 ? index : tracks.length ? 0 : -1;
+    resumeTrackId = tracks[currentIndex]?.id || "";
     set({ tracks, inactiveTracks: state.tracks, queueKind: kind, viewedQueueKind: kind, queueBookmarks, queueSelection,
       currentIndex, currentTime: queueBookmarks[tracks[currentIndex]?.id] || 0, duration: 0, playing: false,
       localPlayRequest: state.localPlayRequest + 1 });
   },
   addQueueTracks: incoming => set(state => {
     incoming = incoming.filter(track => !isFolderLocked(track.sourcePath));
+    // Adding an entry that is already queued refreshes its metadata. Its
+    // playable url and native path stay: playback may have replaced them with
+    // a decoded cache file (APE/DSF/WMA…) that the current track is using. A
+    // missing or moved entry takes the new copy, which is how it is repaired.
+    const refresh = (queued: Track, added: Track) => queued.missing || queued.sourcePath !== added.sourcePath
+      ? added : { ...added, url: queued.url, nativePath: queued.nativePath };
     const merge = (existing: Track[], added: Track[]) => {
       const byId = new Map(added.map(track => [track.id, track]));
-      return [...existing.map(track => byId.get(track.id) || track), ...[...byId.values()].filter(track => !existing.some(item => item.id === track.id))];
+      return [...existing.map(track => byId.has(track.id) ? refresh(track, byId.get(track.id)!) : track), ...[...byId.values()].filter(track => !existing.some(item => item.id === track.id))];
     };
     const active = incoming.filter(track => (isVideoTrack(track) ? "video" : "music") === state.queueKind);
     const inactive = incoming.filter(track => (isVideoTrack(track) ? "video" : "music") !== state.queueKind);
     const tracks = merge(state.tracks, active);
-    return { tracks, inactiveTracks: merge(state.inactiveTracks, inactive), currentIndex: state.currentIndex < 0 && tracks.length ? 0 : state.currentIndex };
+    const selectsFirst = state.currentIndex < 0 && tracks.length > 0;
+    return { tracks, inactiveTracks: merge(state.inactiveTracks, inactive), currentIndex: selectsFirst ? 0 : state.currentIndex,
+      ...(selectsFirst ? { currentTime: entryPosition(tracks[0], state.queueBookmarks), duration: 0 } : {}) };
   }),
-  restoreQueues: async () => {
+  restoreQueues: () => queueRestore ||= (async () => {
     if (get().tracks.length || get().inactiveTracks.length || !window.desktop) { queuesRestored = true; return; }
+    queueRestoreInFlight = true;
     try {
       // Main-owned store first; localStorage is the pre-migration location
       // (the first save after restoring moves it into the main store).
-      const saved = (await window.desktop.queue?.load().catch(() => null)) ?? JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) || "null");
+      // A load that throws is a failed restore (catch below), not "nothing
+      // saved": treating it as empty let the next save replace the queue file.
+      const fromMain = window.desktop.queue ? await window.desktop.queue.load() : null;
+      const saved = fromMain ?? JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) || "null");
       if (!saved || !Array.isArray(saved.tracks)) return;
       await loadFolderVisibility();
       const files = saved.tracks.filter((track: Track) => typeof track?.sourcePath === "string" && !isFolderLocked(track.sourcePath));
       const result = files.length ? await window.desktop.library.openFiles(files.map((track: Track) => track.sourcePath!)) : { tracks: [] };
-      if (get().tracks.length || get().inactiveTracks.length) return;
       // Entries the main process skipped (no access grant, missing file) keep
       // their saved form: restoring must never shrink the persisted queue.
-      const restored = files.flatMap((track: Track) => {
+      const restored: Track[] = files.flatMap((track: Track) => {
         const fresh = (result.tracks as Track[]).find(item => item.sourcePath === track.sourcePath);
         return fresh ? [{ ...fresh, id: track.id }] : [track];
       });
-      const queueBookmarks = Object.fromEntries(Object.entries(saved.bookmarks || {}).filter(([,value]) => typeof value === "number" && Number.isFinite(value) && value >= 0)) as Record<string, number>;
+      const restoredIds = new Set(restored.map(track => track.id));
+      const queueBookmarks = Object.fromEntries(Object.entries(saved.bookmarks || {}).filter(([id, value]) => restoredIds.has(id) && typeof value === "number" && Number.isFinite(value) && value >= 0)) as Record<string, number>;
+      const kindOf = (track: Track) => isVideoTrack(track) ? "video" : "music";
+      const live = get();
+      if (live.tracks.length || live.inactiveTracks.length) {
+        // Something was queued while the saved queue was loading (a file
+        // opened from Explorer at a cold start). Keep it, and what it is
+        // playing, after the saved entries instead of discarding either.
+        const combine = (savedTracks: Track[], added: Track[]) => [...savedTracks.filter(track => !added.some(item => item.id === track.id)), ...added];
+        const tracks = combine(restored.filter(track => kindOf(track) === live.queueKind), live.tracks);
+        const inactiveTracks = combine(restored.filter(track => kindOf(track) !== live.queueKind), live.inactiveTracks);
+        const current = live.tracks[live.currentIndex];
+        set({ tracks, inactiveTracks, currentIndex: current ? tracks.findIndex(track => track.id === current.id) : tracks.length ? 0 : -1,
+          queueSelection: { ...(saved.selection || {}), ...live.queueSelection }, queueBookmarks: { ...queueBookmarks, ...live.queueBookmarks } });
+        return;
+      }
       const kind = saved.kind === "video" ? "video" : "music";
-      const tracks = restored.filter((track: Track) => (isVideoTrack(track) ? "video" : "music") === kind);
-      const inactiveTracks = restored.filter((track: Track) => (isVideoTrack(track) ? "video" : "music") !== kind);
+      const tracks = restored.filter(track => kindOf(track) === kind);
+      const inactiveTracks = restored.filter(track => kindOf(track) !== kind);
       const currentIndex = tracks.findIndex((track: Track) => track.id === saved.selection?.[kind]);
+      resumeTrackId = tracks[currentIndex]?.id || "";
       set({ tracks, inactiveTracks, queueKind: kind, viewedQueueKind: kind, queueSelection: saved.selection || {}, queueBookmarks,
         currentIndex, currentTime: queueBookmarks[tracks[currentIndex]?.id] || 0 });
-    } catch { /* Keep the saved queues intact if a source is unavailable. */ }
-    finally { queuesRestored = true; }
-  },
+    } catch (error) {
+      // Keep the saved queues intact if a source is unavailable: this session
+      // never saves over the queue it could not load.
+      queueRestoreFailed = true;
+      console.error("[queue] restoring the saved queue failed", error);
+      set({ libraryError: "上次的播放队列未能恢复，原队列文件已保留；调整播放列表之后才会保存新的队列" });
+    } finally {
+      queueRestoreInFlight = false;
+      if (!queueRestoreFailed) {
+        queuesRestored = true;
+        // Saves were held back while loading; write what is queued now.
+        if (get().tracks.length || get().inactiveTracks.length) saveQueues();
+      }
+    }
+  })().then(() => !queueRestoreFailed),
   libraryTracks: [],
   libraryDerivedIndexCache: null,
   favoriteTrackKeys: storedFavoriteTrackKeys,
@@ -545,6 +705,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     } catch (error) { set({ libraryError: error instanceof Error ? error.message : "音乐库索引加载失败" }); }
   },
   addTracks: async (files) => {
+      acceptUserQueueEdit();
       await loadFolderVisibility();
       if (window.desktop) files = files.filter(file => !isFolderLocked(window.desktop!.getFilePath(file)));
       if (files.some(file => isVideoFile(file.name)) && window.desktop) {
@@ -553,7 +714,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         get().setActivePage("nowPlaying");
         return;
       }
-      const audioFiles = files.filter((file) => /\.(mp3|wav|flac|aac|ogg|m4a|ape|dsf|aiff|aif|opus|wma|dts|ac3|eac3)$/i.test(file.name));
+      const audioFiles = files.filter((file) => AUDIO_FILE_PATTERN.test(file.name));
       const added = await Promise.all(audioFiles.map(async (file) => {
         let name = cleanName(file.name), artist = "本地音频", album = "未识别专辑", coverUrl: string | undefined;
         try {
@@ -581,6 +742,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   openExternalFiles: async (paths) => {
     if (!window.desktop?.library || !paths.length) return;
     try {
+      // At a cold start folder visibility may still be loading; until it is,
+      // every path counts as locked and the opened file would be dropped.
+      await loadFolderVisibility();
       const result = await window.desktop.library.openFiles(paths);
       const incoming = Array.isArray(result.tracks) ? result.tracks as Track[] : [];
       if (!incoming.length) {
@@ -669,6 +833,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ viewedQueueKind: get().queueKind });
     const requestIsCurrent = () => requestGeneration === playTrackRequestGeneration
       && get().tracks.some(item => item.id === track.id);
+    // An automatic or Next request (it carries a skip budget) moves past an
+    // entry that cannot be prepared, and stops when it cannot: the previous
+    // track has ended, so "playing" would stay on without sound. A track the
+    // user chose only reports the failure.
+    const skipPastFailure = () => {
+      const remaining = options?.skipMissing;
+      // A chosen entry only reports: what was playing is still audible (the
+      // current entry changes only once the new one is ready).
+      if (remaining === undefined) return;
+      const count = get().tracks.length;
+      const next = remaining > 0 && count > 1 ? skipTargetIndex(index, count, get().repeat) : -1;
+      pendingPlayTrackId = "";
+      if (next >= 0) void get().playTrack(next, { ...options, skipMissing: Math.min(remaining, count) - 1 });
+      else get().setPlaying(false);
+    };
     try {
       if (get().onlineMedia?.playing) {
         // Direct playback has no native PCM source to release. Pause the page
@@ -684,7 +863,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }));
       }
       if (track.sourcePath && !isVideoTrack(track) && !get().uiSettings.hdmiDirectEnabled) {
-        if (/\.(ape|dsf)$/i.test(track.sourcePath)) set({ libraryError: "正在准备 HiFi 音源…" });
+        if (WEB_DECODED_AUDIO_PATTERN.test(track.sourcePath)) set({ libraryError: "正在准备 HiFi 音源…" });
         let prepared = await window.desktop?.library.prepare(track.sourcePath);
         if (!requestIsCurrent()) return;
         if (prepared?.code === SOURCE_MISSING) {
@@ -702,19 +881,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               tracks: state.tracks.map(item => item.id === track.id ? { ...item, missing: true } : item),
               libraryError: `${prepared?.error || "找不到音频文件。"}重新扫描所在文件夹后，可从媒体中心再次加入。`
             }));
-            const remaining = options?.skipMissing ?? 0;
-            const count = get().tracks.length;
-            if (remaining > 0 && count > 1) {
-              // Past the end only with repeat-all, as when a song ends normally.
-              const next = index + 1 < count ? index + 1 : get().repeat === "all" ? 0 : -1;
-              pendingPlayTrackId = "";
-              if (next >= 0) void get().playTrack(next, { ...options, skipMissing: Math.min(remaining, count) - 1 });
-              else get().setPlaying(false);
-            }
+            skipPastFailure();
             return;
           }
         }
-        if (!prepared?.ok || !prepared.url) { set({ libraryError: prepared?.error || "HiFi 音源解码失败" }); return; }
+        if (!prepared?.ok || !prepared.url) { set({ libraryError: prepared?.error || "HiFi 音源解码失败" }); skipPastFailure(); return; }
         const ready = prepared;
         set(state => {
           const tracks = state.tracks.map(item => item.id === track.id ? { ...item, url: ready.url!, nativePath: ready.path, missing: undefined } : item);
@@ -724,36 +895,68 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (!requestIsCurrent()) return;
       if (options?.navigateToNowPlaying !== false) get().setActivePage("nowPlaying");
       get().setCurrentIndex(get().tracks.findIndex(item => item.id === track.id));
+      playbackSkip = { request: get().localPlayRequest, remaining: options?.skipMissing ?? 0 };
       get().setPlaying(true);
     } catch (error) {
-      if (requestIsCurrent()) set({ libraryError: error instanceof Error ? error.message : "音频准备失败" });
+      if (requestIsCurrent()) { set({ libraryError: error instanceof Error ? error.message : "音频准备失败" }); skipPastFailure(); }
     } finally {
       if (requestGeneration === playTrackRequestGeneration) pendingPlayTrackId = "";
     }
   },
   cancelPendingPlay,
   hasPendingPlay: () => Boolean(pendingPlayTrackId),
+  skipUnplayableTrack: () => {
+    const state = get();
+    const remaining = playbackSkip.request === state.localPlayRequest ? playbackSkip.remaining : 0;
+    playbackSkip = { request: -1, remaining: 0 };
+    const count = state.tracks.length;
+    // The budget shrinks with every skip, so a queue of broken files stops.
+    const next = remaining > 0 && count > 1 && state.currentIndex >= 0 ? skipTargetIndex(state.currentIndex, count, state.repeat) : -1;
+    if (next < 0) {
+      get().setPlaying(false);
+      return false;
+    }
+    void get().playTrack(next, { navigateToNowPlaying: false, skipMissing: Math.min(remaining, count) - 1 });
+    return true;
+  },
+  reloadCurrentTrack: () => set(state => state.tracks[state.currentIndex]
+    ? { localPlayRequest: state.localPlayRequest + 1 } : state),
   enqueueLibraryTrack: async (id, playNow = false) => {
     const source = get().libraryTracks.find(track => track.id === id);
     if (!source || isFolderLocked(source.sourcePath)) return;
-    get().addQueueTracks([source]);
+    acceptUserQueueEdit();
+    if (playNow && isVideoTrack(source)) {
+      // Playing an episode queues the rest of its season after it, in order,
+      // so the next episode follows instead of an unrelated queued video.
+      const run = followingEpisodes(source, get().libraryTracks).filter(track => !isFolderLocked(track.sourcePath));
+      get().addQueueTracks(run);
+      const ids = run.map(track => track.id);
+      set(state => {
+        if (state.queueKind !== "video") return { inactiveTracks: placeRun(state.inactiveTracks, ids) };
+        const current = state.tracks[state.currentIndex];
+        const tracks = placeRun(state.tracks, ids);
+        return { tracks, currentIndex: current ? tracks.findIndex(track => track.id === current.id) : state.currentIndex };
+      });
+    } else get().addQueueTracks([source]);
     if (playNow) {
       get().switchQueue(isVideoTrack(source) ? "video" : "music");
       await get().playTrack(get().tracks.findIndex(track => track.id === source.id));
     }
   },
   enqueueLibraryTracks: ids => {
+    acceptUserQueueEdit();
     const byId = new Map(get().libraryTracks.flatMap(track => [[track.id, track] as const, ...(track.mediaId ? [[track.mediaId, track] as const] : [])]));
     get().addQueueTracks(ids.map(id => byId.get(id)).filter((track): track is Track => Boolean(track)));
   },
   enqueueStreamTrack: async (track, playNow = true) => {
+    acceptUserQueueEdit();
     get().addQueueTracks([track]);
     if (playNow) {
       get().switchQueue(isVideoTrack(track) ? "video" : "music");
       await get().playTrack(get().tracks.findIndex(item => item.id === track.id));
     }
   },
-  enqueueStreamTracks: tracks => get().addQueueTracks(tracks),
+  enqueueStreamTracks: tracks => { acceptUserQueueEdit(); get().addQueueTracks(tracks); },
   toggleFavoriteTrack: (track) => {
     const key = favoriteTrackKey(track);
     if (!key) return;
@@ -768,14 +971,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   removeTrack: (id) =>
     set((state) => {
+      acceptUserQueueEdit();
       if (pendingPlayTrackId === id) cancelPendingPlay();
+      if (resumeTrackId === id) resumeTrackId = "";
+      const queueBookmarks = withoutBookmarks(state.queueBookmarks, new Set([id]));
       const target = state.tracks.find((track) => track.id === id);
       if (!target) {
         const removed = state.inactiveTracks.find(track => track.id === id);
         if (!removed) return state;
         if (removed.url.startsWith("blob:")) URL.revokeObjectURL(removed.url);
         if (removed.coverUrl?.startsWith("blob:")) URL.revokeObjectURL(removed.coverUrl);
-        return { inactiveTracks: state.inactiveTracks.filter(track => track.id !== id) };
+        return { inactiveTracks: state.inactiveTracks.filter(track => track.id !== id), queueBookmarks };
       }
       if (target) {
         URL.revokeObjectURL(target.url);
@@ -787,26 +993,46 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (!tracks.length) currentIndex = -1;
       else if (index < currentIndex) currentIndex--;
       else if (currentIndex >= tracks.length) currentIndex = tracks.length - 1;
-      return { tracks, currentIndex, playing: tracks.length ? state.playing : false };
+      if (index !== state.currentIndex) return { tracks, currentIndex, queueBookmarks, playing: tracks.length ? state.playing : false };
+      // Removing the current entry moves to the one in its place like any track
+      // change: from that entry's own start, as a new play request, and still
+      // playing when it was playing.
+      const next = tracks[currentIndex];
+      return { tracks, currentIndex, queueBookmarks, currentTime: entryPosition(next, queueBookmarks), duration: 0,
+        localPlayRequest: state.localPlayRequest + 1, queueSelection: { ...state.queueSelection, [state.queueKind]: next?.id },
+        playing: tracks.length ? state.playing : false };
     }),
   clearTracks: () => set(state => {
     cancelPendingPlay();
+    acceptUserQueueEdit();
+    const cleared = new Set(state.tracks.map(track => track.id));
+    if (cleared.has(resumeTrackId)) resumeTrackId = "";
     state.tracks.forEach(track => {
       if (track.url.startsWith("blob:")) URL.revokeObjectURL(track.url);
       if (track.coverUrl?.startsWith("blob:")) URL.revokeObjectURL(track.coverUrl);
     });
-    return { tracks: [], currentIndex: -1, playing: false, currentTime: 0, duration: 0, localPlayRequest: state.localPlayRequest + 1 };
+    return { tracks: [], currentIndex: -1, playing: false, currentTime: 0, duration: 0, localPlayRequest: state.localPlayRequest + 1,
+      queueBookmarks: withoutBookmarks(state.queueBookmarks, cleared) };
   }),
   setCurrentIndex: currentIndex => set(state => {
     const old = state.tracks[state.currentIndex];
     const track = state.tracks[currentIndex];
-    const queueBookmarks = { ...state.queueBookmarks, ...(old ? { [old.id]: state.duration > 0 && state.currentTime >= state.duration - .5 ? 0 : state.currentTime } : {}) };
-    return { currentIndex, queueBookmarks, currentTime: track ? queueBookmarks[track.id] || 0 : 0,
-      queueSelection: { ...state.queueSelection, ...(track ? { [state.queueKind]: track.id } : {}) },
+    const queueSelection = { ...state.queueSelection, ...(track ? { [state.queueKind]: track.id } : {}) };
+    // The entry a queue switch or restart positioned on its bookmark resumes there.
+    const resume = Boolean(track && track.id === resumeTrackId);
+    resumeTrackId = "";
+    if (resume) return { currentIndex, queueSelection, localPlayRequest: state.localPlayRequest + 1 };
+    let queueBookmarks = leavePosition(state.queueBookmarks, old, state.currentTime, state.duration);
+    // Choosing the entry that is already current plays it again from the top.
+    if (track && track.id === old?.id) queueBookmarks = withoutBookmarks(queueBookmarks, new Set([track.id]));
+    return { currentIndex, queueBookmarks, currentTime: entryPosition(track, queueBookmarks), duration: 0, queueSelection,
       localPlayRequest: state.localPlayRequest + 1 };
   }),
   setPlaying: (playing) => {
     if (!playing) cancelPendingPlay();
+    // Once playback starts, the restored position is in use; a later choice
+    // of the same entry starts it again.
+    else resumeTrackId = "";
     set({ playing });
   },
   // Media events describe the old source; they must not cancel an accepted
@@ -882,12 +1108,16 @@ const saveQueues = () => {
   const tracks = [...state.tracks, ...state.inactiveTracks].filter(track => track.sourcePath);
   // Until the saved queue has been restored, an empty queue is only "not
   // loaded yet"; saving it (e.g. closing during startup) would replace it.
-  if (!queuesRestored && !tracks.length) return;
+  // While it is loading, nothing queued meanwhile may replace it either.
+  if (queueRestoreInFlight || queueRestoreFailed || (!queuesRestored && !tracks.length)) return;
+  const queued = new Set(tracks.map(track => track.id));
+  const bookmarks = { ...state.queueBookmarks, ...(current ? { [current.id]: state.duration > 0 && state.currentTime >= state.duration - .5 ? 0 : state.currentTime } : {}) };
   const snapshot: SavedQueueSnapshot = {
     kind: state.queueKind,
     tracks: tracks as unknown as SavedQueueSnapshot["tracks"],
     selection: { ...state.queueSelection, ...(current ? { [state.queueKind]: current.id } : {}) },
-    bookmarks: { ...state.queueBookmarks, ...(current ? { [current.id]: state.duration > 0 && state.currentTime >= state.duration - .5 ? 0 : state.currentTime } : {}) }
+    // Only entries still queued; removed ones must not come back mid-song.
+    bookmarks: Object.fromEntries(Object.entries(bookmarks).filter(([id]) => queued.has(id)))
   };
   try {
     if (window.desktop?.queue) window.desktop.queue.save(snapshot);

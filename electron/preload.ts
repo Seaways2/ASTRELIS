@@ -130,7 +130,7 @@ contextBridge.exposeInMainWorld("desktop", {
     show: (bounds: { x: number; y: number; width: number; height: number }) => ipcRenderer.send("browser:show", bounds),
     hide: () => ipcRenderer.send("browser:hide"),
     setBounds: (bounds: { x: number; y: number; width: number; height: number }) => ipcRenderer.send("browser:bounds", bounds),
-    navigate: (url: string) => ipcRenderer.send("browser:navigate", url),
+    navigate: (url: string) => ipcRenderer.invoke("browser:navigate", url),
     back: () => ipcRenderer.send("browser:back"),
     forward: () => ipcRenderer.send("browser:forward"),
     reload: () => ipcRenderer.send("browser:reload"),

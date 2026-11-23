@@ -4,6 +4,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { disambiguateMediaIds, toTrackRecord } from "../domain/LibraryDomain";
 import { cacheArtwork, legacyArtworkUrl } from "../media/ArtworkCache";
+import { libraryPathKey, libraryPathWithin } from "../libraryPaths";
+import { needsDecodedAudio } from "../media/audioFormats";
 import type {
   LibraryScanResult,
   RootScanResult,
@@ -39,6 +41,8 @@ export interface LibraryScannerOptions {
 export interface LibraryScannerFileSystem {
   stat(filePath: string): Promise<fs.Stats>;
   readdir(directory: string): Promise<fs.Dirent[]>;
+  /** Resolves junctions and symbolic links; without it a link is never followed. */
+  realpath?(filePath: string): Promise<string>;
   mkdir(directory: string): Promise<unknown>;
   writeFile(filePath: string, data: Uint8Array): Promise<unknown>;
   existsSync(filePath: string): boolean;
@@ -64,8 +68,16 @@ function failure(stage: ScanFailure["stage"], filePath: string, error: unknown):
 }
 
 export function libraryRootId(rootPath: string) {
-  const canonical = path.resolve(rootPath).replace(/\//g, "\\").replace(/\\+$/, "").toLocaleLowerCase();
-  return crypto.createHash("sha256").update(canonical).digest("hex");
+  return crypto.createHash("sha256").update(libraryPathKey(rootPath)).digest("hex");
+}
+
+// Volume bookkeeping folders found at a drive root: the recycle bin would index
+// deleted files ($R*.mp3), and System Volume Information always denies access,
+// which would keep a whole-drive root partial forever.
+const SYSTEM_DIRECTORIES = new Set(["$recycle.bin", "system volume information"]);
+
+function scanError(code: string, message: string) {
+  return Object.assign(new Error(message), { code });
 }
 
 async function mapWithConcurrency<T, R>(
@@ -96,6 +108,9 @@ export class LibraryScanner {
     this.fileSystem = options.fileSystem || {
       stat: filePath => fs.promises.stat(filePath),
       readdir: directory => fs.promises.readdir(directory, { withFileTypes: true }),
+      // The native call, like the access policy (ElectronSecurity canonical()).
+      realpath: filePath => new Promise<string>((resolve, reject) =>
+        fs.realpath.native(filePath, (error, resolved) => error ? reject(error) : resolve(resolved))),
       mkdir: directory => fs.promises.mkdir(directory, { recursive: true }),
       writeFile: (filePath, data) => fs.promises.writeFile(filePath, data),
       existsSync: filePath => fs.existsSync(filePath)
@@ -106,7 +121,48 @@ export class LibraryScanner {
     return Boolean(this.options.isCancelled?.());
   }
 
-  private async enumerateRoot(rootPath: string, failures: ScanFailure[], isCancelled = () => this.cancelled()) {
+  private supported(filePath: string) {
+    const extension = path.extname(filePath).toLowerCase();
+    return this.options.audioExtensions.has(extension) || Boolean(this.options.videoExtensions?.has(extension));
+  }
+
+  private async listingDenied(directory: string) {
+    try { await this.fileSystem.readdir(directory); return false; }
+    catch (error) { const code = errorCode(error); return code === "EPERM" || code === "EACCES"; }
+  }
+
+  private async realKey(filePath: string) {
+    if (!this.fileSystem.realpath) throw scanError("ENOTSUP", "Links cannot be resolved here");
+    return libraryPathKey(await this.fileSystem.realpath(filePath));
+  }
+
+  /**
+   * Junctions and symbolic links (libuv reports every reparse point as a link).
+   * One that resolves to itself (a cloud placeholder, say) is an ordinary entry.
+   * One into this root, or into another library root, is skipped: that content
+   * is scanned at its real location, so following it would only add duplicates
+   * or loops. Anything else cannot be played (the access policy checks real
+   * paths) and is not followed, but it is reported and makes the root partial,
+   * so the tracks behind it are never treated as deleted.
+   */
+  private async classifyLink(linkPath: string, rootKey: () => Promise<string>, coveredKeys: () => Promise<string[]>) {
+    const stat = await this.fileSystem.stat(linkPath);
+    const directory = stat.isDirectory();
+    if (!directory && !this.supported(linkPath)) return "ignore" as const;
+    const target = await this.realKey(linkPath);
+    const parent = await this.realKey(path.dirname(linkPath));
+    // Keys have no trailing separator ("e:" for a drive root), so join by hand.
+    if (target === `${parent}\\${path.basename(linkPath).toLocaleLowerCase()}`) return directory ? "directory" as const : "file" as const;
+    if (libraryPathWithin(target, await rootKey()) || (await coveredKeys()).some(key => libraryPathWithin(target, key))) return "ignore" as const;
+    // Windows' compatibility junctions ("My Music" in Documents, "Application
+    // Data" in a profile) deny listing to everyone: nothing was ever scanned
+    // through them, so they are not unscanned library content.
+    if (directory && await this.listingDenied(linkPath)) return "ignore" as const;
+    throw scanError("ELINKOUTSIDE", "Linked folder or file points outside the music library roots; it was not scanned");
+  }
+
+  private async enumerateRoot(rootPath: string, failures: ScanFailure[], isCancelled = () => this.cancelled(),
+    coveredKeys: () => Promise<string[]> = async () => []) {
     const files: string[] = [];
     const unreadableDirectories: string[] = [];
     let status: RootScanStatus = "complete";
@@ -121,6 +177,8 @@ export class LibraryScanner {
       return { files, unreadableDirectories: [rootPath], status: rootStatus };
     }
 
+    let rootKey: Promise<string> | undefined;
+    const resolvedRootKey = () => rootKey ??= this.realKey(rootPath).catch(() => libraryPathKey(rootPath));
     const pending = [rootPath];
     while (pending.length) {
       if (isCancelled()) return { files, unreadableDirectories, status: "cancelled" as RootScanStatus };
@@ -144,10 +202,23 @@ export class LibraryScanner {
           failures.push(failure("directory", observation.directory, observation.error));
           continue;
         }
+        const links: string[] = [];
         for (const entry of observation.entries) {
           const fullPath = path.join(observation.directory, entry.name);
-          if (entry.isDirectory()) pending.push(fullPath);
-          else if (entry.isFile() && (this.options.audioExtensions.has(path.extname(entry.name).toLowerCase()) || this.options.videoExtensions?.has(path.extname(entry.name).toLowerCase()))) files.push(fullPath);
+          if (entry.isDirectory()) { if (!SYSTEM_DIRECTORIES.has(entry.name.toLowerCase())) pending.push(fullPath); }
+          else if (entry.isFile()) { if (this.supported(entry.name)) files.push(fullPath); }
+          else if (entry.isSymbolicLink?.()) links.push(fullPath);
+        }
+        for (const linkPath of links) {
+          try {
+            const kind = await this.classifyLink(linkPath, resolvedRootKey, coveredKeys);
+            if (kind === "directory") pending.push(linkPath);
+            else if (kind === "file") files.push(linkPath);
+          } catch (error) {
+            if (status === "complete") status = "partial";
+            unreadableDirectories.push(linkPath);
+            failures.push(failure("directory", linkPath, error));
+          }
         }
       }
     }
@@ -181,7 +252,9 @@ export class LibraryScanner {
   async scanRoots(
     roots: string[],
     onProgress?: (progress: LibraryScanProgress) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    /** Every registered library root: a link into one of them is not an unscanned folder. */
+    libraryRoots: string[] = roots
   ): Promise<LibraryScanResult> {
     const isCancelled = () => Boolean(signal?.aborted) || this.cancelled();
     const scanId = crypto.randomUUID();
@@ -189,11 +262,14 @@ export class LibraryScanner {
     const rootResults: RootScanResult[] = [];
     const tracks: ScannedTrack[] = [];
     const failures: ScanFailure[] = [];
+    let coveredKeys: Promise<string[]> | undefined;
+    const libraryRootKeys = () => coveredKeys ??= Promise.all([...new Set([...roots, ...libraryRoots])]
+      .map(root => this.realKey(root).catch(() => libraryPathKey(root))));
 
     for (const rootPath of roots) {
       if (isCancelled()) break;
       onProgress?.({ phase: "discovering", completed: 0, total: 0, current: rootPath });
-      const observation = await this.enumerateRoot(rootPath, failures, isCancelled);
+      const observation = await this.enumerateRoot(rootPath, failures, isCancelled, libraryRootKeys);
       const rootResult: RootScanResult = {
         rootId: libraryRootId(rootPath),
         path: rootPath,
@@ -230,6 +306,15 @@ export class LibraryScanner {
           onProgress?.({ phase: "metadata", completed, total: observation.files.length, current: path.basename(sourcePath) });
           return undefined;
         }
+        if (stat.size === 0) {
+          // An empty file (an interrupted download or copy) holds no media at all.
+          // It is reported, not indexed as a playable track that silently fails.
+          rootResult.skippedFiles++;
+          failures.push(failure("stat", sourcePath, scanError("EMPTY_FILE", "The file is empty (0 bytes)")));
+          completed++;
+          onProgress?.({ phase: "metadata", completed, total: observation.files.length, current: path.basename(sourcePath) });
+          return undefined;
+        }
 
         let name = path.basename(sourcePath, path.extname(sourcePath));
         let artist = "未知艺术家";
@@ -258,6 +343,10 @@ export class LibraryScanner {
         } else if (metadataModule) {
           try {
             const metadata = await metadataModule.parseFile(sourcePath, { duration: true });
+            // music-metadata "succeeds" on some unreadable files without finding
+            // any container or stream; that is no audio, not a file without tags.
+            if (!metadata.format?.container && !metadata.format?.codec && !metadata.format?.duration)
+              throw scanError("NO_AUDIO_STREAM", "No readable audio stream was found");
             metadataRead = true;
             name = metadata.common.title || name;
             artist = metadata.common.artist || artist;
@@ -314,7 +403,7 @@ export class LibraryScanner {
           format: path.extname(sourcePath).slice(1).toUpperCase(),
           size: stat.size,
           sourcePath,
-          nativePath: /\.(ape|dsf)$/i.test(sourcePath) ? undefined : sourcePath,
+          nativePath: needsDecodedAudio(sourcePath) ? undefined : sourcePath,
           url: this.options.mediaUrl(sourcePath),
           folder: path.dirname(sourcePath)
         };

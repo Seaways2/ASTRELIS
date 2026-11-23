@@ -19,7 +19,7 @@ const directoryStateKey: Record<PluginDirectoryState, string> = {
 };
 
 export function VstRack() {
-  const { t } = useI18n();
+  const { t, tm } = useI18n();
   const vst = useVstRackStore();
   const [query, setQuery] = useState("");
   const [showUnavailable, setShowUnavailable] = useState(false);
@@ -46,7 +46,7 @@ export function VstRack() {
 
   const engineStatus = <div className={`vst-engine-status ${vst.runtimeReady ? "online" : "offline"}${statusSlot ? " vst-engine-status-compact" : ""}`}>
       <Blocks />
-      <div title={vst.error || vst.engine.detail}><b>{vst.performanceSuspended ? "VST SUSPENDED · ECO MODE" : vst.runtimeReady ? "PLUGIN CHAIN LOADED" : vst.nativeEnabled ? "PLUGIN ENGINE STARTING" : "DRY PATH · VST OFF"}</b><span>{vst.error || vst.engine.detail}</span></div>
+      <div title={vst.error ? tm(vst.error) : vst.engine.detail}><b>{vst.performanceSuspended ? "VST SUSPENDED · ECO MODE" : vst.runtimeReady ? "PLUGIN CHAIN LOADED" : vst.nativeEnabled ? "PLUGIN ENGINE STARTING" : "DRY PATH · VST OFF"}</b><span>{vst.error ? tm(vst.error) : vst.engine.detail}</span></div>
       <button disabled={vst.performanceSuspended} className={vst.nativeEnabled ? "active" : ""} onClick={() => void vst.toggleNativeEngine()}>{vst.performanceSuspended ? "ECO LOCKED" : vst.nativeEnabled ? t("vst.disableProcessing") : t("vst.enableProcessing")}</button>
       <em>{vst.runtimeReady ? `${vst.rack.filter(item => item.enabled).length} PLUGINS ACTIVE` : vst.engine.backend}</em>
     </div>;
@@ -132,7 +132,7 @@ export function VstRack() {
         </div>)}
         {!vst.rack.length && <div className="vst-empty">{t("vst.emptyRack")}</div>}
       </div>
-      {vst.error && <p className="error-text dismissible"><span>{vst.error}</span><button title={t("common.close")} onClick={vst.clearError}>×</button></p>}
+      {vst.error && <p className="error-text dismissible"><span>{tm(vst.error)}</span><button title={t("common.close")} onClick={vst.clearError}>×</button></p>}
     </section>
   </div>;
 }

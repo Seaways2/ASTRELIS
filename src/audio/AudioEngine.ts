@@ -102,7 +102,8 @@ class AudioEngine {
   private requestedMuted = false;
 
   constructor() {
-    (["timeupdate", "loadedmetadata", "ended", "play", "pause"] as const).forEach((event) => {
+    // "error": the source cannot be loaded or decoded (see element.error).
+    (["timeupdate", "loadedmetadata", "ended", "play", "pause", "error"] as const).forEach((event) => {
       this.elements.forEach((element, deck) => element.addEventListener(event, () => {
         if (deck !== this.activeDeck) return;
         this.listeners.get(event)?.forEach((listener) => listener());
@@ -508,7 +509,7 @@ class AudioEngine {
     };
   }
 
-  on(event: "timeupdate" | "loadedmetadata" | "ended" | "play" | "pause" | "analysisratechange", listener: Listener) {
+  on(event: "timeupdate" | "loadedmetadata" | "ended" | "play" | "pause" | "error" | "analysisratechange", listener: Listener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(listener);
     return () => this.listeners.get(event)?.delete(listener);

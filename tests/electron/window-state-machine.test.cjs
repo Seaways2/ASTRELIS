@@ -95,17 +95,76 @@ test("compact and immersive return to where they started and persist that, not t
   const machine = new WindowStateMachine();
   machine.reset(snapshot());
   machine.observe(snapshot());
-  machine.enterMode("compact", snapshot({ bounds: work, normalBounds: floating, maximized: true }));
+  machine.enterMode("compact", snapshot());
   const compact = snapshot({ bounds: { x: 1700, y: 1200, width: 420, height: 124 }, compact: true });
   machine.observe(compact);
   assert.deepEqual(machine.persisted(compact), { ...floating, maximized: false });
-  assert.deepEqual(machine.leaveMode("compact"), floating);
+  assert.deepEqual(machine.leaveMode("compact"), { bounds: floating, maximized: false });
   assert.equal(machine.leaveMode("compact"), undefined, "leaving twice restores nothing");
 
   machine.enterMode("immersive", snapshot());
   const immersive = snapshot({ bounds: screenBounds, immersive: true });
   assert.deepEqual(machine.persisted(immersive), { ...floating, maximized: false });
-  assert.deepEqual(machine.leaveMode("immersive"), floating);
+  assert.deepEqual(machine.leaveMode("immersive"), { bounds: floating, maximized: false });
+});
+
+test("compact mode entered from a maximized window returns maximized and keeps that across a relaunch (LV05)", () => {
+  const machine = new WindowStateMachine();
+  machine.reset(snapshot());
+  machine.observe(snapshot());
+  machine.observe(snapshot({ bounds: work, maximized: true }));
+  machine.enterMode("compact", snapshot({ bounds: work, normalBounds: floating, maximized: true }));
+  // Compact mode unmaximizes before shrinking; that state change is saved while compact.
+  const compact = snapshot({ bounds: { x: 1700, y: 1200, width: 420, height: 124 }, compact: true });
+  machine.observe(compact);
+  assert.deepEqual(machine.persisted(compact), { ...floating, maximized: true });
+  assert.deepEqual(machine.leaveMode("compact"), { bounds: floating, maximized: true });
+  // A window that covers the screen without the reported state (DPI change, snap) also returns maximized.
+  machine.enterMode("compact", snapshot({ bounds: { x: 0, y: 0, width: 2199, height: 1401 } }));
+  assert.deepEqual(machine.leaveMode("compact"), { bounds: floating, maximized: true });
+});
+
+test("immersive mode keeps the maximized state the user leaves it in", () => {
+  const machine = new WindowStateMachine();
+  machine.reset(snapshot());
+  machine.observe(snapshot());
+  const maximized = snapshot({ bounds: work, normalBounds: floating, maximized: true });
+  machine.observe(maximized);
+  machine.enterMode("immersive", maximized);
+  assert.deepEqual(machine.persisted({ ...maximized, immersive: true }), { ...floating, maximized: true });
+  // Restored from the immersive drag zone.
+  const restored = snapshot({ immersive: true });
+  machine.observe(restored);
+  assert.deepEqual(machine.persisted(restored), { ...floating, maximized: false });
+  assert.deepEqual(machine.persisted(snapshot({ immersive: true, minimized: true })), { ...floating, maximized: false });
+  assert.deepEqual(machine.leaveMode("immersive"), { bounds: floating, maximized: false }, "never re-maximized on the way out");
+});
+
+test("minimizing or hiding a maximized window does not persist it as floating (LV10)", () => {
+  const machine = new WindowStateMachine();
+  machine.reset(snapshot());
+  machine.observe(snapshot());
+  machine.observe(snapshot({ bounds: work, maximized: true }));
+  // Electron reports the emulated maximize as false while minimized; getBounds() is the normal-position rectangle.
+  const minimized = snapshot({ bounds: work, normalBounds: work, minimized: true, maximized: false });
+  machine.observe(minimized);
+  assert.deepEqual(machine.persisted(minimized), { ...floating, maximized: true });
+  const concealed = snapshot({ bounds: work, normalBounds: work, concealed: true, maximized: false });
+  assert.deepEqual(machine.persisted(concealed), { ...floating, maximized: true });
+  // Restored and then shown floating: the next save says so.
+  machine.observe(snapshot());
+  assert.deepEqual(machine.persisted(snapshot({ minimized: true })), { ...floating, maximized: false });
+});
+
+test("a never-maximized window filling the work area restores to a centred window, not an empty rectangle (W02/LV03)", () => {
+  const machine = new WindowStateMachine();
+  const pseudoMaximized = snapshot({ bounds: work, normalBounds: { x: 0, y: 0, width: 0, height: 0 }, maximized: true });
+  machine.reset(pseudoMaximized);
+  machine.observe(pseudoMaximized);
+  assert.deepEqual(machine.restoreBounds(pseudoMaximized), { x: 275, y: 175, width: 1650, height: 1050 });
+  assert.deepEqual(machine.persisted(pseudoMaximized), { x: 275, y: 175, width: 1650, height: 1050, maximized: true });
+  machine.enterMode("compact", pseudoMaximized);
+  assert.deepEqual(machine.leaveMode("compact"), { bounds: { x: 275, y: 175, width: 1650, height: 1050 }, maximized: true });
 });
 
 test("a new window forgets the previous window's geometry", () => {

@@ -35,12 +35,13 @@ test("embedded online audio bridge stays restricted to YouTube Music", () => {
   assert.match(main, /frames > 16384/);
 });
 
-test("embedded NetEase API binds to loopback and keeps cookies out of request URLs", () => {
+test("embedded NetEase API runs no local HTTP server and keeps cookies out of request URLs", () => {
   const api = read("electron/neteaseApi.ts");
   const cookie = read("electron/neteaseCookie.ts");
-  assert.match(api, /serveNcmApi\(\{ port, host: "127\.0\.0\.1" \}\)/);
-  assert.match(api, /normalizeNeteaseCookieHeader\(apiCookie\)/);
-  assert.match(api, /headers: cookieHeader \? \{ Cookie: cookieHeader \} : undefined/);
+  // N09: the package's Express server (no auth, reflected CORS, uploads, proxy=) is never started.
+  assert.doesNotMatch(api, /serveNcmApi|\.listen\(|createServer|fetch\(/);
+  assert.match(api, /normalizeNeteaseCookieHeader\(cookie\)/);
+  assert.match(api, /cookie: includeCookie && apiCookie \? neteaseCookieObject\(apiCookie\) : \{\}/);
   assert.match(cookie, /replace\(\/;\\s\*\/g, "; "\)/);
   assert.doesNotMatch(api, /cookie=\$\{encodeURIComponent\(apiCookie\)\}/);
 });

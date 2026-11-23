@@ -1,5 +1,6 @@
 import path from "node:path";
 import { LibraryOperationError } from "../errors";
+import { libraryFolderArgument } from "../libraryPaths";
 import type { LegacyLibraryImportRequest, LegacyLibraryPayload, LibraryCommandMeta } from "../types";
 import { validateLegacyLibraryPayload } from "./LibraryValidator";
 
@@ -30,7 +31,8 @@ export function parsePathList(value: unknown, label = "paths", limit = 10000) {
 export function parseRescanRequest(value: unknown) {
   if (!value || typeof value !== "object") invalid("Library rescan request is invalid");
   const request = value as Record<string, unknown>;
-  return { folders: parsePathList(request.folders, "folders", 1000), meta: parseCommandMeta(request.meta) };
+  const folders = Array.isArray(request.folders) ? request.folders.map(libraryFolderArgument) : request.folders;
+  return { folders: parsePathList(folders, "folders", 1000), meta: parseCommandMeta(request.meta) };
 }
 
 export function parseLegacyMutation(value: unknown): LegacyLibraryImportRequest {

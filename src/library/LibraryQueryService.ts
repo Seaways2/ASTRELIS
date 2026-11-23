@@ -1,6 +1,8 @@
 import type { Track } from "../types/audio";
 
-export type LibrarySort = "title" | "artist" | "album" | "format" | "size";
+/** "track" is album order: album, then disc and track number, then title. */
+export type LibrarySort = "track" | "title" | "artist" | "album" | "format" | "size";
+export const LIBRARY_SORTS: readonly LibrarySort[] = ["track", "title", "artist", "album", "format", "size"];
 
 export interface LibraryQueryScope {
   search?: string;
@@ -129,6 +131,17 @@ const parentFolder = (value: string) => {
   const parent = value.slice(0, index);
   return /^[a-z]:$/i.test(parent) ? `${parent}\\` : parent;
 };
+const folderComparisonKey = (value: string) => normalize(canonicalFolder(value));
+/** The index key of a folder node: as folderAncestors spells it, a drive root keeps "\" ("E:" and "E:\" are both "e:\"). */
+const folderNodeKey = (value: string) => {
+  const folder = canonicalFolder(value);
+  return normalize(/^[a-z]:$/i.test(folder) ? `${folder}\\` : folder);
+};
+/** True when `folder` is `root` or below it (case-insensitive, drive roots included). */
+export function libraryFolderWithin(folder: string, root: string) {
+  const candidate = folderComparisonKey(folder), parent = folderComparisonKey(root);
+  return Boolean(parent) && (candidate === parent || candidate.startsWith(parent + "\\"));
+}
 const folderAncestors = (value?: string) => {
   const paths: string[] = [];
   let current = canonicalFolder(value);
@@ -174,11 +187,20 @@ function trackCollator(locale: string) {
   return collator;
 }
 
+// Missing disc or track numbers sort after numbered tracks of the same album.
+const positionNumber = (value: number | undefined) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER;
+
+function compareAlbumOrder(left: Track, right: Track, collator: Intl.Collator) {
+  return collator.compare(String(left.tags?.album || left.album || ""), String(right.tags?.album || right.album || ""))
+    || positionNumber(left.tags?.discNumber) - positionNumber(right.tags?.discNumber)
+    || positionNumber(left.tags?.trackNumber) - positionNumber(right.tags?.trackNumber);
+}
+
 function compareTracks(left: Track, right: Track, scope: LibraryQueryScope, locale: string) {
   const sort = scope.sort || "title";
   const direction = scope.sortAscending === false ? -1 : 1;
   const collator = trackCollator(locale);
-  let comparison = sort === "size" ? left.size - right.size : collator.compare(String(
+  let comparison = sort === "track" ? compareAlbumOrder(left, right, collator) : sort === "size" ? left.size - right.size : collator.compare(String(
     sort === "artist" ? left.artist : sort === "album" ? left.album : sort === "format" ? left.format : left.name
   ), String(
     sort === "artist" ? right.artist : sort === "album" ? right.album : sort === "format" ? right.format : right.name
@@ -448,7 +470,10 @@ export class LibraryIndex {
   stats() { return { ...this.derivedStats }; }
 
   folderPage(roots: string[], currentPath: string, offset = 0, limit = 100, sort: LibrarySort = "title", sortAscending = true): LibraryPage<LibraryFolderNode> {
-    const keys = currentPath ? this.folderChildren.get(normalize(currentPath)) || [] : roots.map(normalize).filter(key => this.folderNodesByPath.has(key));
+    // The index keeps every ancestor up to the drive, but browsing stays inside
+    // the library roots: a folder above them is not part of the library.
+    const insideRoots = !currentPath || roots.some(root => libraryFolderWithin(currentPath, root));
+    const keys = !insideRoots ? [] : currentPath ? this.folderChildren.get(folderNodeKey(currentPath)) || [] : [...new Set(roots.map(folderNodeKey))].filter(key => this.folderNodesByPath.has(key));
     const nodes = keys.map(key => this.folderNodesByPath.get(key)).filter((node): node is CachedFolderNode => Boolean(node))
       .filter(node => node.count).sort((left, right) => {
         if (sort === "size") {
@@ -481,7 +506,10 @@ export class LibraryIndex {
     return ids;
   }
 
-  categoryPage(facet: LibraryCategoryFacet, search: string, sortScope: LibraryQueryScope, locale: string, offset = 0, limit = 100): LibraryPage<LibraryCategoryGroup> {
+  // A group's ids are what "add album/artist to queue" enqueues, so they always
+  // follow album order (disc, then track number), whatever the list is sorted by.
+  categoryPage(facet: LibraryCategoryFacet, search: string, _sortScope: LibraryQueryScope, locale: string, offset = 0, limit = 100): LibraryPage<LibraryCategoryGroup> {
+    const albumOrder: LibraryQueryScope = { sort: "track", sortAscending: true };
     const normalizedSearch = normalize(search);
     const source = facet === "艺术家" ? this.artistGroups : this.albumGroups;
     const groups = [...source.values()].filter(group => !normalizedSearch || group.searchText.includes(normalizedSearch))
@@ -490,7 +518,7 @@ export class LibraryIndex {
     return {
       items: groups.slice(page.offset, page.offset + page.limit).map(group => ({
         key: group.key, name: group.name, count: group.ids.length,
-        ids: [...this.sortedIdsForGroup(facet, group, sortScope, locale)], artists: new Set(group.artists), albums: new Set(group.albums),
+        ids: [...this.sortedIdsForGroup(facet, group, albumOrder, locale)], artists: new Set(group.artists), albums: new Set(group.albums),
         formats: new Set(group.formats), covers: [...group.covers]
       })), total: groups.length, ...page, hasMore: page.offset + page.limit < groups.length
     };

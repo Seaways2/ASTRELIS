@@ -1,11 +1,18 @@
-import { LoaderCircle, ArrowLeft, Maximize, AudioLines, Subtitles, FolderPlus, Speaker, Blocks, Cable, SlidersHorizontal } from "lucide-react";
+import { LoaderCircle, ArrowLeft, Maximize, AudioLines, Subtitles, FolderPlus, Speaker, Blocks, Cable, SlidersHorizontal, TriangleAlert, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { VideoState } from "../../electron/videoPlayer";
 import { useI18n } from "../i18n";
+import { usePlayerStore } from "../stores/playerStore";
 import "./VideoView.css";
 import { defaultVideoDsp, type VideoDsp } from "../../electron/videoDsp";
 import { SubtitleSync } from "./SubtitleSync";
 import { VideoControlSelect } from "./VideoControlSelect";
+// Reopening is a new play request for the same queue item; reloadCurrentTrack
+// keeps currentTime, so a video that failed at its bookmark reopens there.
+const retryCurrentVideo = () => {
+  const store = usePlayerStore.getState();
+  if (store.currentIndex >= 0) store.reloadCurrentTrack();
+};
 export function VideoView({ state, visible, direct, setDirect, rackEnabled, setRackEnabled, onFullscreen, windowBusy, onBack, preparing = "" }: { preparing?: string; onFullscreen:()=>void; windowBusy:boolean; onBack:()=>void; state?: VideoState; visible: boolean; direct: boolean; setDirect: (value: boolean) => void; rackEnabled: boolean; setRackEnabled: (value: boolean) => void }) {
   const surface = useRef<HTMLDivElement>(null);
   const { t, tm } = useI18n();
@@ -50,6 +57,20 @@ export function VideoView({ state, visible, direct, setDirect, rackEnabled, setR
     },120);
   };
   const dspBlocked = !state?.ready || Boolean(state?.direct) || Boolean(state?.rackAudio) || state?.outputChannels !== 2;
+  // A file mpv cannot load keeps its error on the closed engine. Show it in
+  // place of the picture for this play request, and make Play retry the open
+  // instead of reporting a run that never starts.
+  const playbackToken = usePlayerStore(store => { const track = store.tracks[store.currentIndex]; return track ? `${track.id}:${store.localPlayRequest}` : ""; });
+  const playing = usePlayerStore(store => store.playing);
+  const failed = !busy && Boolean(state?.error) && !state?.ready && Boolean(playbackToken) && state?.playbackToken === playbackToken;
+  const wasPlaying = useRef(playing);
+  useEffect(() => {
+    const started = playing && !wasPlaying.current;
+    wasPlaying.current = playing;
+    if (!failed || !playing) return;
+    if (started) retryCurrentVideo();
+    else usePlayerStore.getState().setPlaying(false);
+  }, [failed, playing]);
 
   useEffect(() => {
     const sync = () => {
@@ -65,6 +86,7 @@ export function VideoView({ state, visible, direct, setDirect, rackEnabled, setR
   return <div className="embedded-video">
     <div ref={surface} className="embedded-video-surface" aria-busy={busy}>
       {busy ? <div className="video-preparation" role="status" aria-live="polite"><LoaderCircle aria-hidden="true" /><b>{t(preparing)}</b><span>{t("video.preparing.hint")}</span><output aria-live="off">{waitSeconds}s</output></div>
+        : failed ? <div className="video-failure" role="alert"><TriangleAlert aria-hidden="true" /><b>{t("video.unplayable")}</b><span>{t("video.unplayable.hint")}</span><code>{tm(state?.error || "")}</code><button type="button" onClick={retryCurrentVideo}><RotateCcw aria-hidden="true" />{t("video.retry")}</button></div>
         : <span>{state?.error ? tm(state.error) : (!state?.ready?t("video.loading"):"")}</span>}
     </div>
     <div className="embedded-video-controls">

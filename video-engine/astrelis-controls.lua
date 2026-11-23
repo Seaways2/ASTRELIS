@@ -43,9 +43,25 @@ end
 local function rect(a,x1,y1,x2,y2,color)
  a:new_event();a:pos(0,0);a:append('{\\an7\\bord0\\shad0\\1c&H'..color..'&\\1a&H10&}');a:draw_start();a:rect_cw(x1,y1,x2,y2);a:draw_stop()
 end
-local function draw()
- local w,h=mp.get_osd_size(); if w==0 or h==0 then return end
+-- mpv reports the OSD and the mouse in physical pixels. Lay the bar out in
+-- logical (DIP) units so it keeps its size at 200-300% Windows scaling.
+-- osd-overlay only accepts whole-number res_x/res_y, so the canvas is rounded
+-- (e.g. 3840/2.25) and the mouse is mapped with the same ratio.
+local function geometry()
+ local pw,ph=mp.get_osd_size()
+ pw,ph=pw or 0,ph or 0
+ if pw<=0 or ph<=0 then return 0,0,-1,-1 end
+ local scale=mp.get_property_number('display-hidpi-scale',1)
+ if not scale or scale<=0 then scale=1 end
+ local w,h=math.floor(pw/scale+.5),math.floor(ph/scale+.5)
  local mx,my=mp.get_mouse_pos()
+ return w,h,(mx or -1)*w/pw,(my or -1)*h/ph
+end
+local idle_seconds=3
+local last_activity=0
+local function draw()
+ local w,h,mx,my=geometry(); if w==0 or h==0 then return end
+ if mouse_active and mp.get_time()-last_activity>=idle_seconds then mouse_active=false end
  if not mouse_active or mx<0 or mx>w or my<h-180 or my>h then buttons={};overlay:remove();return end
  local a=assdraw.ass_new()
  rect(a,0,h-180,w,h,'181818')
@@ -74,13 +90,17 @@ end
 local function hide()
  mouse_active=false;buttons={};feedback_until=0;overlay:remove()
 end
-mp.add_forced_key_binding('mouse_move','astrelis-mouse',function() mouse_active=true;draw() end)
+mp.add_forced_key_binding('mouse_move','astrelis-mouse',function() mouse_active=true;last_activity=mp.get_time();draw() end)
 mp.add_forced_key_binding('mouse_leave','astrelis-mouse-leave',hide)
 mp.register_script_message('astrelis-keyboard',hide)
 mp.observe_property('focused','bool',function(_,focused) if focused==false then hide() end end)
 mp.add_forced_key_binding('MBTN_LEFT','astrelis-click',function()
- local x,y=mp.get_mouse_pos();local w,h=mp.get_osd_size()
- if not mouse_active or y<h-180 then return end
+ local w,h,x,y=geometry()
+ if y<h-180 then return end
+ local hidden=not mouse_active or #buttons==0
+ mouse_active=true;last_activity=mp.get_time()
+ -- A click on a bar hidden while idle reveals it instead of acting blindly.
+ if hidden then draw();return end
  if y>h-168 and y<h-142 then local target=math.max(0,math.min(1,(x-24)/(w-48)))*mp.get_property_number('duration',0);mp.commandv('seek',target,'absolute+exact');notify(d[10]..' '..clock(target))
  else for _,b in ipairs(buttons) do if x>=b.x and x<b.x+b.w and y>=b.y and y<=b.y+b.height then b.action();break end end end
  draw()

@@ -42,13 +42,33 @@ export function validateVideoFile(file: unknown) {
   if (!fs.statSync(real).isFile()) throw new Error("VIDEO_FILE_INVALID");
   return real;
 }
-export function videoArguments(pipe: string, direct: boolean, log: string, parent?: string, rackAudio = false) {
+export interface VideoInitialAudio { volume: number; muted: boolean }
+// Standalone fullscreen owns the transport; the renderer copies its paused
+// state. A queue advance carried into fullscreen (resume) must therefore not
+// start paused, or the first ready state reads as the viewer pausing.
+export function videoStandaloneArguments(scriptDirectory: string, resume = false) {
+  return ["--fullscreen=yes", "--pause=" + (resume ? "no" : "yes"), "--osc=no", "--osd-level=0", "--input-default-bindings=no", "--drag-and-drop=no", "--osd-font=Microsoft YaHei",
+    "--script=" + path.join(scriptDirectory, "astrelis-controls.lua")];
+}
+export function videoArguments(pipe: string, direct: boolean, log: string, parent?: string, rackAudio = false, audio?: VideoInitialAudio) {
+  // A playlist advance inside standalone fullscreen starts the next engine at
+  // the level the viewer left, so the first state does not reset the store.
+  const volume = direct ? "--volume=100" : audio ? "--volume=" + Number(amplitudePercentToMpvVolume(audio.volume).toFixed(3)) : "--volume=50";
   return ["--no-config", "--load-scripts=no", "--ytdl=no", "--idle=yes", "--keep-open=yes", "--force-window=yes",
     "--title=ASTRELIS · Video", "--autofit=85%x85%", "--hwdec=auto-safe", rackAudio ? "--ao=null" : "--ao=wasapi",
-    "--audio-fallback-to-null=no", direct ? "--volume=100" : "--volume=50", "--volume-max=100", "--save-position-on-quit=no", "--input-media-keys=no",
+    "--audio-fallback-to-null=no", volume, ...(audio?.muted && !direct ? ["--mute=yes"] : []), "--volume-max=100", "--save-position-on-quit=no", "--input-media-keys=no",
     "--sub-font=Microsoft YaHei", "--input-ipc-server=" + pipe, "--log-file=" + log,
     ...(parent ? ["--wid="+parent,"--osc=no","--osd-level=0","--input-default-bindings=no","--input-vo-keyboard=yes","--input-cursor=yes","--drag-and-drop=no","--pause=yes"] : []),
     ...(direct ? ["--audio-spdif=ac3,dts,eac3", "--audio-exclusive=yes"] : ["--audio-spdif=", "--audio-exclusive=no"])];
+}
+// State published when the engine process ends. Closing a session that never
+// became playable (a corrupt or unsupported file) keeps the load failure, so
+// the surface can say why instead of waiting forever; closing a playable
+// session clears it, and process exit codes never mask mpv's own reason.
+export function videoExitPatch(state: VideoState, closing: boolean, error = ""): Partial<VideoState> {
+  return { active: false, ready: false, paused: state.standalone && !closing ? state.paused : true,
+    returnRequested: Boolean(state.standalone && !closing),
+    error: closing ? (state.ready ? "" : state.error) : error || state.error };
 }
 
 // Owns one independent video engine. Commands are constrained here, never raw renderer IPC.
@@ -64,6 +84,8 @@ export class VideoPlayer {
   private sourceFile = "";
   private switching = false;
   private embeddedParent?: string;
+  // The embedded renderer sends 0 while muted; this is the level it unmutes to.
+  private embeddedAudibleVolume?: number;
   private externalSubtitles: string[] = [];
   private dsp = defaultVideoDsp();
   private dspQueue: Promise<void> = Promise.resolve();
@@ -195,33 +217,42 @@ export class VideoPlayer {
         title: String(t.title || ""), lang: String(t.lang || ""), selected: Boolean(t.selected) })) : [] }); break;
     }
   }
-  async open(file: string, direct: boolean, parent?: string, playbackToken?: string, standalone = false, language = "zh-CN", rackAudio = false) {
+  async open(file: string, direct: boolean, parent?: string, playbackToken?: string, standalone = false, language = "zh-CN", rackAudio = false, initialAudio?: VideoInitialAudio) {
     if (direct && rackAudio) throw new Error("VIDEO_RACK_DIRECT_CONFLICT");
     if (this.child) throw new Error("VIDEO_ALREADY_ACTIVE");
-    file = validateVideoFile(file);
+    try {
+      file = validateVideoFile(file);
+      if (!fs.existsSync(this.executable)) throw new Error("VIDEO_ENGINE_MISSING");
+    } catch (error) {
+      // A moved file or an unplugged drive fails before any engine starts;
+      // report it against this request so the surface does not wait forever.
+      this.fail(playbackToken, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
     if (file !== this.sourceFile) this.externalSubtitles=[];
     this.sourceFile = file;
     if (parent) this.embeddedParent = parent;
-    if (!fs.existsSync(this.executable)) throw new Error("VIDEO_ENGINE_MISSING");
     fs.mkdirSync(path.dirname(this.log), { recursive: true });
     const pipe = `\\\\.\\pipe\\astrelis-video-${process.pid}-${randomUUID()}`;
     this.closing = false;
     this.state = emptyVideoState();
-    this.publish({ active: true, title: path.basename(file), direct, rackAudio, error: "", playbackToken, standalone });
-    const args = videoArguments(pipe, direct, this.log, parent, rackAudio);
+    const audio = initialAudio && !direct ? { volume: clampVolumePercent(initialAudio.volume), muted: Boolean(initialAudio.muted) } : undefined;
+    this.publish({ active: true, title: path.basename(file), direct, rackAudio, error: "", playbackToken, standalone, ...audio });
+    const args = videoArguments(pipe, direct, this.log, parent, rackAudio, audio);
     args.push("--script=" + path.join(path.dirname(this.executable), "astrelis-input.lua"),
       "--script-opts=astrelis-input-embedded=" + (parent ? "yes" : "no") + ",astrelis-input-direct=" + (direct ? "yes" : "no")
       + ",astrelis-controls-language=" + language + ",astrelis-controls-direct=" + (direct ? "yes" : "no"));
     this.appliedDspFilter = "";
     this.dspState();
-    if (standalone) args.push("--fullscreen=yes", "--pause=yes", "--osc=no", "--osd-level=0", "--input-default-bindings=no", "--drag-and-drop=no", "--osd-font=Microsoft YaHei",
-      "--script="+path.join(path.dirname(this.executable),"astrelis-controls.lua"));
+    // initialAudio on a standalone open is a queue advance carried into
+    // fullscreen; the rack still starts paused until its PCM bridge is primed.
+    if (standalone) args.push(...videoStandaloneArguments(path.dirname(this.executable), Boolean(initialAudio) && !rackAudio));
     const child = spawn(this.executable, args, { windowsHide: true, stdio: "ignore" });
     this.child = child;
     const finish = (error = "") => {
       if (this.child !== child) return;
       this.child = undefined; this.socket?.destroy(); this.socket = undefined; this.rejectPending();
-      this.publish({ active: false, ready: false, paused: this.state.standalone && !this.closing ? this.state.paused : true, returnRequested: this.state.standalone && !this.closing, error: this.closing ? "" : error || this.state.error });
+      this.publish(videoExitPatch(this.state, this.closing, error));
     };
     child.once("error", error => finish(error.message));
     child.once("exit", code => finish(code ? `VIDEO_ENGINE_EXIT_${code}` : ""));
@@ -286,10 +317,17 @@ export class VideoPlayer {
         if (track) await this.request(["set_property",kind==="audio"?"aid":"sid",track.id]);
         else if (kind==="sub") await this.request(["set_property","sid","no"]);
       }
-      if (!saved.direct) await this.request(["set_property","volume",amplitudePercentToMpvVolume(saved.volume)]);
-      await this.request(["set_property","mute",Boolean(saved.muted)]);
+      // Standalone fullscreen owns mpv's mute. The embedded player is driven by
+      // the renderer, which only sends a volume (0 while muted) and never mute,
+      // so carry a fullscreen mute back as silence it can lift, and carry an
+      // embedded silence into fullscreen as a mute of the last audible level.
+      const silenced = standalone && !saved.standalone && !saved.direct && !saved.muted && saved.volume <= 0.1 && this.embeddedAudibleVolume !== undefined;
+      const muted = standalone && (Boolean(saved.muted) || silenced);
+      const volume = silenced ? this.embeddedAudibleVolume! : !standalone && saved.muted ? 0 : saved.volume;
+      if (!saved.direct) await this.request(["set_property","volume",amplitudePercentToMpvVolume(volume)]);
+      await this.request(["set_property","mute",muted]);
       await this.request(["set_property","pause",saved.rackAudio ? true : saved.paused]);
-      this.state={...this.state,position:saved.position,paused:saved.rackAudio ? true : saved.paused,volume:saved.volume,returnRequested:false};
+      this.state={...this.state,position:saved.position,paused:saved.rackAudio ? true : saved.paused,volume:saved.direct ? saved.volume : volume,muted,returnRequested:false};
     } finally { this.switching=false;this.publish({}); }
   }
   private clockSyncEpoch = 0;
@@ -335,7 +373,14 @@ export class VideoPlayer {
         await this.request(["seek", Math.max(0, Math.min(this.state.duration, value)), "absolute+exact"]); break;
       case "volume":
         if (typeof value !== "number" || !Number.isFinite(value) || this.state.direct) throw new Error("VIDEO_VALUE_INVALID");
-        await this.request(["set_property", "volume", amplitudePercentToMpvVolume(value)]); break;
+        // Standalone: mpv owns mute, and a muted player is already silent.
+        if (this.state.standalone && this.state.muted && value === 0) break;
+        await this.request(["set_property", "volume", amplitudePercentToMpvVolume(value)]);
+        // Embedded: the renderer's volume is authoritative (0 while muted), so
+        // no mpv mute may outlive it.
+        if (!this.state.standalone && this.state.muted) { await this.request(["set_property", "mute", false]); this.publish({ muted: false }); }
+        if (!this.state.standalone && value > 0.1) this.embeddedAudibleVolume = clampVolumePercent(value);
+        break;
       case "subtitleDelay":
         if (typeof value !== "number" || !Number.isFinite(value) || value < -120 || value > 120) throw new Error("VIDEO_VALUE_INVALID");
         await this.request(["set_property", "sub-delay", value]); break;
@@ -375,5 +420,14 @@ export class VideoPlayer {
     if (this.child === child) throw new Error("VIDEO_STOP_TIMEOUT");
   }
   reportError(error: string) { this.publish({ error, paused: true }); }
+  // A load that failed before (or after) the engine ran: publish the reason
+  // with the request's token so the surface shows it instead of "preparing".
+  // Without an engine nothing is fullscreen any more and nothing may ask the
+  // main window to take the video back.
+  fail(playbackToken: string | undefined, error: string) {
+    if (this.child) { this.publish({ error, paused: true }); return; }
+    this.publish({ active: false, ready: false, paused: true, ended: false, title: "", position: 0, duration: 0, tracks: [], error, playbackToken,
+      standalone: false, returnRequested: false });
+  }
   dispose() { this.closing = true; this.socket?.destroy(); this.child?.kill(); }
 }

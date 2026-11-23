@@ -1,4 +1,4 @@
-import { fillsDisplay, fitWindowBounds, fittedUiZoom } from "./windowFit";
+import { centredDefaultBounds, fillsDisplay, fitWindowBounds, fittedUiZoom, isCollapsedCornerBounds, restorableNormalBounds } from "./windowFit";
 import { WindowStateMachine, maximizeToggleRestores, type WindowSnapshot } from "./windowStateMachine";
 import { FolderVisibility } from "./FolderVisibility";
 import { restoreVisibleLibrary } from "./library/migration/RestoreVisibleLibrary";
@@ -39,11 +39,14 @@ import { LibraryMigrator } from "./library/migration/LibraryMigrator";
 import { LibraryDerivedIndexCache } from "./library/derived/LibraryDerivedIndexCache";
 import { parseAbsolutePath } from "./library/validation/LibraryIpcValidator";
 import { LocalMediaAccessPolicy, safeExternalUrl, sameOriginNavigation } from "./security/ElectronSecurity";
-import { RotatingLogFile } from "./logFile";
+import { removeDevelopmentSwitches } from "./security/DevelopmentSwitches";
+import { ExternalOpenThrottle, applyOnlineSessionPolicy, onlineNavigationAllowed } from "./security/OnlineViewPolicy";
+import { ScannedPluginPolicy } from "./security/PluginPathPolicy";
+import { RendererPlaybackLog, RotatingLogFile } from "./logFile";
 import { AuthorizedFileStore } from "./security/AuthorizedFileStore";
 import { DesktopMediaKeys, DesktopPreferenceService, defaultDesktopPreferences } from "./desktopPreferences";
 import { AUDIO_EXTENSIONS, externalAudioPaths } from "./externalOpenPaths";
-import { nativePluginHostPath } from "./pluginScanService";
+import { nativePluginHostPath, pluginQuarantinePath, pluginScanCachePath } from "./pluginScanService";
 import { registerNeteaseIpc } from "./ipc/neteaseIpc";
 import { registerMediaMetadataIpc } from "./ipc/mediaMetadataIpc";
 import { registerVstPluginIpc } from "./ipc/vstPluginIpc";
@@ -81,6 +84,10 @@ let localMediaAccess: LocalMediaAccessPolicy | undefined;
 let authorizedFiles: AuthorizedFileStore | undefined;
 let queueStore: QueueStore | undefined;
 
+// An installed build ignores the dev-server URL and the test failpoints. The
+// native host and scanner inherit this environment, so this runs first.
+if (app.isPackaged) removeDevelopmentSwitches(process.env);
+
 // The source-test build must not share Chromium caches or the single-instance
 // lock with an installed production build that may still be running in tray.
 if (app.isPackaged) {
@@ -110,6 +117,8 @@ function findFfmpeg() {
 }
 
 let mainWindow: BrowserWindow | null = null;
+/** Set when startup creates the main window; nothing else may create it earlier. */
+let mainWindowStartupComplete = false;
 let localWaveformService: LocalWaveformService | undefined;
 let pendingExternalOpenPaths = externalAudioPaths(process.argv);
 let externalOpenTimer: NodeJS.Timeout | undefined;
@@ -133,11 +142,14 @@ let tray: Tray | null = null;
 let isQuitting = false;
 const desktopMediaKeys = new DesktopMediaKeys(globalShortcut, action => sendToMainWindow("media-key", action));
 const desktopPreferences = new DesktopPreferenceService(path.join(app.getPath("userData"), "desktop-preferences.json"), {
+  // Every topmost call names "pop-up-menu": Electron's default "floating" level
+  // re-inserts the window behind the taskbar on each activation, and Windows
+  // then drops WS_EX_TOPMOST whenever the taskbar itself is not topmost.
   setAlwaysOnTop(enabled) {
     if (compactActive) {
       compactPreviousTop = enabled;
-      mainWindow?.setAlwaysOnTop(true);
-    } else mainWindow?.setAlwaysOnTop(enabled);
+      mainWindow?.setAlwaysOnTop(true, "pop-up-menu");
+    } else mainWindow?.setAlwaysOnTop(enabled, "pop-up-menu");
   },
   setMediaKeysEnabled: enabled => desktopMediaKeys.setEnabled(enabled)
 });
@@ -153,6 +165,8 @@ let pluginStateFlushStarted = false;
 let currentWindowGlass: "acrylic" | "mica" | "none" = "mica";
 let nativeAudioCommandQueue: Promise<void> = Promise.resolve();
 const audioRoutes = new AudioRouteCoordinator();
+// Plugin paths from a renderer are loaded by the unsandboxed native host only after a scan accepted them.
+const pluginPolicy = new ScannedPluginPolicy(pluginScanCachePath, pluginQuarantinePath);
 let nativeOutputGeneration = 0;
 configureNativePlaybackEngine({
   writeLog,
@@ -221,6 +235,9 @@ function writeLog(level: string, message: string) {
     logFile.write(`${new Date().toISOString()} [${level}] ${message}\n`);
   } catch { /* Logging must never crash the player. */ }
 }
+// The page reports files it cannot play on its console ("[playback] …");
+// only those lines reach the log, a few per second at most.
+const rendererPlaybackLog = new RendererPlaybackLog(message => writeLog("AUDIO", message));
 
 /** Sends to the main window's page unless it is already gone (e.g. while quitting). */
 function sendToMainWindow(channel: string, ...args: unknown[]) {
@@ -360,6 +377,43 @@ async function applyOnlineOutputSelection(contents: WebContents, label: string, 
   return result;
 }
 
+/**
+ * Where an address-bar entry goes: an https address, or undefined when it is
+ * not a valid one (another scheme, or a host that is not a domain). An http
+ * address becomes https. An entry without a scheme
+ * is an address only when its host looks like a domain ("youtube.com",
+ * "music.youtube.com/search?q=lofi hip hop"); anything else ("lofi",
+ * "lofi hip hop") is a YouTube Music search, never a made-up host that would
+ * be handed to the system browser.
+ */
+function onlineAddressTarget(input: string): string | undefined {
+  const value = input.trim();
+  if (!value) return undefined;
+  const domainLike = (host: string) => /^(?:[a-z0-9-]+\.)+(?:[a-z]{2,}|xn--[a-z0-9-]+)$/.test(host);
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value)?.[1].toLowerCase();
+  if (scheme && scheme !== "http" && scheme !== "https") return undefined;
+  const explicit = Boolean(scheme);
+  let parsed: URL | undefined;
+  try { parsed = new URL(explicit ? value : `https://${value}`); } catch { /* Not an address. */ }
+  if (parsed && domainLike(parsed.hostname)) {
+    parsed.protocol = "https:";
+    return parsed.toString();
+  }
+  return explicit ? undefined : `https://music.youtube.com/search?q=${encodeURIComponent(value)}`;
+}
+
+const onlineExternalOpens = new ExternalOpenThrottle();
+/** A page may hand an http(s) link to the system browser, at most one per interval. */
+function openOnlineLinkExternally(url: string): "opened" | "throttled" | "refused" {
+  if (!safeExternalUrl(url)) return "refused";
+  if (onlineExternalOpens.allow()) {
+    void shell.openExternal(url);
+    return "opened";
+  }
+  writeLog("SECURITY", `Online view external open throttled: ${new URL(url).origin}`);
+  return "throttled";
+}
+
 function ensureOnlineView() {
   if (!mainWindow) return null;
   if (onlineView && !onlineView.webContents.isDestroyed()) return onlineView;
@@ -378,12 +432,22 @@ function ensureOnlineView() {
   onlineView.setBackgroundColor("#080d10");
   mainWindow.contentView.addChildView(onlineView);
   const contents = onlineView.webContents;
+  // Electron grants every permission by default; this session only plays YouTube.
+  applyOnlineSessionPolicy(contents.session);
   contents.setZoomFactor(mainWindow.webContents.getZoomFactor());
   // Direct playback keeps the site security policy and audio graph intact.
   contents.setWindowOpenHandler(({ url }) => {
-    if (safeExternalUrl(url)) void shell.openExternal(url);
+    openOnlineLinkExternally(url);
     return { action: "deny" };
   });
+  // Other sites open in the system browser instead of inside the player.
+  const keepOnlinePage = (event: Electron.Event, url: string) => {
+    if (onlineNavigationAllowed(url)) return;
+    event.preventDefault();
+    openOnlineLinkExternally(url);
+  };
+  contents.on("will-navigate", (event, url) => keepOnlinePage(event, url));
+  contents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => { if (isMainFrame) keepOnlinePage(event, url); });
   contents.on("did-start-loading", emitBrowserState);
   contents.on("did-stop-loading", emitBrowserState);
   contents.on("did-navigate", emitBrowserState);
@@ -418,6 +482,9 @@ const gpuInfoUpdated = new Promise<void>(resolve => app.once("gpu-info-update", 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 if (hasSingleInstanceLock) {
+  // Electron delivers second-instance as soon as the app is ready, while the
+  // startup below may still be awaiting the library. showMainWindow() leaves
+  // window creation to the end of startup; the queued files follow the window.
   app.on("second-instance", (_event, argv, workingDirectory) => {
     queueExternalOpenPaths(externalAudioPaths(argv, workingDirectory));
     showMainWindow();
@@ -503,10 +570,26 @@ function logGpu() {
 }
 
 function createWindow() {
+  // Only one main window ever exists; a second one would be orphaned.
+  if (mainWindow && !mainWindow.isDestroyed()) return;
   const saved = loadWindowState();
   preferredNormalSize={width:saved.width,height:saved.height};
   const workArea = screen.getDisplayMatching(saved).workArea;
   Object.assign(saved,fitWindowBounds(saved,workArea));
+  if (fillsDisplay(saved, { workArea })) {
+    // A default or remembered size at least as large as this screen would be
+    // clamped to the work area without maximize(): Electron then reports the
+    // transparent window maximized with an empty restore rectangle, and the
+    // first restore shrinks it into the top-left corner. Open a centred
+    // floating window and maximize it for real instead.
+    Object.assign(saved, restorableNormalBounds(saved, { workArea }), { maximized: true });
+    preferredNormalSize={width:saved.width,height:saved.height};
+  } else if (isCollapsedCornerBounds(saved, workArea)) {
+    // That shrunken corner window was saved as the floating size by earlier
+    // builds; treat it as nothing remembered. The maximized flag is kept.
+    Object.assign(saved, centredDefaultBounds(workArea));
+    preferredNormalSize={width:saved.width,height:saved.height};
+  }
   rendererAcceptsExternalFiles = false;
   mainWindow = new BrowserWindow({
     x: saved.x,
@@ -521,7 +604,6 @@ function createWindow() {
     hasShadow: false,
     transparent: true,
     roundedCorners: false,
-    alwaysOnTop: desktopPreferences.get().preferences.alwaysOnTop,
     backgroundColor: "#00000000",
     icon: resolveAppIconPath() || undefined,
     titleBarStyle: "hidden",
@@ -533,6 +615,9 @@ function createWindow() {
       backgroundThrottling: false
     }
   });
+
+  // The constructor option would use the "floating" level; see setAlwaysOnTop above.
+  if (desktopPreferences.get().preferences.alwaysOnTop) mainWindow.setAlwaysOnTop(true, "pop-up-menu");
 
   // Chromium's caption double-click reaches this transparent HWND as
   // WM_SYSCOMMAND / (SC_MAXIMIZE | HTCAPTION), not WM_NCLBUTTONDBLCLK; if
@@ -570,6 +655,7 @@ function createWindow() {
   mainWindow.on("closed", () => windowResize.end());
   mainWindow.webContents.on("did-start-loading", () => windowResize.end());
   mainWindow.webContents.on("render-process-gone", () => windowResize.end());
+  mainWindow.webContents.on("console-message", (_event, _level, message) => { rendererPlaybackLog.accept(message); });
   refreshWindowOutline();
   // DWM rounds the floating window; a screen-filling window must be square.
   const syncWindowOutline = () => {
@@ -580,7 +666,8 @@ function createWindow() {
   mainWindow.on("leave-full-screen", syncWindowOutline);
   mainWindow.on("restore", syncWindowOutline);
 
-  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  // An installed build always loads its own page; see removeDevelopmentSwitches.
+  const devUrl = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
   const productionUrl = pathToFileURL(path.join(__dirname, "../dist/index.html")).toString();
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (safeExternalUrl(url)) void shell.openExternal(url);
@@ -596,7 +683,11 @@ function createWindow() {
   else mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   windowState.reset(windowSnapshot(mainWindow));
   windowState.observe(windowSnapshot(mainWindow));
-  if (saved.maximized) mainWindow.maximize();
+  if (saved.maximized) {
+    mainWindow.maximize();
+    // The state listeners below are not attached yet; record the maximized start.
+    windowState.observe(windowSnapshot(mainWindow));
+  }
   let saveTimer: NodeJS.Timeout | undefined;
   const saveWindowState = () => {
     if (!mainWindow) return;
@@ -638,6 +729,13 @@ function createWindow() {
     syncWindowFit();
     saveWindowState();
     scheduleOnlineBoundsResync();
+  });
+  // Restoring from the taskbar need not resize or move the window; record the
+  // state it is shown in again (minimizing saved it while Electron reported
+  // the emulated maximize as false).
+  mainWindow.on("restore", () => {
+    observeWindow();
+    saveWindowState();
   });
   let activeDisplay=screen.getDisplayMatching(mainWindow.getBounds()).id;
   mainWindow.on("move", () => {
@@ -714,8 +812,10 @@ function createWindow() {
 }
 
 function showMainWindow() {
-  if (!mainWindow) createWindow();
-  if (!mainWindow) return;
+  // Before startup creates the window (a second instance during startup)
+  // there is nothing to show yet; startup shows it and opens the queued files.
+  if (!mainWindow && mainWindowStartupComplete && !isQuitting) createWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   if (trayConcealed) {
     mainWindow.setOpacity(1);
     mainWindow.setSkipTaskbar(false);
@@ -947,12 +1047,33 @@ app.whenReady().then(async () => {
     (sourcePath, outputPath) => execFileAsync(findFfmpeg(), ["-v", "error", "-nostdin", "-y", "-i", sourcePath,
       "-map", "0:a:0", "-threads", "1", "-c:a", "pcm_f32le", "-rf64", "auto", "-f", "wav", outputPath],
     { windowsHide: true, timeout: 30 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 }));
-  const wavCodecProbe = new WavCodecProbe(async sourcePath => {
+  const audioStreamReport = async (sourcePath: string) => {
     const result = await execFileAsync(findFfmpeg(), ["-hide_banner", "-nostdin", "-i", sourcePath,
       "-map", "0:a:0", "-c:a", "copy", "-frames:a", "1", "-f", "null", "-"],
       { windowsHide: true, timeout: 30_000, maxBuffer: 1024 * 1024 });
     return result.stderr;
-  });
+  };
+  const wavCodecProbe = new WavCodecProbe(audioStreamReport);
+  // An .m4a holds AAC, which Chromium plays, or ALAC, which it cannot decode.
+  const m4aCodecProbes = new Map<string, Promise<boolean>>();
+  const m4aIsAlac = async (source: string) => {
+    try {
+      const stat = await fs.promises.stat(source);
+      const key = `${source}|${stat.size}|${stat.mtimeMs}`;
+      let probe = m4aCodecProbes.get(key);
+      if (!probe) {
+        probe = audioStreamReport(source).then(report => /Stream #0:\d+[^\r\n]*Audio:\s*alac\b/i.test(report));
+        m4aCodecProbes.set(key, probe);
+        if (m4aCodecProbes.size > 256) m4aCodecProbes.delete(m4aCodecProbes.keys().next().value!);
+        probe.catch(() => { if (m4aCodecProbes.get(key) === probe) m4aCodecProbes.delete(key); });
+      }
+      return await probe;
+    } catch { return false; /* Unprobeable: let Chromium try it, as before. */ }
+  };
+  // Formats Chromium's decoder cannot play are turned into a cached WAV by
+  // ffmpeg. This is the web-playback list: AIFF is here although the native
+  // host reads it itself (needsDecodedAudio is the native-host list).
+  const ffmpegDecodedExtensions = [".ape", ".dsf", ".wma", ".dts", ".ac3", ".eac3", ".aiff", ".aif", ".wv", ".tta"];
   const directAudioCache = new DirectAudioCache(path.join(app.getPath("userData"), "direct-audio"), async args => {
     try {
       const result = await execFileAsync(findFfmpeg(), args, { windowsHide: true, timeout: 30 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
@@ -972,9 +1093,10 @@ app.whenReady().then(async () => {
   };
   const prepareLocalSource = async (source: string) => {
     const extension = path.extname(source).toLowerCase();
-    const dtsWav = extension === ".wav" && await wavCodecProbe.isDts(source);
-    if (!dtsWav && ![".ape", ".dsf", ".wma", ".dts", ".ac3", ".eac3"].includes(extension)) return source;
-    return decodedAudioCache.prepare(source);
+    const decode = ffmpegDecodedExtensions.includes(extension)
+      || (extension === ".wav" && await wavCodecProbe.isDts(source))
+      || (extension === ".m4a" && await m4aIsAlac(source));
+    return decode ? decodedAudioCache.prepare(source) : source;
   };
   const prepareHdmiSource = async (source: string) => {
     const direct = await directAudioCache.prepare(source);
@@ -984,6 +1106,12 @@ app.whenReady().then(async () => {
   const trustedCacheRequest = (event: Electron.IpcMainInvokeEvent) => event.sender === mainWindow?.webContents
     && event.senderFrame === mainWindow.webContents.mainFrame;
   let videoDetached = false, videoReturning = false;
+  // The renderer always closes before opening the next queue item. A close
+  // during standalone fullscreen leaves this intent behind so the next video
+  // opens fullscreen too; if no video follows soon, the main window returns.
+  let videoStandaloneLanguage = "zh-CN";
+  let videoStandaloneCarry: { language: string; volume: number; muted: boolean } | undefined;
+  let videoStandaloneCarryTimer: NodeJS.Timeout | undefined;
   let videoRackAudio = false, videoRackFile = "", videoRackAudioIndex = 0;
   let videoRackPluginIds = new Set<string>();
   let videoRackKnownIds = new Set<string>();
@@ -1105,20 +1233,44 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) sendToMainWindow("video:input", input);
   };
   ipcMain.handle("video:state", event => trustedCacheRequest(event) ? videoPlayer?.state : emptyVideoState());
+  // A refused or failed open is published, so the video surface shows the
+  // reason instead of "preparing" forever. Only a failure of the file or its
+  // engine carries the play request's token: the surface then says the video
+  // cannot be played and offers Retry. A refusal of the path, the plugin
+  // rack or the native host shows its reason without blaming the file, and
+  // Play opens the item again. A refusal comes before any engine work and
+  // never touches a live engine (another video).
+  const refuseVideoOpen = (playbackToken: unknown, error: string) => {
+    if (typeof playbackToken === "string" && playbackToken && !videoPlayer?.state.active) videoPlayer?.fail(undefined, error);
+    return { ok: false, error };
+  };
   ipcMain.handle("video:open", async (event, file: unknown, direct: unknown, playbackToken: unknown, rackPlugins: unknown) => {
     if (!trustedCacheRequest(event)) return { ok: false, error: "UNTRUSTED_SENDER" };
     if (videoReserved) return { ok: false, error: "VIDEO_ALREADY_ACTIVE" };
-    if (typeof file !== "string" || (!localMediaAccess?.isAllowed(file)) || typeof direct !== "boolean" || typeof playbackToken !== "string") return { ok: false, error: "VIDEO_FILE_NOT_AUTHORIZED" };
+    if (typeof file !== "string" || (!localMediaAccess?.isAllowed(file)) || typeof direct !== "boolean" || typeof playbackToken !== "string") return refuseVideoOpen(playbackToken, "VIDEO_FILE_NOT_AUTHORIZED");
     const requestedRack = rackPlugins !== null && rackPlugins !== undefined;
-    if (requestedRack && (direct || !Array.isArray(rackPlugins) || rackPlugins.length > 32 || rackPlugins.some(plugin =>
-      !plugin || typeof plugin.id !== "string" || typeof plugin.path !== "string" || !path.isAbsolute(plugin.path) || typeof plugin.enabled !== "boolean")))
-      return { ok: false, error: "VIDEO_RACK_INVALID" };
+    if (requestedRack) {
+      const rejected = direct ? "DIRECT_OUTPUT_HAS_NO_RACK" : pluginPolicy.checkRack(rackPlugins);
+      if (rejected) {
+        writeLog("VST", `video rack refused: ${rejected}`);
+        return refuseVideoOpen(playbackToken, "VIDEO_RACK_INVALID");
+      }
+    }
     videoReserved = true;
+    const standalone = videoStandaloneCarry;
+    videoStandaloneCarry = undefined; clearTimeout(videoStandaloneCarryTimer);
     ++directGeneration; // Invalidate an outstanding music analysis decode before retiring its host.
+    // Whether a failure concerns the file (checking it, or the engine opening
+    // it) rather than the rack, the plugins or the native host before it.
+    let openingFile = false;
     try {
       // Drain earlier native work; prevent later requests from reopening WASAPI.
       await nativeAudioCommandQueue.catch(() => undefined);
       if (requestedRack) {
+        // Checked before the native host is touched: a missing file is the file's failure.
+        openingFile = true;
+        const rackFile = validateVideoFile(file);
+        openingFile = false;
         await ensureNativeOutputRestored();
         await sendPlaybackCommand({ type: "pause" });
         await switchVstProfile("video");
@@ -1126,7 +1278,7 @@ app.whenReady().then(async () => {
         if (!loaded.ok) throw new Error(loaded.error || "VIDEO_RACK_LOAD_FAILED");
         videoRackPluginIds = new Set((rackPlugins as { id: string; enabled: boolean }[]).filter(plugin => plugin.enabled).map(plugin => plugin.id));
         videoRackKnownIds = new Set((rackPlugins as { id: string }[]).map(plugin => plugin.id));
-        videoRackAudio = true; videoRackFile = validateVideoFile(file);
+        videoRackAudio = true; videoRackFile = rackFile;
         videoRackAudioIndex = 0; videoRackLastPaused = true; videoRackLastPosition = 0; videoRackLastLevel = -1;
         videoPcm = new VideoPcmBridge(
           findFfmpeg(),
@@ -1151,8 +1303,13 @@ app.whenReady().then(async () => {
         }
       }
       rendererPcmCaptureActive = false;
+      openingFile = true;
       videoSurface ??= new VideoSurface(mainWindow!);
-      await videoPlayer!.open(file, direct, videoSurface.attach(), playbackToken, false, "zh-CN", requestedRack);
+      const parent = videoSurface.attach();
+      // A queue advance inside standalone fullscreen stays fullscreen, with
+      // the main window still hidden and the viewer's volume carried over.
+      if (standalone) videoDetached = true;
+      await videoPlayer!.open(file, direct, standalone ? undefined : parent, playbackToken, Boolean(standalone), standalone?.language ?? "zh-CN", requestedRack, standalone);
       {
         const deadline = Date.now() + 10000;
         while (!videoPlayer!.state.ready || (requestedRack && !videoPlayer!.state.tracks.some(track => track.type === "audio"))) {
@@ -1161,14 +1318,32 @@ app.whenReady().then(async () => {
           await new Promise(resolve => setTimeout(resolve, 40));
         }
       }
+      // The renderer copies a standalone engine's paused state. A rack engine
+      // starts paused until its audio track is known, so resume the carried
+      // advance before video:open returns instead of reading it as a pause.
+      if (standalone && videoPlayer!.state.paused) {
+        await videoPlayer!.control("play");
+        const deadline = Date.now() + 2000;
+        while (videoPlayer!.state.paused && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+      }
       return { ok: true };
     } catch (error) {
+      // A carried fullscreen advance hid the main window before this open; it
+      // comes back whether the failure came before or after the engine started.
+      if (standalone) { videoDetached = false; if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); }
       if (videoPcm) { await videoPcm.stop().catch(() => undefined); videoPcm = undefined; }
       videoRackAudio = false; videoRackPluginIds.clear(); videoRackKnownIds.clear();
       await videoPlayer?.close().catch(() => undefined);
+      // The plain code: the renderer wraps it in its own Error, so String(error)
+      // would read "Error: Error: …". A failure before the engine ran (the rack,
+      // the native host, a timeout) is recorded here, after close() published
+      // the engine's exit, so the surface keeps the reason; with this token
+      // only when the file or its engine failed (see refuseVideoOpen).
+      const message = error instanceof Error ? error.message : String(error);
+      videoPlayer?.fail(openingFile ? playbackToken : undefined, message);
       videoReserved = false;
-      writeLog("VIDEO", String(error));
-      return { ok: false, error: String(error) };
+      writeLog("VIDEO", `open failed: ${message}`);
+      return { ok: false, error: message };
     }
   });
   ipcMain.on("video:bounds", (event, bounds: unknown) => {
@@ -1181,16 +1356,28 @@ app.whenReady().then(async () => {
     try {
       if (action === "detach") {
         if (!["zh-CN","en-US","ja-JP"].includes(String(value))) throw new Error("VIDEO_VALUE_INVALID");
+        videoStandaloneLanguage = String(value);
         await switchVideoWindow(true,String(value));
       } else if (action === "return") await switchVideoWindow(false);
       else if (action === "close") {
         await videoWindowQueue.catch(()=>undefined);
         const wasDetached=videoDetached;videoDetached=false;
+        const carry = wasDetached && videoPlayer?.state.standalone
+          ? { language: videoStandaloneLanguage, volume: videoPlayer.state.volume, muted: Boolean(videoPlayer.state.muted) } : undefined;
         const bridge = videoPcm;
         if (bridge) await enqueueVideoPcm(() => bridge.stop());
         videoPcm = undefined; videoRackAudio = false; videoRackPluginIds.clear(); videoRackKnownIds.clear();
         await videoPlayer?.close();
-        if (wasDetached) mainWindow?.show();
+        if (carry) {
+          // Wait briefly for the next video:open (a queue advance) before
+          // showing the main window for music, a stop or the end of the queue.
+          clearTimeout(videoStandaloneCarryTimer);
+          videoStandaloneCarry = carry;
+          videoStandaloneCarryTimer = setTimeout(() => {
+            videoStandaloneCarry = undefined;
+            if (!isQuitting && mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+          }, 1500);
+        } else if (wasDetached) mainWindow?.show();
       } else if (action === "editor") {
         if (!videoRackAudio || !videoPlayer?.state.active || !videoPlayer.state.ready || videoPlayer.state.standalone)
           throw new Error("VIDEO_RACK_EDITOR_UNAVAILABLE");
@@ -1207,10 +1394,7 @@ app.whenReady().then(async () => {
         const request: unknown = JSON.parse(value);
         if (!request || typeof request !== "object") throw new Error("VIDEO_RACK_INVALID");
         const { plugins, removedId } = request as { plugins?: unknown; removedId?: unknown };
-        if (!Array.isArray(plugins) || plugins.length > 32 || plugins.some(plugin =>
-          !plugin || typeof plugin.id !== "string" || !plugin.id || plugin.id.length > 4096 ||
-          typeof plugin.path !== "string" || !path.isAbsolute(plugin.path) || typeof plugin.enabled !== "boolean") ||
-          new Set(plugins.map(plugin => plugin.id)).size !== plugins.length ||
+        if (!Array.isArray(plugins) || pluginPolicy.checkRack(plugins) ||
           (removedId !== undefined && (typeof removedId !== "string" || !videoRackKnownIds.has(removedId) || plugins.some(plugin => plugin.id === removedId))))
           throw new Error("VIDEO_RACK_INVALID");
         await enqueueVideoPcm(async () => {
@@ -1299,8 +1483,10 @@ app.whenReady().then(async () => {
     if (!enabled && immersiveActive) {
       immersiveActive = false;
       mainWindow.setMinimumSize(640, 400);
+      // Immersive mode never changes the size itself; a maximize or restore the
+      // user made in it stands, so the floating bounds apply only when not maximized.
       const restore = windowState.leaveMode("immersive");
-      if (!mainWindow.isMaximized() && restore) mainWindow.setBounds(restore, true);
+      if (restore && !mainWindow.isMaximized()) mainWindow.setBounds(restore.bounds, true);
       syncWindowFit(true);
     }
   });
@@ -1474,12 +1660,18 @@ app.whenReady().then(async () => {
       return { available: false, backend: "JUCE HOST OFFLINE", detail: "无法启动原生音频引擎探测。" };
     }
   });
-  ipcMain.handle("vst:open-editor", (_, pluginPath: string, pluginId: string) => {
+  ipcMain.handle("vst:open-editor", (event, pluginPath: string, pluginId: string) => {
+    if (!trustedCacheRequest(event)) return { ok: false, error: "UNTRUSTED_SENDER" };
     const executable = nativePluginHostPath();
     if (!fs.existsSync(executable)) return { ok: false, error: "JUCE 原生宿主不可用" };
     const formatAdapter = typeof pluginPath === "string" ? pluginFormatAdapterForPath(pluginPath) : undefined;
     if (typeof pluginPath !== "string" || !path.isAbsolute(pluginPath) || !formatAdapter?.runtimeAvailable) {
       return { ok: false, error: "该插件格式尚未提供可用的原生运行适配器" };
+    }
+    const rejected = pluginPolicy.check(pluginPath);
+    if (rejected) {
+      writeLog("VST", `editor refused for ${pluginPath}: ${rejected}`);
+      return { ok: false, error: rejected === "PLUGIN_NOT_SCANNED" ? "该插件尚未通过扫描，请先重新扫描插件" : rejected };
     }
     try {
       const child = spawn(executable, ["--editor", pluginPath, typeof pluginId === "string" ? pluginId : "", String(mainWindowHandle())], { detached: true, stdio: "ignore", windowsHide: false });
@@ -1492,6 +1684,13 @@ app.whenReady().then(async () => {
   const handleNativeAudioCommand = async (command: Record<string, unknown>) => {
     if (!command || typeof command !== "object") return { ok: false, error: "无效的原生音频命令" };
     if (command.type === "direct-load" || command.type === "direct-analysis") return { ok: false, error: "DIRECT_LOAD_REQUIRES_AUTHORISED_SOURCE" };
+    if (command.type === "rack" || (command.type === "state-remove" && command.plugins !== undefined)) {
+      const rejected = pluginPolicy.checkRack(command.plugins);
+      if (rejected) {
+        writeLog("VST", `${String(command.type)} refused: ${rejected}`);
+        return { ok: false, error: rejected };
+      }
+    }
     if (["rack", "state-delete", "state-remove"].includes(String(command.type))) await switchVstProfile("music");
     if (command.type === "state-delete" || command.type === "state-remove") {
       const pluginId = typeof command.id === "string" ? command.id.trim() : "";
@@ -1614,7 +1813,10 @@ app.whenReady().then(async () => {
       return { ok: false, error: error instanceof Error ? error.message : "原生音频引擎通信失败" };
     }
   };
-  ipcMain.handle("native-audio:command", (_, command: Record<string, unknown>) => {
+  ipcMain.handle("native-audio:command", (event, command: Record<string, unknown>) => {
+    // Only the player page drives the engine; the YouTube view must not reach the native host.
+    if (!trustedCacheRequest(event)) return Promise.resolve({ ok: false, error: "UNTRUSTED_SENDER" });
+    if (!command || typeof command !== "object") return Promise.resolve({ ok: false, error: "无效的原生音频命令" });
     // All source and transport mutations share one ordered lane. Without this,
     // a late stop/enable(false) from the outgoing source can overtake pcm-start
     // or load/play for the incoming source.
@@ -1722,14 +1924,18 @@ app.whenReady().then(async () => {
       // the previous large client bounds on some DPI configurations.
       mainWindow.setSize(420, 124, true);
       mainWindow.setResizable(false);
-      mainWindow.setAlwaysOnTop(true);
+      mainWindow.setAlwaysOnTop(true, "pop-up-menu");
     } else {
       compactActive = false;
       mainWindow.setResizable(true);
       mainWindow.setMinimumSize(640, 400);
       const restore = windowState.leaveMode("compact");
-      if (restore) mainWindow.setBounds(restore, true);
-      mainWindow.setAlwaysOnTop(compactPreviousTop);
+      if (restore) {
+        // The floating bounds first, so a maximized window restores to them later.
+        mainWindow.setBounds(restore.bounds, true);
+        if (restore.maximized) mainWindow.maximize();
+      }
+      mainWindow.setAlwaysOnTop(compactPreviousTop, "pop-up-menu");
     }
     syncWindowFit(true);
   });
@@ -1752,14 +1958,20 @@ app.whenReady().then(async () => {
     const safeBounds = clampOnlineViewBounds(bounds);
     if (safeBounds) onlineView?.setBounds(safeBounds);
   });
-  ipcMain.on("browser:navigate", (_, input: string) => {
-    const value = input.trim();
-    if (!value || !onlineView) return;
-    const target = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-    try {
-      const parsed = new URL(target);
-      if (parsed.protocol === "https:") void onlineView.webContents.loadURL(parsed.toString());
-    } catch { /* Invalid addresses are ignored. */ }
+  // Answers where the address went, so the address bar can say when a site
+  // opened in the system browser instead of the player's view.
+  ipcMain.handle("browser:navigate", (event, input: unknown) => {
+    if (event.sender !== mainWindow?.webContents || typeof input !== "string") return { ok: false, error: "UNTRUSTED_SENDER" };
+    if (!input.trim() || !onlineView) return { ok: false, error: "ONLINE_VIEW_UNAVAILABLE" };
+    const target = onlineAddressTarget(input);
+    if (!target) return { ok: false, error: "ONLINE_ADDRESS_INVALID" };
+    // The address bar is for YouTube; other sites open in the system browser.
+    if (onlineNavigationAllowed(target)) {
+      void onlineView.webContents.loadURL(target).catch(() => undefined);
+      return { ok: true };
+    }
+    const external = openOnlineLinkExternally(target);
+    return external === "refused" ? { ok: false, error: "ONLINE_ADDRESS_INVALID" } : { ok: true, external };
   });
   ipcMain.on("browser:back", () => {
     if (onlineView?.webContents.navigationHistory.canGoBack()) onlineView.webContents.navigationHistory.goBack();
@@ -1913,6 +2125,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("browser:fade", async () => ({ ok: false, error: "YouTube Direct 不支持应用淡入淡出" }));
   // Normally finished by now; never hold the window back on a slow disk.
   await Promise.race([libraryRootsReady, new Promise(resolve => setTimeout(resolve, 1500))]);
+  mainWindowStartupComplete = true;
   createWindow();
   logDisplays(["startup"]);
   logGpu();

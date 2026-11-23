@@ -47,7 +47,7 @@ export function ChannelStripPopover({
   vstModeLabel, vstModeDetail, vstAccessAvailable, onVolume, onMuted, onToggleVstMode, onOpenRack, onRequestVstAccess
 }: Props) {
   const vst = useVstRackStore();
-  const { t } = useI18n();
+  const { t, tm } = useI18n();
   const [open, setOpen] = useState(false);
   useEffect(() => { onOpenChange?.(open); return () => onOpenChange?.(false); }, [open, onOpenChange]);
   const [query, setQuery] = useState("");
@@ -250,7 +250,7 @@ export function ChannelStripPopover({
           {!vst.rack.length && <div className="channel-rack-empty">{t("vst.noEffects")}</div>}
         </div>
 
-        {vst.error && <div className="channel-vst-error"><span>{vst.error}</span><button onClick={vst.clearError}>×</button></div>}
+        {vst.error && <div className="channel-vst-error"><span>{tm(vst.error)}</span><button onClick={vst.clearError}>×</button></div>}
         <button className="channel-open-rack" onClick={() => { setOpen(false); onOpenRack(); }}><Blocks /><span>{t("vst.openFullRack")}</span><ExternalLink /></button>
       </section>
 

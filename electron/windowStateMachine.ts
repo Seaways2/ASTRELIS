@@ -55,21 +55,34 @@ export function maximizeToggleRestores(window: WindowSnapshot) {
 
 export type WindowMode = "compact" | "immersive";
 
+/** Where a mode returns to: the floating bounds, and whether the window was maximized when the mode began. */
+export interface ModeRestore {
+  bounds: FitBounds;
+  maximized: boolean;
+}
+
 /**
  * Owns the window geometry the app has to remember itself: the last floating
  * bounds (Electron's own restore rectangle cannot be trusted, see
- * restorableNormalBounds), the bounds compact and immersive mode return to,
+ * restorableNormalBounds), the state compact and immersive mode return to,
  * and whether the window currently fills the screen.
  */
 export class WindowStateMachine {
   private floating?: FitBounds;
   private filling = false;
-  private readonly modeRestore: Partial<Record<WindowMode, FitBounds>> = {};
+  /**
+   * The maximized state last seen while the window was shown normally.
+   * Electron reports isMaximized() === false for the emulated maximize while
+   * the window is minimized, so that snapshot must not be persisted as is.
+   */
+  private lastMaximized = false;
+  private readonly modeRestore: Partial<Record<WindowMode, ModeRestore>> = {};
 
   /** A new window: forget the previous one's geometry. */
   reset(window: WindowSnapshot) {
     this.floating = undefined;
     this.filling = windowFillsScreen(window);
+    this.lastMaximized = window.maximized;
     delete this.modeRestore.compact;
     delete this.modeRestore.immersive;
   }
@@ -80,7 +93,11 @@ export class WindowStateMachine {
    * not announce when it happens through setBounds (restore, manual resize, snap).
    */
   observe(window: WindowSnapshot): { filling: boolean; changed: boolean } {
-    if (windowPresentation(window) === "floating") this.floating = { ...window.bounds };
+    const presentation = windowPresentation(window);
+    if (presentation === "floating") this.floating = { ...window.bounds };
+    // Immersive mode keeps the window's size; it can be maximized or restored there.
+    if (presentation === "floating" || presentation === "maximized" || presentation === "covering" || presentation === "immersive")
+      this.lastMaximized = window.maximized;
     const filling = windowFillsScreen(window);
     const changed = filling !== this.filling;
     this.filling = filling;
@@ -97,22 +114,32 @@ export class WindowStateMachine {
     return restorableNormalBounds(reported, window.display, this.floating);
   }
 
+  /**
+   * Remember where the mode returns to. Compact mode has to unmaximize the
+   * window to shrink it, so a window that filled the screen (maximized, or
+   * covering it without the reported state) returns maximized. Immersive mode
+   * keeps the window's size and lets the user maximize or restore it, so it
+   * never re-maximizes on the way out: `maximized` is always false there.
+   */
   enterMode(mode: WindowMode, window: WindowSnapshot) {
-    this.modeRestore[mode] = this.restoreBounds(window);
+    this.modeRestore[mode] = { bounds: this.restoreBounds(window), maximized: mode === "compact" && maximizeToggleRestores(window) };
   }
 
-  /** Bounds to apply when leaving the mode, if it was entered. */
-  leaveMode(mode: WindowMode): FitBounds | undefined {
-    const bounds = this.modeRestore[mode];
+  /** Where to return when leaving the mode, if it was entered. */
+  leaveMode(mode: WindowMode): ModeRestore | undefined {
+    const restore = this.modeRestore[mode];
     delete this.modeRestore[mode];
-    return bounds;
+    return restore;
   }
 
   /** What the next launch restores: never a compact, immersive or screen-filling rectangle. */
   persisted(window: WindowSnapshot): FitBounds & { maximized: boolean } {
-    const bounds = (window.compact && this.modeRestore.compact)
-      || (window.immersive && this.modeRestore.immersive)
-      || this.restoreBounds(window);
-    return { ...bounds, maximized: !window.compact && window.maximized };
+    const maximized = window.compact ? false
+      : window.minimized || window.concealed ? this.lastMaximized
+        : window.maximized;
+    if (window.compact && this.modeRestore.compact) return { ...this.modeRestore.compact.bounds, maximized: this.modeRestore.compact.maximized };
+    // Immersive: the floating bounds it started from, the maximized state it is in now.
+    if (window.immersive && this.modeRestore.immersive) return { ...this.modeRestore.immersive.bounds, maximized };
+    return { ...this.restoreBounds(window), maximized };
   }
 }

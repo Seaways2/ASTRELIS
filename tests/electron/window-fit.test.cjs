@@ -56,3 +56,30 @@ test("a window a few DIPs off the work area after a scale change still fills it"
   const floating = { x: 300, y: 120, width: 1238, height: 673 };
   assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 1821, height: 912 }, display, floating), floating);
 });
+
+test("an empty or tiny restore rectangle is never handed back (W02/LV03: never-maximized window filling the work area)", () => {
+  const { restorableNormalBounds } = require("../../dist-electron/windowFit");
+  // 3840x2160@300% and 1920x1080@150%: the work area is 1280x672 DIP.
+  const display = { bounds: { x: 0, y: 0, width: 1280, height: 720 }, workArea: { x: 0, y: 0, width: 1280, height: 672 } };
+  const centred = { x: 160, y: 84, width: 960, height: 504 };
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 0, height: 0 }, display), centred);
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 640, height: 399 }, display), centred);
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: NaN, height: 500 }, display), centred);
+  const floating = { x: 100, y: 50, width: 900, height: 500 };
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 0, height: 0 }, display, floating), floating);
+  // A remembered rectangle that is itself degenerate is not used either.
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 0, height: 0 }, display, { x: 0, y: 0, width: 64, height: 64 }), centred);
+  // The smallest real floating window is still accepted.
+  assert.deepEqual(restorableNormalBounds({ x: 0, y: 0, width: 640, height: 400 }, display), { x: 0, y: 0, width: 640, height: 400 });
+});
+
+test("the minimum-size corner window earlier builds saved is recognised (LV03 migration)", () => {
+  const { isCollapsedCornerBounds, centredDefaultBounds } = require("../../dist-electron/windowFit");
+  const work = { x: 0, y: 0, width: 1280, height: 672 };
+  assert.deepEqual(centredDefaultBounds(work), { x: 160, y: 84, width: 960, height: 504 });
+  for (const bounds of [{ x: 0, y: 0, width: 640, height: 400 }, { x: 1, y: 1, width: 641, height: 401 }])
+    assert.equal(isCollapsedCornerBounds(bounds, work), true, JSON.stringify(bounds));
+  assert.equal(isCollapsedCornerBounds({ x: -1920, y: 0, width: 640, height: 400 }, { x: -1920, y: 0, width: 1920, height: 1032 }), true, "secondary display");
+  for (const bounds of [{ x: 300, y: 200, width: 640, height: 400 }, { x: 0, y: 0, width: 900, height: 500 }, { x: 0, y: 0, width: 640, height: 600 }])
+    assert.equal(isCollapsedCornerBounds(bounds, work), false, JSON.stringify(bounds));
+});

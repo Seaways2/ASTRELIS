@@ -335,7 +335,7 @@ test("rescanning the library never erases previously known artwork", () => {
   assert.ok((store.match(/mergeScannedLibrary\(result\.tracks as Array<Track/g) || []).length >= 2);
 });
 
-test("library rescans remove overlapping roots and preserve metadata on read failure", () => {
+test("library rescans keep the registered roots and preserve metadata on read failure", () => {
   const source = read("src/utils/libraryCoverMerge.ts");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
@@ -343,7 +343,11 @@ test("library rescans remove overlapping roots and preserve metadata on read fai
   const loaded = { exports: {} };
   Function("exports", "module", output)(loaded.exports, loaded);
   const { mergeScannedLibrary, sanitizeLibraryFolders } = loaded.exports;
-  assert.deepEqual(sanitizeLibraryFolders(["K:\\music\\HIFI", "K:\\music", "k:/music/"]), ["K:\\music"]);
+  // Duplicates go; nested roots stay (the main process keeps only junction or
+  // symbolic-link sub-roots, which its parent's scan never enters); a drive
+  // root keeps its separator ("E:" alone would be drive-relative).
+  assert.deepEqual(sanitizeLibraryFolders(["K:\\music\\HIFI", "K:\\music", "k:/music/"]), ["K:\\music\\HIFI", "K:\\music"]);
+  assert.deepEqual(sanitizeLibraryFolders(["E:\\", "e:/", "E:", " D:\\Music\\ "]), ["E:\\", "D:\\Music"]);
 
   const previous = [{
     id: "one", sourcePath: "K:\\music\\one.flac", name: "Known title", artist: "Known artist",

@@ -15,7 +15,7 @@ import { favoriteTrackKey, usePlayerStore } from "../stores/playerStore";
 import { useI18n } from "../i18n";
 import { useLibraryViewModel } from "../hooks/useLibraryViewModel";
 import { useVirtualLibraryGrid } from "../hooks/useVirtualLibraryGrid";
-import type { LibraryCategoryGroup, LibraryFolderNode } from "../library/LibraryQueryService";
+import { LIBRARY_SORTS, libraryFolderWithin, type LibraryCategoryGroup, type LibraryFolderNode, type LibrarySort } from "../library/LibraryQueryService";
 import type { Track } from "../types/audio";
 
 type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
@@ -23,7 +23,6 @@ type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
 // with every thumbnail cached, so the preview zoom stops there.
 const MIN_PREVIEW_ZOOM = .75;
 type LibraryView = "flow" | "cards" | "details" | "mosaic";
-type LibrarySort = "title" | "artist" | "album" | "format" | "size";
 // 225% scaling on a 4K panel leaves 1822x912 CSS px: the cover flow then moves its
 // tools toggle and breadcrumb into the page title row. The same height bound folds
 // the filters into their popover (MediaFlow.css, workspace-modules.css).
@@ -147,6 +146,8 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const [categoryId, setCategoryId] = useState(() => librarySession.categoryId);
   const [folderPath, setFolderPath] = useState(() => librarySession.folderPath);
   useEffect(() => { if (hiddenByFolders(folderPath, hiddenFolders)) setFolderPath(""); }, [hiddenFolders, folderPath]);
+  // A remembered folder outside every root (the root was removed) returns to the overview.
+  useEffect(() => { if (folderPath && !state.libraryFolders.some(root => libraryFolderWithin(folderPath, root))) setFolderPath(""); }, [state.libraryFolders, folderPath]);
   const [queueNotice, setQueueNotice] = useState<{ id: number; text: string } | null>(null);
   const [selectedFavoriteIds, setSelectedFavoriteIds] = useState<Set<string>>(() => new Set());
   const [libraryView, setLibraryViewState] = useState<LibraryView>(readStoredLibraryView);
@@ -162,9 +163,15 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const [previewZoom, setPreviewZoom] = useState(() => librarySession.previewZoom);
   const [mosaicPanning, setMosaicPanning] = useState(false);
   const [mosaicCenterPage, setMosaicCenterPage] = useState(0);
-  const [librarySort, setLibrarySortState] = useState<LibrarySort>(() => readStoredChoice("auralis.library.sort", ["title", "artist", "album", "format", "size"], "size"));
+  // Until the user picks a sort, albums and folders list in album order (disc, track).
+  const [librarySort, setLibrarySortState] = useState<LibrarySort>(() => readStoredChoice("auralis.library.sort", LIBRARY_SORTS, "track"));
   const [sortAscending, setSortAscending] = useState(() => {
-    try { return localStorage.getItem("auralis.library.sortAscending") === "true"; } catch { return false; }
+    // Ascending is the default of the new "track" sort only; a sort chosen before
+    // without a stored direction keeps the old default, descending.
+    try {
+      const stored = localStorage.getItem("auralis.library.sortAscending");
+      return stored === null ? localStorage.getItem("auralis.library.sort") === null : stored === "true";
+    } catch { return true; }
   });
   useEffect(() => {
     const syncFullscreen = () => setPreviewFullscreen(document.fullscreenElement === libraryRootRef.current);
@@ -232,9 +239,11 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const visibleMediaCount = useMemo(() => state.libraryTracks.reduce((count, track) => count + Number(!hiddenByFolders(track.sourcePath, hiddenFolders)), 0), [state.libraryTracks, hiddenFolders]);
   const progress = useMemo(() => state.libraryScanProgress && hiddenFolders.length ? {...state.libraryScanProgress,current:t("media.indexUpdating")} : state.libraryScanProgress, [state.libraryScanProgress,hiddenFolders,t]);
   const progressPercent = progress?.total ? Math.round(progress.completed / progress.total * 100) : 0;
+  // "Up" stops at the library root: above it is outside the library.
   const parentFolder = useMemo(() => {
-    return parentFolderPath(folderPath);
-  }, [folderPath]);
+    const parent = parentFolderPath(folderPath);
+    return parent && state.libraryFolders.some(root => libraryFolderWithin(parent, root)) ? parent : "";
+  }, [folderPath, state.libraryFolders]);
   const categoryIcon = facet === "艺术家" ? <UserRound /> : <Album />;
   const facetLabel = t(`library.${facetTranslationKey(facet)}`);
   const showTrackCards = facet === "收藏" ? true : facet === "文件夹" ? Boolean(deferredQuery) || Boolean(folderPath) : value !== "全部";
@@ -629,6 +638,19 @@ export const MusicLibrary = memo(function MusicLibrary() {
     </div>;
   };
 
+  // Cover flow floor reflection: the artwork only. Mirroring the whole card put
+  // reversed paths and button labels under the slider and doubled every card.
+  const renderFlowReflection = (entry: VisibleLibraryEntry) => {
+    if (entry.kind === "track") {
+      const track = entry.item;
+      return track.coverUrl ? <div className="library-entry-media library-art"><LibraryThumbnail source={track.coverUrl} coverFlow highResolution={isVideoTrack(track)} fullscreen={previewFullscreen} /></div> : null;
+    }
+    const covers = entry.item.covers;
+    return covers.length ? <div className="library-entry-media"><div className={`folder-orbit cover-tile covers-${covers.length}`}>
+      {covers.map(cover => <LibraryThumbnail source={cover} key={cover} coverFlow highResolution={videoCoverSources.has(cover)} fullscreen={previewFullscreen} />)}
+    </div></div> : null;
+  };
+
   const virtualRows = [];
   const virtualStride = virtual.rowHeight + virtual.gap;
   for (let localIndex = 0; localIndex < visibleEntries.length; localIndex += virtual.columns) {
@@ -708,9 +730,9 @@ export const MusicLibrary = memo(function MusicLibrary() {
       <div className="facet-tabs">{facets.filter(item => previewFullscreen ? item === "文件夹" || item === "收藏" : mediaFilter !== "video" || item === "文件夹" || item === "收藏").map(item => <button className={facet === item ? "active" : ""} key={item} onClick={() => { setFacet(item); setValue("全部"); setCategoryId(""); if (item !== "文件夹") setFolderPath(""); }}>{item === "文件夹" ? <FolderOpen /> : item === "收藏" ? <Heart /> : item === "艺术家" ? <UserRound /> : <Album />}<span>{t(`library.${facetTranslationKey(item)}`)}</span></button>)}</div>
       <LibrarySelect className="library-view-select" label={t("library.viewMode")} value={libraryView} options={libraryViews.map(view => ({ value: view.id, label: t(view.labelKey) }))} onChange={setLibraryView} />
       <button type="button" className="library-mosaic-preview-toggle" title={t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")} aria-label={t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")} aria-pressed={previewFullscreen} onClick={() => void toggleMosaicFullscreen()}>{previewFullscreen ? <X /> : <Expand />}<span>{t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")}</span></button>
-      {/* Cover flow browses by position; the sort menu only matters in the grid views. */}
+      {/* Cover flow keeps the order set in the grid views (album order by default); the menu lives there. */}
       {libraryView !== "flow" && <LibraryMenu className="library-sort-controls" label={`${t("library.sort" + librarySort[0].toUpperCase() + librarySort.slice(1))} ${sortAscending ? "↑" : "↓"}`}>
-        {["title", "artist", "album", "format", "size"].map(sort => <button key={sort} aria-pressed={librarySort === sort} onClick={() => setLibrarySort(sort as LibrarySort)}>{t("library.sort" + sort[0].toUpperCase() + sort.slice(1))}</button>)}
+        {LIBRARY_SORTS.map(sort => <button key={sort} aria-pressed={librarySort === sort} onClick={() => setLibrarySort(sort as LibrarySort)}>{t("library.sort" + sort[0].toUpperCase() + sort.slice(1))}</button>)}
         <button className="library-sort-direction" onClick={toggleSortDirection}><ArrowUpDown />{t(sortAscending ? "library.sortAscending" : "library.sortDescending")}</button>
       </LibraryMenu>}
       {previewFullscreen && (libraryView === "mosaic" || libraryView === "flow") && <label className="library-preview-zoom" title={t("library.zoom")}>
@@ -733,7 +755,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
       if (entry.kind === "track") enqueueTrackWithFeedback(entry.item.id, true);
       else if (entry.kind === "folder") setFolderPath(entry.item.path);
       else { setValue(entry.item.name); setCategoryId(entry.item.key); setQuery(""); }
-    }}>{visibleEntries.map(renderLibraryEntry)}</MediaFlow> : <div className={`library-grid advanced virtualized library-view-${libraryView}${previewFullscreen ? libraryView === "mosaic" ? " library-infinite-viewport" : " library-fullscreen-scroll" : ""}${mosaicPanning ? " mosaic-panning" : ""}`} ref={previewFullscreen && libraryView === "mosaic" ? mosaicViewport : undefined} onPointerDown={onMosaicPointerDown} onPointerMove={onMosaicPointerMove} onPointerUp={finishMosaicPan} onPointerCancel={finishMosaicPan} onLostPointerCapture={finishMosaicPan} onClickCapture={onMosaicClickCapture}>
+    }} reflections={visibleEntries.map(renderFlowReflection)}>{visibleEntries.map(renderLibraryEntry)}</MediaFlow> : <div className={`library-grid advanced virtualized library-view-${libraryView}${previewFullscreen ? libraryView === "mosaic" ? " library-infinite-viewport" : " library-fullscreen-scroll" : ""}${mosaicPanning ? " mosaic-panning" : ""}`} ref={previewFullscreen && libraryView === "mosaic" ? mosaicViewport : undefined} onPointerDown={onMosaicPointerDown} onPointerMove={onMosaicPointerMove} onPointerUp={finishMosaicPan} onPointerCancel={finishMosaicPan} onLostPointerCapture={finishMosaicPan} onClickCapture={onMosaicClickCapture}>
       {libraryView === "details" && hasVisibleEntries && <div className="library-detail-head"><span>{t("library.cover")}</span><span>{t("library.item")}</span><span>{t("library.info")}</span><span>{t("library.summary")}</span><span>{t("library.type")}</span><span>{t("library.countSize")}</span><span>{t("library.actions")}</span></div>}
       {previewFullscreen && libraryView === "mosaic" && totalListItems > 0
         ? <div ref={mosaicStage} className="library-infinite-stage" style={{ transform: `translate3d(calc(-33.333333% + ${mosaicCanvasOffset.current.x}px), calc(-33.333333% + ${mosaicCanvasOffset.current.y}px), 0)` }}>

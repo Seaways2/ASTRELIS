@@ -13,6 +13,33 @@ const initialState: BrowserState = {
   canGoForward: false
 };
 
+// What main answers for an address-bar entry (global.d.ts still types
+// navigate() as returning nothing).
+type NavigateResult = { ok: boolean; external?: "opened" | "throttled"; error?: string };
+type AddressHint = "external" | "throttled" | "invalid";
+// Only YouTube and Google sign-in open in the view; main hands other sites
+// to the system browser, and the address bar says so for a few seconds.
+// Words that are not an address search YouTube Music.
+const addressHints: Record<"zh-CN" | "en-US" | "ja-JP", Record<AddressHint, string>> = {
+  "zh-CN": {
+    external: "该网址已在系统浏览器中打开：这里只显示 YouTube 页面",
+    throttled: "打开得太频繁了，请稍后再试",
+    invalid: "这不是有效的网址"
+  },
+  "en-US": {
+    external: "Opened in your system browser: this view only shows YouTube pages",
+    throttled: "Too many links at once; try again in a moment",
+    invalid: "This is not a valid web address"
+  },
+  "ja-JP": {
+    external: "システムのブラウザーで開きました（ここでは YouTube のページのみ表示します）",
+    throttled: "短時間に開きすぎています。少し待ってからもう一度お試しください",
+    invalid: "有効な Web アドレスではありません"
+  }
+};
+const addressHintText = (language: string, hint: AddressHint) =>
+  (addressHints[language as keyof typeof addressHints] ?? addressHints["en-US"])[hint];
+
 type OnlineProvider = "youtube" | "netease";
 type NeteaseView = "search" | "playlists" | "playlist";
 const rememberedProvider = localStorage.getItem("auralis.online.provider") === "netease" ? "netease" : "youtube";
@@ -53,10 +80,28 @@ export function OnlineBrowser() {
 }
 
 function YouTubeSurface() {
-  const { t } = useI18n();
+  const { t, resolvedLanguage } = useI18n();
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState(initialState);
   const [address, setAddress] = useState(initialState.url);
+  const [addressHint, setAddressHint] = useState<AddressHint | null>(null);
+  useEffect(() => {
+    if (!addressHint) return;
+    const timer = window.setTimeout(() => setAddressHint(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [addressHint]);
+  const navigate = async () => {
+    const browser = window.desktop?.browser;
+    if (!browser || !address.trim()) return;
+    setAddressHint(null);
+    const result: NavigateResult | undefined = await Promise.resolve(browser.navigate(address)).catch(() => undefined);
+    if (!result) return;
+    if (!result.ok) { if (result.error === "ONLINE_ADDRESS_INVALID") setAddressHint("invalid"); return; }
+    if (!result.external) return;
+    // The view stays where it was, so the address bar shows that page again.
+    setAddress(state.url);
+    setAddressHint(result.external === "opened" ? "external" : "throttled");
+  };
   useEffect(() => {
     const surface = surfaceRef.current;
     const browser = window.desktop?.browser;
@@ -130,10 +175,10 @@ function YouTubeSurface() {
         <button onClick={() => window.desktop?.browser.reload()} title={t("common.refresh")}><RefreshCw className={state.loading ? "spinning" : ""} /></button>
         <button onClick={() => window.desktop?.browser.home()} title={t("online.home")}><Home /></button>
       </div>
-      <form onSubmit={event => { event.preventDefault(); window.desktop?.browser.navigate(address); }}>
+      <form onSubmit={event => { event.preventDefault(); void navigate(); }}>
         <ShieldCheck /><input aria-label="网址" value={address} onChange={event => setAddress(event.target.value)} />
       </form>
-      <span className="loopback-status active">YouTube Direct · 音量由 ASTRELIS 控制</span>
+      <span className="loopback-status active" role="status" aria-live="polite">{addressHint ? addressHintText(resolvedLanguage, addressHint) : "YouTube Direct · 音量由 ASTRELIS 控制"}</span>
     </div>
     <div className="browser-surface" ref={surfaceRef}><div><LoaderCircle className="spinning" /><span>{t("online.initializing")}</span></div></div>
   </div>;

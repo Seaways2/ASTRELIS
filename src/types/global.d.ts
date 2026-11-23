@@ -145,7 +145,7 @@ declare global {
         show(bounds: BrowserBounds): void;
         hide(): void;
         setBounds(bounds: BrowserBounds): void;
-        navigate(url: string): void;
+        navigate(url: string): Promise<{ ok: boolean; external?: "opened" | "throttled"; error?: string }>;
         back(): void;
         forward(): void;
         reload(): void;

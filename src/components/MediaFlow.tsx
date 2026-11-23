@@ -3,6 +3,10 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode, type MouseEvent } f
 import "./MediaFlow.css";
 /** Below this card height the selected card keeps one title line (the text rows are sized in CSS px). */
 export const FLOW_COMPACT_CARD_HEIGHT = 340;
+/** Card height outside the artwork row: 2 border + 16 padding + rows 40/18/32 + 3 gaps of 6. */
+export const FLOW_TEXT_ROWS = 126;
+/** The same in a compact card: 2 + 16 + rows 22/32 + 2 gaps of 6. */
+export const FLOW_COMPACT_TEXT_ROWS = 84;
 /** Card height in CSS px for a flow element `height` CSS px tall. `height - 68` leaves the
  *  navigation (42), the top offset (8) and the reflection (18). Up to 200% scaling the 660 px
  *  cap is unchanged; beyond that 660 CSS px is a minority of the device pixels (225% on 4K
@@ -12,7 +16,8 @@ export function flowCardHeight(height: number, zoom: number, devicePixelRatio: n
   const cap = Math.max(660, Math.min(660 * (ratio - 1), 2160 / ratio));
   return Math.max(150, Math.round(Math.max(180, Math.min(cap, height - 68)) * zoom));
 }
-export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, visibleRadius = 3, onSelect, onActivate, onItemContextMenu, children }: { navigationKey: string; count: number; selected: number; offset: number; zoom?: number; visibleRadius?: number; onSelect(index: number): void; onActivate(): void; onItemContextMenu?(index: number, event: MouseEvent): void; children: ReactNode[] }) {
+/** `reflections[i]` is the artwork mirrored under card i (none when it is null). */
+export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, visibleRadius = 3, onSelect, onActivate, onItemContextMenu, children, reflections }: { navigationKey: string; count: number; selected: number; offset: number; zoom?: number; visibleRadius?: number; onSelect(index: number): void; onActivate(): void; onItemContextMenu?(index: number, event: MouseEvent): void; children: ReactNode[]; reflections?: ReactNode[] }) {
   const root = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const element = root.current;
@@ -26,6 +31,10 @@ export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, vi
       element.style.setProperty("--flow-card-height", `${cardHeight}px`);
       element.style.setProperty("--flow-card-width", `${cardWidth}px`);
       element.style.setProperty("--flow-cover-height", `${cardHeight - 100}px`);
+      // The artwork row of the card grid (MediaFlow.css): the card less its 1px
+      // border and 8px padding, the text rows and their 6px gaps. The floor
+      // reflection is sized to it so its crop matches the card's cover.
+      element.style.setProperty("--flow-art-height", `${cardHeight - (compact ? FLOW_COMPACT_TEXT_ROWS : FLOW_TEXT_ROWS)}px`);
       // Keep the default seven-card spread while scaling spacing with the card size.
       const spacing = Math.max(cardWidth * .58, (element.clientWidth * .46 - cardWidth * .38) / 3 * 1.14 * zoom);
       element.style.setProperty("--flow-spacing", `${spacing}px`);
@@ -87,10 +96,12 @@ export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, vi
         onContextMenu={e => onItemContextMenu?.(index, e)}
         onClickCapture={e => { if (distance) { e.preventDefault(); e.stopPropagation(); select(index); } }}
 ><div {...(distance ? { inert: "" } : {})} style={distance ? { pointerEvents: "none" } : undefined}>{child}</div>
-        {/* The floor reflection is a flipped, clipped copy under a plain mask-image:
-            -webkit-box-reflect rasterized its gradient mask at full card size and
-            sent it with every compositor frame (6-18 MB at 300%, 18 fps in fullscreen). */}
-        <div className="media-flow-reflection" aria-hidden="true" {...{ inert: "" }}><div>{child}</div></div></div>;
+        {/* The floor reflection is the artwork alone, flipped and clipped under a plain
+            mask-image. A copy of the whole card mirrored its path, title and buttons
+            into the navigation strip and doubled every card's DOM; -webkit-box-reflect
+            rasterized its gradient mask at full card size and sent it with every
+            compositor frame (6-18 MB at 300%, 18 fps in fullscreen). */}
+        {reflections?.[i] ? <div className="media-flow-reflection" aria-hidden="true" {...{ inert: "" }}><div>{reflections[i]}</div></div> : null}</div>;
     })}</div>
     <div className="media-flow-navigation"><input className="media-flow-slider" type="range" min={0} max={Math.max(0, count - 1)} step={1} value={selected} disabled={count < 2} aria-label="MediaFlow" aria-valuetext={`${count ? selected + 1 : 0} / ${count}`} onChange={e => select(Number(e.target.value))} /><span>{count ? selected + 1 : 0} / {count}</span></div>
   </section>;

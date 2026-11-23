@@ -2458,6 +2458,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .vst-notice-toast button:hover { color: white; background: rgba(255,255,255,.07); }
 .vst-notice-toast button svg { width: 14px; }
 .error-toast + .vst-notice-toast { bottom: 202px; }
+/* The output-device notice stacks above an error and a VST notice. */
+.vst-notice-toast + .vst-notice-toast { bottom: 202px; }
+.error-toast + .vst-notice-toast + .vst-notice-toast { bottom: 274px; }
 
 .theme-light .titlebar-vst-mode { background: rgba(255,255,255,.42); }
 .channel-strip-popover.light .channel-vst-mode { background: rgba(255,255,255,.46); }

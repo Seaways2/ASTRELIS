@@ -15,8 +15,19 @@ const readJson = <T,>(key: string, fallback: T): T => {
   catch { return fallback; }
 };
 
+// Codes from the main process (electron/security/PluginPathPolicy.ts and the
+// video rack checks) as source texts; the views translate them (tm).
+const NATIVE_ERROR_TEXT = new Map([
+  ["PLUGIN_NOT_IN_LIVE_CHAIN", "该插件尚未加载到实时处理链"],
+  ["PLUGIN_NOT_SCANNED", "该插件尚未通过扫描，请先重新扫描插件"],
+  ["PLUGIN_DISABLED", "该插件已被停用或隔离，请在插件列表中恢复后再使用"],
+  ["INVALID_PLUGIN_RACK", "插件机架配置无效"],
+  ["PLUGIN_PATH_INVALID", "插件路径无效，已拒绝加载"],
+  ["PLUGIN_FORMAT_UNAVAILABLE", "该插件格式尚未提供可用的原生运行适配器"],
+  ["VIDEO_RACK_INVALID", "视频插件机架配置无效"]
+]);
 const nativeErrorText = (error?: string) =>
-  error === "PLUGIN_NOT_IN_LIVE_CHAIN" ? "该插件尚未加载到实时处理链" : error;
+  NATIVE_ERROR_TEXT.get(error?.trim().replace(/^Error:\s*/, "") || "") || error;
 
 const resolveCatalog = (catalog: PluginScanResult): VstPluginInfo[] => {
   const modules = new Map(catalog.modules.map(module => [module.moduleFingerprint, module]));
@@ -104,10 +115,27 @@ export const useVstRackStore = create<VstRackState>((set, get) => {
 
   const nativeRackPayload = () => toNativeRackPayload(get().rack);
 
+  // PLUGIN_NOT_SCANNED: a rack module changed on disk since its scan (an
+  // update, say), so the main process refuses it. One rescan brings the
+  // catalog and the rack up to date and applies the rack again; a refusal
+  // after that is reported. Returns whether it rescanned. A changed module
+  // misses the cache and is probed again anyway, so the rescan does not retry
+  // quarantined modules: those crashed or hung the scanner and are retried
+  // only when the user asks (Rescan).
+  let rescanningUnscanned = false;
+  const rescanUnscannedPlugins = async () => {
+    if (rescanningUnscanned || !window.desktop?.vst) return false;
+    rescanningUnscanned = true;
+    try { await get().scan(false, true); return true; }
+    finally { rescanningUnscanned = false; }
+  };
+
   const syncNativeRack = async () => {
     if (!window.desktop?.nativeAudio) return;
     const plugins = get().nativeEnabled && !get().performanceSuspended ? nativeRackPayload() : [];
     const response = await window.desktop.nativeAudio.command({ type: "rack", plugins });
+    // The rescan synchronises the rack itself; that attempt is the retry.
+    if (!response?.ok && response?.error === "PLUGIN_NOT_SCANNED" && await rescanUnscannedPlugins()) return;
     set({ runtimeReady: Boolean(response?.ok) });
     if (!response?.ok) reportError(nativeErrorText(response?.error) || "插件链加载失败");
   };
@@ -261,7 +289,7 @@ export const useVstRackStore = create<VstRackState>((set, get) => {
           id: item.formatSpecificPluginId,
           plugins: nativeRackPayload()
         });
-        if (cleared && !cleared.ok) reportError(cleared.error || "插件参数记忆清除失败");
+        if (cleared && !cleared.ok) reportError(nativeErrorText(cleared.error) || "插件参数记忆清除失败");
       } catch (reason) {
         reportError(reason instanceof Error ? reason.message : "插件参数记忆清除失败");
       }
@@ -310,7 +338,10 @@ export const useVstRackStore = create<VstRackState>((set, get) => {
       try {
       if (get().nativeEnabled && !get().performanceSuspended) {
         const synced = await window.desktop?.nativeAudio.command({ type: "rack", plugins: nativeRackPayload() });
-        if (!synced?.ok) {
+        // A rescan applies the rack again (and reports a second refusal).
+        const rescued = !synced?.ok && synced?.error === "PLUGIN_NOT_SCANNED"
+          && await rescanUnscannedPlugins() && get().runtimeReady;
+        if (!synced?.ok && !rescued) {
           set({ runtimeReady: false });
           reportError(nativeErrorText(synced?.error) || "插件链同步失败");
           return;
@@ -320,8 +351,13 @@ export const useVstRackStore = create<VstRackState>((set, get) => {
         if (result && !result.ok) reportError(nativeErrorText(result.error) || "插件编辑器启动失败");
         return;
       }
-      const result = await window.desktop?.vst.openEditor(item.path, item.formatSpecificPluginId);
-      if (result && !result.ok) reportError(result.error || "插件编辑器启动失败");
+      const openStandalone = () => window.desktop?.vst.openEditor(item.path, item.formatSpecificPluginId);
+      let result = await openStandalone();
+      // Main sends PLUGIN_NOT_SCANNED as its text: a changed module gets one
+      // rescan, then the editor is opened again.
+      if (result && !result.ok && nativeErrorText(result.error) === NATIVE_ERROR_TEXT.get("PLUGIN_NOT_SCANNED")
+        && await rescanUnscannedPlugins()) result = await openStandalone();
+      if (result && !result.ok) reportError(nativeErrorText(result.error) || "插件编辑器启动失败");
       } catch (reason) { reportError(reason instanceof Error ? reason.message : "插件编辑器启动失败"); }
       finally { editorOpening = false; }
     },

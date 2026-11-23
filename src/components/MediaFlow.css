@@ -251,3 +251,14 @@
 .library-flow-layout .media-flow-stage { overflow:visible; -webkit-mask-image:none; mask-image:none; }
 .library-flow-layout .media-flow-navigation { z-index:20; background:transparent; }
 .music-library.library-mosaic-fullscreen:fullscreen .media-flow-item { top:calc((100% - var(--flow-card-height, 316px)) / 2 + 48px); }
+
+/* Cover flow cards are opaque, yet .library-entry also inherits the shared
+   panel glass (surfaces.css, backdrop-filter: var(--surface-glass-filter)).
+   In 3D with a reflection that made every frame carry 8-41 MB of backdrop data
+   from the renderer to the GPU process at 225-300% scaling (2.18.5 field
+   trace: 14.7 fps painted, ~3 fps shown). These selectors outrank that rule. */
+.app-shell .music-library .media-flow .media-flow-item .library-entry,
+.app-shell .music-library .media-flow .media-flow-item :is(.favorite-track-action, .favorite-select-action, .library-hidden-indicator, .library-artwork-trigger) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

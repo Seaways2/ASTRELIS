@@ -12,8 +12,25 @@ const css = fs.readFileSync(path.join(__dirname, "../../src/components/MediaFlow
 const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
 test("cover flow cards do not blur their backdrop", () => {
-  const blurred = rules.filter(rule => /media-flow/.test(rule.selector) && /backdrop-filter\s*:\s*(?!none)/.test(rule.body));
+  const blurred = rules.filter(rule => /media-flow/.test(rule.selector) && /backdrop-filter\s*:(?!\s*none)/.test(rule.body));
   assert.deepEqual(blurred.map(rule => rule.selector), []);
+});
+
+test("cover flow cards switch off the panel glass they inherit from surfaces.css", () => {
+  // 2.18.5 still blurred: .library-entry is in the shared glass list. The
+  // override must name the card and its blurred buttons, both prefixes, and
+  // outrank the shared rule (4 classes: .app-shell + 2 :not() + :is()).
+  const surfaces = fs.readFileSync(path.join(__dirname, "../../src/styles/surfaces.css"), "utf8");
+  const glass = /\.app-shell:not\(\.obs-mode\):not\(\.immersive-mode\) :is\(([^)]*)\) \{[^}]*backdrop-filter: var\(--surface-glass-filter\)/.exec(surfaces);
+  assert.ok(glass, "shared glass rule kept its selector shape");
+  assert.match(glass[1], /\.library-entry\b/);
+  const override = rules.findLast(rule => rule.selector.split(",").map(part => part.trim()).includes(".app-shell .music-library .media-flow .media-flow-item .library-entry"));
+  assert.ok(override, "cover flow card override exists");
+  assert.match(override.body, /(^|[;\s])backdrop-filter\s*:\s*none/);
+  assert.match(override.body, /-webkit-backdrop-filter\s*:\s*none/);
+  for (const button of ["favorite-track-action", "favorite-select-action", "library-hidden-indicator", "library-artwork-trigger"])
+    assert.ok(override.selector.includes(button), button);
+  assert.ok(css.indexOf(override.selector) > css.lastIndexOf("backdrop-filter: blur"), "nothing later in MediaFlow.css blurs again");
 });
 
 test("side covers dim through a shade layer, not an animated filter", () => {

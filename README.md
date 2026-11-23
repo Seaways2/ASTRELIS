@@ -45,7 +45,7 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 
 ## 2.18.7 全屏封面流的倒影不再拖慢画面
 
-（只更新源码，未打安装包。）
+安装包：`release\ASTRELIS-2.18.7-Setup-x64.exe`。
 
 - 测试机（4K、300%、全屏）上 2.18.6 翻页仍有小卡顿：倒影用的 `-webkit-box-reflect` 每帧都把渐变遮罩按卡片大小生成一张位图交给 GPU（每帧 6～18 MB，约 18 帧/秒）。倒影改成在卡片下面放一份翻转的副本，只显示卡片底部 32%，用普通遮罩从 15% 淡出，离卡片 2 像素，观感和原来一致。
 - 低性能模式现在能真正关掉倒影（原来写的 `-webkit-box-reflect: none` 在这版 Chromium 里无效，被直接忽略）。

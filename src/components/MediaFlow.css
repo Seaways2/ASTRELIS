@@ -198,7 +198,9 @@
 .flow-compact .library-entry-title { -webkit-line-clamp:1; grid-row:2; }
 .flow-compact .library-entry-primary { display:none; }
 .flow-compact .library-entry-actions { grid-row:3; }
-@media (max-height:850px), (max-width:1180px) {
+/* 949px: 225% scaling on a 4K panel leaves 1822x912 CSS px. Keep in step with
+   workspace-modules.css and FLOW_TITLE_ROW_QUERY in MusicLibrary.tsx. */
+@media (max-height:949px), (max-width:1180px) {
   .library-flow-layout > .library-tools-toggle { display:flex; align-items:center; gap:7px; flex:0 0 32px; align-self:flex-start; color:var(--accent); background:#11212b; border:1px solid #84bdce55; border-radius:5px; padding:0 10px; margin-bottom:4px; cursor:pointer; }
   .library-tools-toggle svg { width:15px; height:15px; }
   .app-shell .library-flow-layout > .library-header { display:none; position:absolute; top:36px; left:0; right:0; z-index:60; max-height:calc(100% - 80px); overflow:auto; background:#11212b; }
@@ -207,6 +209,27 @@
 
 .workspace:has(.library-flow-layout) { grid-template-rows:minmax(0,1fr); }
 .workspace-page:has(.library-flow-layout) { grid-template-rows:52px minmax(0,1fr); }
+
+/* Short windows (high Windows scaling): MusicLibrary moves the "筛选与工具" toggle and the
+   breadcrumb into the page title row (.library-flow-title-row), so the stage gets their
+   rows. The favorites bar only joins there when the window is wide enough
+   (FLOW_TITLE_ROW_FAVORITES_QUERY) and then never shrinks, so its bulk actions stay
+   whole; the stats give way instead. Every rule names that class; MediaFlow.css loads before global.css and
+   workspace-modules.css, so each selector also outranks theirs. */
+.app-shell .workspace-page:has(.library-flow-title-row) { padding-block:16px 12px; grid-template-rows:40px minmax(0,1fr); }
+.app-shell .workspace-page:has(.library-flow-title-row) > header { min-height:0; padding-bottom:6px; gap:10px; }
+.app-shell .workspace-page:has(.library-flow-title-row) > header .eyebrow { display:none; }
+.app-shell .workspace-page:has(.library-flow-title-row) > header > .page-icon { width:28px; height:28px; }
+.app-shell .workspace-page:has(.library-flow-title-row) > header > .page-header-aside { flex:1 1 auto; display:flex; align-items:center; gap:10px; min-width:0; }
+.app-shell .workspace-page:has(.library-flow-title-row) > header > .page-header-aside > .folder-breadcrumb { flex:0 1 auto; min-width:0; min-height:30px; margin:0; padding:0 8px; background:transparent; }
+.app-shell .workspace-page:has(.library-flow-title-row) > header > .page-header-aside > .favorites-breadcrumb { flex:0 0 auto; min-height:0; padding-block:0; flex-wrap:nowrap; gap:10px; }
+.app-shell .workspace-page:has(.library-flow-title-row) > header > .page-header-aside > .library-page-stats { margin-left:auto; flex:0 1 auto; min-width:0; }
+@media (max-height:949px) {
+  .app-shell .workspace-page:has(.library-flow-title-row) > header > .page-header-aside > .library-tools-toggle { display:flex; align-items:center; gap:7px; flex:0 0 auto; height:32px; margin:0; color:var(--accent); background:#11212b; border:1px solid #84bdce55; border-radius:5px; padding:0 10px; cursor:pointer; white-space:nowrap; }
+  .app-shell.theme-light .workspace-page:has(.library-flow-title-row) > header > .page-header-aside > .library-tools-toggle { background:var(--menu-surface); color:var(--menu-text); border-color:var(--library-control-border); }
+  /* The popover opens right under the title row; the toggle no longer takes a row. */
+  .app-shell .library-flow-layout.library-flow-title-row > .library-header { top:0; max-height:calc(100% - 44px); }
+}
 
 .media-flow .media-flow-item { transition-duration:180ms; }
 
@@ -250,7 +273,8 @@
 /* Reflection uses the navigation backdrop, without reducing the poster area. */
 .library-flow-layout .media-flow-stage { overflow:visible; -webkit-mask-image:none; mask-image:none; }
 .library-flow-layout .media-flow-navigation { z-index:20; background:transparent; }
-.music-library.library-mosaic-fullscreen:fullscreen .media-flow-item { top:calc((100% - var(--flow-card-height, 316px)) / 2 + 48px); }
+/* 48px below centre, unless that would push the card and its 18px reflection under the slider. */
+.music-library.library-mosaic-fullscreen:fullscreen .media-flow-item { top:max(8px, min(calc((100% - var(--flow-card-height, 316px)) / 2 + 48px), calc(100% - var(--flow-card-height, 316px) - 18px))); }
 
 /* Cover flow cards are opaque, yet .library-entry also inherits the shared
    panel glass (surfaces.css, backdrop-filter: var(--surface-glass-filter)).

@@ -24,6 +24,14 @@ type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
 const MIN_PREVIEW_ZOOM = .75;
 type LibraryView = "flow" | "cards" | "details" | "mosaic";
 type LibrarySort = "title" | "artist" | "album" | "format" | "size";
+// 225% scaling on a 4K panel leaves 1822x912 CSS px: the cover flow then moves its
+// tools toggle and breadcrumb into the page title row. The same height bound folds
+// the filters into their popover (MediaFlow.css, workspace-modules.css).
+export const FLOW_TITLE_ROW_QUERY = "(max-height: 949px)";
+// The favorites bar carries the bulk actions and needs about 1060 px of header in
+// English (nav and meters take ~510). Narrower windows keep it in the body, where it
+// can wrap, so "add selected" is never clipped by the title row.
+export const FLOW_TITLE_ROW_FAVORITES_QUERY = "(min-width: 1680px)";
 
 // Keep the same array per (store snapshot, media filter) so the library index
 // built for it can be reused when the page is opened again.
@@ -165,6 +173,16 @@ export const MusicLibrary = memo(function MusicLibrary() {
   }, []);
   // Library stats sit in the page title row so the controls fit one row.
   const [statsSlot, setStatsSlot] = useState<HTMLElement | null>(null);
+  const [shortWindow, setShortWindow] = useState(() => matchMedia(FLOW_TITLE_ROW_QUERY).matches);
+  const [wideWindow, setWideWindow] = useState(() => matchMedia(FLOW_TITLE_ROW_FAVORITES_QUERY).matches);
+  useEffect(() => {
+    const media = matchMedia(FLOW_TITLE_ROW_QUERY), wide = matchMedia(FLOW_TITLE_ROW_FAVORITES_QUERY);
+    const change = () => { setShortWindow(media.matches); setWideWindow(wide.matches); };
+    change();
+    media.addEventListener("change", change);
+    wide.addEventListener("change", change);
+    return () => { media.removeEventListener("change", change); wide.removeEventListener("change", change); };
+  }, []);
   useLayoutEffect(() => {
     const page = libraryRootRef.current?.closest(".workspace-page");
     setStatsSlot(page?.querySelector<HTMLElement>(":scope > header > .page-header-aside") ?? null);
@@ -624,15 +642,26 @@ export const MusicLibrary = memo(function MusicLibrary() {
 
   if (!protection.state.ready) return <div className="library-status">{t("media.libraryLoading")}</div>;
   if (protection.state.broken) return <div className="library-status">{t("media.privacyBroken")}</div>;
-  return <div ref={libraryRootRef} className={`music-library ${libraryView === "flow" && totalListItems > 0 ? "library-flow-layout" : ""} ${toolsOpen ? "library-tools-open" : ""} ${previewFullscreen ? "library-mosaic-fullscreen" : ""}`} onContextMenu={e => protection.context(e)}>
-    {protection.overlays}
-    {protection.error && <div className="library-status" role="alert">{protection.error}</div>}
-    <button className="library-tools-toggle" aria-expanded={toolsOpen} onClick={() => setToolsOpen(open => !open)}><Grid3X3 />{toolsOpen ? t("media.toolsHide") : t("media.toolsShow")}</button>
-    <div className="library-header library-header-simple panel">
-    {statsSlot ? createPortal(<div className="library-page-stats">
+  // Short windows: the cover flow's toggle and breadcrumb join the title row (one portal keeps their order).
+  const flowTitleRow = shortWindow && libraryView === "flow" && totalListItems > 0 && !previewFullscreen && Boolean(statsSlot);
+  const favoritesInTitleRow = flowTitleRow && wideWindow;
+  const toolsToggle = <button className="library-tools-toggle" aria-expanded={toolsOpen} onClick={() => setToolsOpen(open => !open)}><Grid3X3 />{toolsOpen ? t("media.toolsHide") : t("media.toolsShow")}</button>;
+  const breadcrumbs = <>
+    {facet === "文件夹" && folderPath && !deferredQuery && <div className="folder-breadcrumb"><button onClick={() => setFolderPath("")}><Grid3X3 /> {t("library.root")}</button>{folderPath && <><ChevronRight />{parentFolder && <button className="folder-parent-action" aria-label={t("library.parent")} title={t("library.parent")} onClick={navigateToParentFolder}><ArrowUp /> {t("library.parent")}</button>}<span>{folderPath}</span></>}</div>}
+    {facet !== "文件夹" && facet !== "收藏" && !deferredQuery && <div className="folder-breadcrumb"><button onClick={() => { setValue("全部"); setCategoryId(""); }}><Grid3X3 /> {facetLabel} · {t("library.categoryOverview")}</button>{value !== "全部" && <><ChevronRight /><span>{value}</span></>}</div>}
+  </>;
+  // The favorites bar joins the title row only where it is wide enough for its bulk actions.
+  const favoritesBreadcrumb = facet === "收藏" && <div className="folder-breadcrumb favorites-breadcrumb"><div className="favorites-title"><Heart fill="currentColor" /> {t("library.favorites")} · {viewModel.trackTotal}</div><div className="favorite-bulk-actions"><label><input type="checkbox" checked={allFilteredFavoritesSelected} disabled={!viewModel.trackTotal} onChange={toggleAllFilteredFavorites} /><span>{t("library.selectAll")}</span></label><em>{t("library.selectedCount").replace("{count}", String(selectedFavoriteCount))}</em><button className="favorite-add-selected" type="button" disabled={!selectedFavoriteCount} onClick={enqueueSelectedFavorites}><ListPlus /> {t("library.addSelected")}</button></div></div>;
+  const stats = <div className="library-page-stats">
       <b>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</b>
       <span>{state.libraryFolders.length ? `${state.libraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</span>
-    </div>, statsSlot) : <section className="library-command workspace-section panel">
+    </div>;
+  return <div ref={libraryRootRef} className={`music-library ${libraryView === "flow" && totalListItems > 0 ? "library-flow-layout" : ""} ${toolsOpen ? "library-tools-open" : ""} ${previewFullscreen ? "library-mosaic-fullscreen" : ""} ${flowTitleRow ? "library-flow-title-row" : ""}`} onContextMenu={e => protection.context(e)}>
+    {protection.overlays}
+    {protection.error && <div className="library-status" role="alert">{protection.error}</div>}
+    {!flowTitleRow && toolsToggle}
+    <div className="library-header library-header-simple panel">
+    {statsSlot ? createPortal(<>{flowTitleRow && toolsToggle}{flowTitleRow && breadcrumbs}{favoritesInTitleRow && favoritesBreadcrumb}{stats}</>, statsSlot) : <section className="library-command workspace-section panel">
       <div className="library-pulse"><AudioWaveform /></div>
       <div><h3>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</h3><p>{state.libraryFolders.length ? `${state.libraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</p></div>
     </section>}
@@ -694,9 +723,8 @@ export const MusicLibrary = memo(function MusicLibrary() {
 
     </section>
     </div>
-    {facet === "文件夹" && folderPath && !deferredQuery && <div className="folder-breadcrumb"><button onClick={() => setFolderPath("")}><Grid3X3 /> {t("library.root")}</button>{folderPath && <><ChevronRight />{parentFolder && <button className="folder-parent-action" aria-label={t("library.parent")} title={t("library.parent")} onClick={navigateToParentFolder}><ArrowUp /> {t("library.parent")}</button>}<span>{folderPath}</span></>}</div>}
-    {facet === "收藏" && <div className="folder-breadcrumb favorites-breadcrumb"><div className="favorites-title"><Heart fill="currentColor" /> {t("library.favorites")} · {viewModel.trackTotal}</div><div className="favorite-bulk-actions"><label><input type="checkbox" checked={allFilteredFavoritesSelected} disabled={!viewModel.trackTotal} onChange={toggleAllFilteredFavorites} /><span>{t("library.selectAll")}</span></label><em>{t("library.selectedCount").replace("{count}", String(selectedFavoriteCount))}</em><button className="favorite-add-selected" type="button" disabled={!selectedFavoriteCount} onClick={enqueueSelectedFavorites}><ListPlus /> {t("library.addSelected")}</button></div></div>}
-    {facet !== "文件夹" && facet !== "收藏" && !deferredQuery && <div className="folder-breadcrumb"><button onClick={() => { setValue("全部"); setCategoryId(""); }}><Grid3X3 /> {facetLabel} · {t("library.categoryOverview")}</button>{value !== "全部" && <><ChevronRight /><span>{value}</span></>}</div>}
+    {!flowTitleRow && breadcrumbs}
+    {!favoritesInTitleRow && favoritesBreadcrumb}
 
     {state.libraryError && <div className="library-status"><Tags />{hiddenFolders.length ? t("media.privacyError") : tm(state.libraryError)}</div>}
     {libraryView === "flow" && totalListItems > 0 ? <MediaFlow navigationKey={`${facet}|${folderPath}|${categoryId}|${deferredQuery}|${mediaFilter}`} count={totalListItems} selected={selectedFlowIndex} offset={flowOffset} zoom={previewFullscreen ? previewZoom : 1} visibleRadius={previewFullscreen ? flowVisibleRadius : 3} onSelect={setFlowIndex} onItemContextMenu={(index, e) => { const entry = visibleEntries[index - flowOffset]; if (entry?.kind === "folder") protection.context(e, entry.item.path); else if (entry?.kind === "track") protection.context(e, undefined, entry.item); else protection.context(e); }} onActivate={() => {

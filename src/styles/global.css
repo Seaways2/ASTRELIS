@@ -2126,8 +2126,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
 .channel-strip-popover.light .channel-fader-ticks span { background: #839397; }
 .channel-strip-popover.light .channel-fader-scale span { color: #536a70; }
 
+/* Short windows (225-300% Windows scaling leaves 912 CSS px or less on a 4K panel):
+   a tighter transport row. Its contents fit: play 50 in 56, waveform 31 in 38,
+   status card 56 and art 54 in 94, plus the 8px padding top and bottom. */
+@media (max-height: 949px) {
+  .app-shell:not(.compact-mode):not(.immersive-mode) { grid-template-rows: 72px minmax(0, 1fr) 110px; }
+  .app-shell:not(.compact-mode):not(.immersive-mode) .transport-console { grid-template-rows: 56px 38px; }
+  /* Keep the queue drawer's 2px gap above the shorter transport (VideoView.css has its own). */
+  .app-shell:not(.compact-mode):not(.immersive-mode):not(.video-layout) .queue-drawer { bottom: 112px; }
+}
 @media (max-height: 700px) {
-  .app-shell:not(.compact-mode):not(.immersive-mode) { grid-template-rows: 68px minmax(0, 1fr) 126px; }
+  .app-shell:not(.compact-mode):not(.immersive-mode) { grid-template-rows: 68px minmax(0, 1fr) 110px; }
   .brand { padding-top: 6px; padding-bottom: 7px; }
   .center-stage { grid-template-rows: 56px minmax(220px, 1fr) 88px 50px; padding-top: 19px; padding-bottom: 14px; }
   .visual-head { padding-bottom: 10px; }

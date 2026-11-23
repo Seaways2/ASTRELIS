@@ -360,8 +360,9 @@
   .app-shell .music-library:not(:fullscreen) .library-header-simple .library-controls { flex: 1 1 100%; grid-template-columns: minmax(0,1fr) auto auto; }
 }
 /* Cover flow on a small window keeps the controls in the "筛选与工具" popover
-   (MediaFlow.css): hidden until opened, then the same wrapping row layout. */
-@media (max-height: 850px), (max-width: 1180px) {
+   (MediaFlow.css): hidden until opened, then the same wrapping row layout.
+   949px covers 225% scaling on a 4K panel (1822x912 CSS px); keep both gates equal. */
+@media (max-height: 949px), (max-width: 1180px) {
   .app-shell .music-library.library-flow-layout:not(:fullscreen):not(.library-tools-open) > .library-header.library-header-simple { display: none; }
   .app-shell .music-library.library-flow-layout.library-tools-open:not(:fullscreen) > .library-header.library-header-simple { display: flex; padding: 10px 12px; }
 }

@@ -1,6 +1,17 @@
 import { CoverFlowWheel } from "../utils/coverFlowWheel";
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type MouseEvent } from "react";
 import "./MediaFlow.css";
+/** Below this card height the selected card keeps one title line (the text rows are sized in CSS px). */
+export const FLOW_COMPACT_CARD_HEIGHT = 340;
+/** Card height in CSS px for a flow element `height` CSS px tall. `height - 68` leaves the
+ *  navigation (42), the top offset (8) and the reflection (18). Up to 200% scaling the 660 px
+ *  cap is unchanged; beyond that 660 CSS px is a minority of the device pixels (225% on 4K
+ *  leaves 912 CSS px), so cards may grow with the stage, but never past 2160 device px. */
+export function flowCardHeight(height: number, zoom: number, devicePixelRatio: number) {
+  const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  const cap = Math.max(660, Math.min(660 * (ratio - 1), 2160 / ratio));
+  return Math.max(150, Math.round(Math.max(180, Math.min(cap, height - 68)) * zoom));
+}
 export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, visibleRadius = 3, onSelect, onActivate, onItemContextMenu, children }: { navigationKey: string; count: number; selected: number; offset: number; zoom?: number; visibleRadius?: number; onSelect(index: number): void; onActivate(): void; onItemContextMenu?(index: number, event: MouseEvent): void; children: ReactNode[] }) {
   const root = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -8,10 +19,8 @@ export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, vi
     const scroller = element?.closest<HTMLElement>(".page-content");
     if (!element || !scroller) return;
     const resize = () => {
-      const height = element.clientHeight;
-      const baseCardHeight = Math.max(180, Math.min(660, height - 68));
-      const cardHeight = Math.max(150, Math.round(baseCardHeight * zoom));
-      const compact = cardHeight < 340;
+      const cardHeight = flowCardHeight(element.clientHeight, zoom, devicePixelRatio);
+      const compact = cardHeight < FLOW_COMPACT_CARD_HEIGHT;
       element.classList.toggle("flow-compact", compact);
       const cardWidth = (cardHeight - (compact ? 88 : 126)) * 2 / 3 + 18;
       element.style.setProperty("--flow-card-height", `${cardHeight}px`);
@@ -28,7 +37,16 @@ export function MediaFlow({ count, selected, offset, navigationKey, zoom = 1, vi
     scroller.scrollTop = 0;
     const header = element.parentElement?.querySelector(".library-header");
     if (header) observer.observe(header);
-    return () => observer.disconnect();
+    // Moving to a monitor with another scale can change the ratio without a CSS resize.
+    let scale: MediaQueryList | undefined;
+    const watchScale = () => {
+      scale?.removeEventListener("change", rescale);
+      scale = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+      scale.addEventListener("change", rescale);
+    };
+    const rescale = () => { watchScale(); resize(); };
+    watchScale();
+    return () => { observer.disconnect(); scale?.removeEventListener("change", rescale); };
   }, [navigationKey, zoom]);
   const gesture = useRef<{ x: number; index: number; time: number }>();
   const wheelMotion = useRef(new CoverFlowWheel());

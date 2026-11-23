@@ -17,6 +17,8 @@
 .app-shell.video-layout.video-queue-open .workspace{padding-right:340px!important}
 .app-shell.video-layout.video-volume-open .workspace{padding-right:308px!important}
 .app-shell.video-layout .queue-drawer{top:68px;bottom:128px;right:8px;width:324px;max-height:none;box-shadow:none;backdrop-filter:none;background:var(--panel-bg,#11212b)}
+/* Short windows use the 110px transport row (global.css); keep the same 2px gap above it. */
+@media (max-height:949px){.app-shell.video-layout .queue-drawer{bottom:112px}}
 .app-shell.video-layout .queue-drawer.video-queue-drawer{overflow:hidden}
 .app-shell.video-layout .queue-drawer.video-volume-drawer{width:292px;grid-template-rows:48px minmax(0,1fr);overflow:hidden}
 .app-shell.video-layout .video-volume-drawer .video-sidebar-strip{border-top:0;grid-template-rows:56px minmax(120px,1fr) minmax(250px,.9fr) 53px auto}

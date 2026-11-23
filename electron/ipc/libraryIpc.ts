@@ -9,7 +9,7 @@ import { sanitizeLibraryRoots } from "../library/reconcile/LibraryReconciler";
 import { libraryFolderArgument, rescanCoversRegisteredRoots } from "../library/libraryPaths";
 import { parseAbsolutePath, parseCommandMeta, parseLegacyMutation, parsePathList, parseRescanRequest } from "../library/validation/LibraryIpcValidator";
 import { sameCanonicalPath, type LocalMediaAccessPolicy } from "../security/ElectronSecurity";
-import { AUDIO_EXTENSIONS, externalAudioPaths, needsDecodedAudio } from "../externalOpenPaths";
+import { AUDIO_EXTENSIONS, externalAudioPathCandidates, needsDecodedAudio } from "../externalOpenPaths";
 import { cachedArtworkUrl, hydrateLibraryTracks, mediaUrl } from "../mediaUrls";
 import { missingSourceResult, sourceIsMissing } from "../library/media/sourceAvailability";
 import type { FolderVisibility } from "../FolderVisibility";
@@ -200,13 +200,17 @@ export function registerLibraryIpc({
     const rejected = new Set(unauthorized);
     const requestedPaths = visiblePaths.filter(sourcePath => !rejected.has(sourcePath));
     if (unauthorized.length) writeLog("LIBRARY", `open-files skipped ${unauthorized.length} path(s) without an access grant`);
-    const sourcePaths = externalAudioPaths(requestedPaths);
+    // Existence is checked per file below (async): a synchronous stat of every
+    // path here blocked the main process for the whole queue restore.
+    const sourcePaths = externalAudioPathCandidates(requestedPaths);
     const metadataModule = await importMusicMetadata();
     const errors: string[] = [];
     // A bounded number of files at a time: thousands of parallel parses stalled
     // the main process during queue restore.
-    const tracks = await mapLimited(sourcePaths, OPEN_FILES_CONCURRENCY, async sourcePath => {
-      const stat = await fs.promises.stat(sourcePath);
+    const opened = await mapLimited(sourcePaths, OPEN_FILES_CONCURRENCY, async sourcePath => {
+      // A missing path or a folder is skipped, as before, not an error.
+      const stat = await fs.promises.stat(sourcePath).catch(() => null);
+      if (!stat?.isFile()) return null;
       if (videoExtensions.includes(path.extname(sourcePath).slice(1).toLowerCase())) return {
         id: crypto.createHash("sha1").update(sourcePath.toLowerCase()).digest("hex"),
         mediaKind: "video", name: path.basename(sourcePath), artist: "本地视频", album: "", format: path.extname(sourcePath).slice(1).toUpperCase(),
@@ -239,6 +243,7 @@ export function registerLibraryIpc({
         url: mediaUrl(sourcePath), folder: path.dirname(sourcePath)
       };
     });
+    const tracks = opened.filter((track): track is NonNullable<typeof track> => track !== null);
     return { tracks, errors: errors.slice(0, 20), unauthorized };
   });
   ipcMain.handle("library:file-action", async (event, id: unknown, action: unknown) => {

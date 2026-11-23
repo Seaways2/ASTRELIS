@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { RendererPlaybackLog, RotatingLogFile } = require("../../dist-electron/logFile.js");
+const { RateLimitedLog, RendererPlaybackLog, RotatingLogFile } = require("../../dist-electron/logFile.js");
 
 const temporaryDirectory = t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "astrelis-log-"));
@@ -91,6 +91,35 @@ test("a burst followed by nothing still logs how many lines it left out", () => 
   assert.equal(written.at(-1), "[playback] d (1 more playback failure line(s) were not logged)");
   timers.shift().run();
   assert.equal(written.at(-1), "[playback] d (1 more playback failure line(s) were not logged)");
+});
+
+test("a rate-limited source writes one line per interval and counts the rest", () => {
+  let now = 0;
+  const written = [], timers = [];
+  const log = new RateLimitedLog(line => written.push(line), count => `${count} more were not logged`, "Source: ", 1, 60_000,
+    () => now, (run, delay) => timers.push({ run, delay }));
+  assert.equal(log.accept("refused 1"), true);
+  for (let index = 2; index <= 1000; index++) { now = index; assert.equal(log.accept(`refused ${index}`), false); }
+  assert.deepEqual(written, ["refused 1"]);
+  assert.equal(timers.length, 1, "one timer for the whole burst");
+  assert.equal(timers[0].delay, 60_000 - 2);
+  now = 60_000; timers.shift().run();
+  assert.deepEqual(written, ["refused 1", "Source: 999 more were not logged"]);
+  assert.equal(log.accept("refused again"), true);
+  assert.equal(log.accept("refused again"), false);
+  now = 120_000; assert.equal(log.accept("next interval"), true);
+  assert.equal(written.at(-1), "next interval (1 more were not logged)");
+  timers.shift().run();
+  assert.equal(written.length, 4, "the count is never written twice");
+});
+
+// A page looping on off-site navigations must not flood the log.
+test("throttled external opens from the online view are logged through a rate limit", () => {
+  const main = fs.readFileSync(path.resolve(__dirname, "../../electron/main.ts"), "utf8");
+  assert.match(main, /const onlineThrottledOpenLog = new RateLimitedLog\(message => writeLog\("SECURITY", message\),/);
+  const open = main.slice(main.indexOf("function openOnlineLinkExternally("), main.indexOf("function ensureOnlineView()"));
+  assert.match(open, /onlineThrottledOpenLog\.accept\(/);
+  assert.doesNotMatch(open, /writeLog\(/, "no unlimited log line per refusal");
 });
 
 test("the default timer does not keep the process alive", () => {

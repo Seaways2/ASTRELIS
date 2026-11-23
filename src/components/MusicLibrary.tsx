@@ -432,6 +432,10 @@ export const MusicLibrary = memo(function MusicLibrary() {
   };
   const setLibrarySort = (sort: LibrarySort) => {
     setLibrarySortState(sort);
+    // Once a sort is stored, a missing direction reads as the old default
+    // (descending); store the direction shown now so a restart keeps it.
+    if (localStorage.getItem("auralis.library.sortAscending") === null)
+      localStorage.setItem("auralis.library.sortAscending", String(sortAscending));
     localStorage.setItem("auralis.library.sort", sort);
   };
   const toggleSortDirection = () => setSortAscending(current => {

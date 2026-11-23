@@ -6,8 +6,6 @@ import type { Session } from "electron";
  * can be navigated to other sites, so the session denies by default and the
  * view keeps its top-level pages on YouTube and Google sign-in.
  */
-const PLAYER_ORIGIN = "https://music.youtube.com";
-
 function httpsHost(value: string | undefined) {
   try {
     const parsed = new URL(String(value));
@@ -36,17 +34,18 @@ export function onlinePermissionGranted(permission: string, requestingUrl: strin
 }
 
 /**
- * Permission checks. YouTube Music additionally passes the "media" and
- * "speaker-selection" checks: applyOnlineOutputSelection matches the output
- * device by the labels enumerateDevices() only reveals then, and setSinkId
- * switches to it. The checks grant no capture: getUserMedia goes through the
- * request handler, which refuses it.
+ * Permission checks. Every YouTube page the view may show (music.youtube.com,
+ * and www.youtube.com reached from it or from the address bar) additionally
+ * passes the "media" and "speaker-selection" checks: applyOnlineOutputSelection
+ * matches the output device by the labels enumerateDevices() only reveals
+ * then, and setSinkId switches to it. The checks grant no capture:
+ * getUserMedia goes through the request handler, which refuses it. Google
+ * sign-in pages play nothing and pass neither.
  */
 export function onlinePermissionChecked(permission: string, requestingOrigin: string | undefined) {
   if (onlinePermissionGranted(permission, requestingOrigin)) return true;
   if (permission !== "media" && permission !== "speaker-selection") return false;
-  try { return new URL(String(requestingOrigin)).origin === PLAYER_ORIGIN; }
-  catch { return false; }
+  return within(httpsHost(requestingOrigin), "youtube.com");
 }
 
 const configuredSessions = new WeakSet<Session>();

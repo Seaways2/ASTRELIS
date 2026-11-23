@@ -38,8 +38,10 @@ function scanResult(roots, tracks) {
 
 test("a whole drive keeps its root separator and commits as a valid library root", () => {
   assert.deepEqual(sanitizeLibraryRoots(["E:\\"]), ["E:\\"]);
-  assert.deepEqual(sanitizeLibraryRoots(["E:\\\\", "E:\\Music", "e:/Other/"]), ["E:\\"]);
-  assert.deepEqual(sanitizeLibraryRoots(["D:\\Music\\", "D:\\Music\\Album"]), ["D:\\Music"]);
+  assert.deepEqual(sanitizeLibraryRoots(["E:\\\\", "e:/"]), ["E:\\"]);
+  // Under an online drive root, a folder that does not exist folds into it.
+  const systemDrive = path.parse(os.tmpdir()).root;
+  assert.deepEqual(sanitizeLibraryRoots([systemDrive + "\\", path.join(systemDrive, "auralis-missing-" + process.pid, "Album")]), [systemDrive]);
   const roots = sanitizeLibraryRoots(["E:\\"]);
   const track = domainTrack("E:\\Music\\a.flac", roots, {}, { fingerprint: "1".repeat(64) });
   const gone = domainTrack("E:\\Music\\gone.flac", roots, {}, { fingerprint: "2".repeat(64) });
@@ -114,6 +116,28 @@ test("in a partially scanned root a track moves only when its old file is really
   assert.deepEqual(result.relocated, [original.mediaId]);
   assert.equal(result.snapshot.tracks.length, 1);
   assert.equal(result.snapshot.tracks[0].sourcePath, path.join(newRoot, "a.flac"));
+});
+
+test("a partial rescan stats only unmatched tracks that have somewhere to move to", t => {
+  const musicRoot = "K:\\Music";
+  const kept = Array.from({ length: 50 }, (_, index) => domainTrack(`${musicRoot}\\${index}.flac`, [musicRoot], {}, { fingerprint: String(index).padStart(64, "0") }));
+  const lonely = domainTrack(`${musicRoot}\\Gone\\lonely.flac`, [musicRoot], {}, { fingerprint: "7".repeat(64) });
+  const movedFrom = domainTrack(`${musicRoot}\\Old\\moved.flac`, [musicRoot], {}, { fingerprint: "8".repeat(64) });
+  const movedTo = domainTrack(`${musicRoot}\\New\\moved.flac`, [musicRoot], {}, { fingerprint: "8".repeat(64) });
+  const scan = scanResult([[musicRoot, "partial"]], [...kept, movedTo]);
+  const statted = [];
+  const original = fs.statSync;
+  fs.statSync = (target, ...rest) => {
+    if (String(target).toLowerCase().startsWith("k:\\music\\")) { statted.push(String(target)); return undefined; }
+    return original(target, ...rest);
+  };
+  t.after(() => { fs.statSync = original; });
+  const result = new LibraryReconciler().reconcile({ tracks: [...kept, lonely, movedFrom], folders: [musicRoot] }, scan, [musicRoot]);
+  fs.statSync = original;
+  assert.deepEqual(statted, [movedFrom.sourcePath], "matched tracks and tracks with no candidate are never statted");
+  assert.deepEqual(result.relocated, [movedFrom.mediaId]);
+  assert.deepEqual(result.unavailable, [lonely.id]);
+  assert.equal(result.snapshot.tracks.length, 52);
 });
 
 test("a track whose file is momentarily empty is kept as unavailable, not removed", () => {
@@ -193,6 +217,34 @@ test("a nested root that is a junction stays a root of its own", { skip: process
   fs.symlinkSync(target, link, "junction");
   fs.mkdirSync(path.join(parent, "Plain"));
   assert.deepEqual(sanitizeLibraryRoots([parent, link, path.join(parent, "Plain")]), [parent, link]);
+  // A link at a middle level: the parent's scan never enters "Classical\Sub" either.
+  fs.mkdirSync(path.join(target, "Sub"));
+  assert.deepEqual(sanitizeLibraryRoots([parent, path.join(link, "Sub")]), [parent, path.join(link, "Sub")]);
+  // Below a root that is itself the junction, a plain folder folds as usual.
+  assert.deepEqual(sanitizeLibraryRoots([parent, link, path.join(link, "Sub")]), [parent, link]);
+});
+
+test("nested roots are kept while their parent cannot be read, and plain ones fold back later", { skip: process.platform !== "win32" }, t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "auralis-offline-root-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const parent = path.join(directory, "Music"), target = path.join(directory, "Elsewhere");
+  fs.mkdirSync(path.join(parent, "Plain"), { recursive: true }); fs.mkdirSync(target);
+  const link = path.join(parent, "Link");
+  fs.symlinkSync(target, link, "junction");
+  const registered = sanitizeLibraryRoots([parent, link]);
+  assert.deepEqual(registered, [parent, link]);
+  // The drive holding the parent is unplugged: nothing can be checked, and a
+  // rescan or "add folder" in the meantime must not drop the junction root.
+  const unplugged = path.join(directory, "Unplugged");
+  fs.renameSync(parent, unplugged);
+  assert.deepEqual(sanitizeLibraryRoots(registered), registered);
+  assert.deepEqual(sanitizeLibraryRoots([...registered, path.join(parent, "Plain")]), [...registered, path.join(parent, "Plain")]);
+  const offline = new LibraryReconciler().reconcile({ tracks: [], folders: registered },
+    scanResult([[parent, "offline"], [link, "offline"]], []), registered);
+  assert.deepEqual(offline.snapshot.folders, registered);
+  // Back online: the junction stays, the plain folder folds into its parent.
+  fs.renameSync(unplugged, parent);
+  assert.deepEqual(sanitizeLibraryRoots([...registered, path.join(parent, "Plain")]), registered);
 });
 
 test("a real junction out of the root is reported and keeps the root partial", { skip: process.platform !== "win32" }, async t => {

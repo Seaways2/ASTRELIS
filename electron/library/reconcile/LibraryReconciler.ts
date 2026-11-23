@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { mediaInstanceId } from "../domain/LibraryDomain";
-import { libraryPathKey, libraryPathWithin, libraryRootPath } from "../libraryPaths";
+import { libraryPathKey, libraryPathWithin, libraryRootCovers, libraryRootPath } from "../libraryPaths";
 import type {
   LegacyLibraryPayload,
   LegacyTrackRecord,
@@ -13,13 +13,6 @@ import type {
 function normalizedPath(value?: string) {
   if (!value) return "";
   return libraryPathKey(value);
-}
-
-// A nested root that is a junction or symbolic link points somewhere else:
-// its parent's scan never enters it, so it must stay a root of its own.
-function isLinkedDirectory(root: string) {
-  try { return fs.lstatSync(root).isSymbolicLink(); }
-  catch { return false; }
 }
 
 function isLegacyTrack(value: unknown): value is LegacyTrackRecord {
@@ -57,8 +50,12 @@ export function sanitizeLibraryRoots(roots: string[]) {
   }
   const sorted = [...unique.entries()].sort(([left], [right]) => left.length - right.length);
   const accepted: Array<[string, string]> = [];
+  // A nested root folds into its parent only when the parent's scan is known
+  // to cover it. One behind a junction or symbolic link (at any level) stays a
+  // root of its own, and so does one that cannot be checked right now (its
+  // drive is offline): the stored roots must not depend on a passing outage.
   for (const candidate of sorted) {
-    if (accepted.some(([parent]) => libraryPathWithin(candidate[0], parent)) && !isLinkedDirectory(candidate[1])) continue;
+    if (accepted.some(([parent, original]) => libraryPathWithin(candidate[0], parent) && libraryRootCovers(original, candidate[1]))) continue;
     accepted.push(candidate);
   }
   return accepted.map(([, original]) => original);
@@ -188,7 +185,12 @@ export class LibraryReconciler {
       const direct = scannedBySource.get(sourceKey(oldTrack));
       if (direct) reserve(oldTrack, direct);
     }
-    const relocatable = new Set(previousTracks.filter(mayRelocate));
+    // Only a track still unmatched that has a candidate to move to is checked:
+    // in a partial root that check stats the old file, and a rescan must not
+    // stat every track of a large library on the main process.
+    const hasRelocationCandidate = (track: LegacyTrackRecord) => Boolean(track.mediaId && scannedByMedia.has(track.mediaId))
+      || scannedByFingerprint.has(fingerprintKey(track));
+    const relocatable = new Set(previousTracks.filter(track => !matches.has(track) && hasRelocationCandidate(track) && mayRelocate(track)));
     for (const oldTrack of previousTracks) {
       if (matches.has(oldTrack) || !relocatable.has(oldTrack)) continue;
       const identified = oldTrack.mediaId ? scannedByMedia.get(oldTrack.mediaId) : undefined;

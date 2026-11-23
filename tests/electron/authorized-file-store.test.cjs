@@ -121,7 +121,25 @@ test("open-files skips paths without a grant instead of failing the whole batch"
   // Waits for startup root registration instead of reloading the snapshot per call.
   assert.match(handler, /await libraryRootsReady;\s*const unauthorized = visiblePaths\.filter\(sourcePath => !localMediaAccess\?\.isAllowed\(sourcePath\)\);/);
   assert.doesNotMatch(handler, /getSnapshot/);
-  assert.match(handler, /externalAudioPaths\(requestedPaths\)/);
+  // Up to 20,000 paths: existence is checked asynchronously per file, never
+  // with a synchronous stat of every path on the main process.
+  assert.match(handler, /externalAudioPathCandidates\(requestedPaths\)/);
+  assert.doesNotMatch(handler, /externalAudioPaths\(|statSync/);
+  assert.match(handler, /const stat = await fs\.promises\.stat\(sourcePath\)\.catch\(\(\) => null\);\s*if \(!stat\?\.isFile\(\)\) return null;/);
+});
+
+test("command-line paths keep the synchronous existence check; the candidates skip the disk", t => {
+  const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
+  const { externalAudioPathCandidates, externalAudioPaths } = require("../../dist-electron/externalOpenPaths.js");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "auralis-open-paths-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const existing = path.join(directory, "a.flac");
+  fs.writeFileSync(existing, "synthetic");
+  fs.mkdirSync(path.join(directory, "folder.flac"));
+  const argv = ["--flag", existing, existing.toUpperCase(), path.join(directory, "missing.flac"), path.join(directory, "folder.flac"), path.join(directory, "notes.txt")];
+  assert.deepEqual(externalAudioPathCandidates(argv).map(file => file.toLowerCase()),
+    [existing, path.join(directory, "missing.flac"), path.join(directory, "folder.flac")].map(file => file.toLowerCase()));
+  assert.deepEqual(externalAudioPaths(argv).map(file => file.toLowerCase()), [existing.toLowerCase()]);
 });
 
 test("main registers persisted library folders at startup, before the window opens", () => {

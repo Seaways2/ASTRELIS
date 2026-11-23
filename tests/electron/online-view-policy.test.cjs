@@ -30,11 +30,22 @@ test("permission requests: playback needs only; capture, notifications, external
   assert.equal(onlinePermissionGranted("fullscreen", undefined), false);
 });
 
-test("permission checks keep YouTube Music's output-device matching working, and only there", () => {
+test("permission checks keep output-device matching working on every YouTube page the view shows, and only there", () => {
   // applyOnlineOutputSelection matches outputs by enumerateDevices() labels.
   assert.equal(onlinePermissionChecked("media", "https://music.youtube.com/"), true);
   assert.equal(onlinePermissionChecked("speaker-selection", "https://music.youtube.com"), true);
-  assert.equal(onlinePermissionChecked("media", "https://www.youtube.com/"), false);
+  // The view may stay on www.youtube.com (address bar, links from YouTube Music); its output choice must apply there too.
+  assert.equal(onlinePermissionChecked("media", "https://www.youtube.com/"), true);
+  assert.equal(onlinePermissionChecked("speaker-selection", "https://www.youtube.com"), true);
+  assert.equal(onlinePermissionChecked("media", "https://youtube.com"), true);
+  for (const origin of ["https://www.youtube.com", "https://music.youtube.com"])
+    assert.equal(onlinePermissionChecked("media", origin), onlineNavigationAllowed(`${origin}/`), "checks follow the navigation allow-list");
+  // Not sign-in pages, plain http, look-alike hosts or other sites.
+  assert.equal(onlinePermissionChecked("media", "https://accounts.google.com"), false);
+  assert.equal(onlinePermissionChecked("media", "http://www.youtube.com"), false);
+  assert.equal(onlinePermissionChecked("media", "https://youtube.com.evil.example"), false);
+  assert.equal(onlinePermissionChecked("media", "https://notyoutube.com"), false);
+  assert.equal(onlinePermissionChecked("speaker-selection", undefined), false);
   assert.equal(onlinePermissionChecked("media", "https://evil.example/"), false);
   assert.equal(onlinePermissionChecked("notifications", "https://music.youtube.com/"), false);
   assert.equal(onlinePermissionChecked("fullscreen", "https://music.youtube.com/"), true);

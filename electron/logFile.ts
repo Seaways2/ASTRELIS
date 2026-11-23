@@ -43,20 +43,14 @@ export class RotatingLogFile {
   }
 }
 
-/** Marks a renderer console line that reports a file the player could not play. */
-export const PLAYBACK_CONSOLE_PREFIX = "[playback]";
-
 /**
- * The renderer has no log channel of its own; it reports playback failures on
- * its console as "[playback] cannot play <path>: MediaError <code> <message>".
- * This forwards those lines, and nothing else from the console, to the log:
- * one line each, cut to a sane length, and at most `limit` per interval so a
- * queue of broken files skipping one after another cannot flood the file. The
- * number left out is written with the next line that gets through, or on a
- * line of its own when the interval ends, so a burst that is followed by
- * nothing still says how many failures it had.
+ * At most `limit` lines per interval from one noisy source, so a loop cannot
+ * flood the log (and rotate away the lines worth keeping). The number left out
+ * is written with the next line that gets through, or on a line of its own when
+ * the interval ends, so a burst that is followed by nothing still says how
+ * many lines it had.
  */
-export class RendererPlaybackLog {
+export class RateLimitedLog {
   private intervalStart = Number.NEGATIVE_INFINITY;
   private written = 0;
   private dropped = 0;
@@ -64,10 +58,12 @@ export class RendererPlaybackLog {
 
   constructor(
     private readonly write: (message: string) => void,
-    private readonly limit = 3,
+    /** Words for "this many lines were left out": appended in parentheses, or after `summaryPrefix` on a line of its own. */
+    private readonly droppedNotice: (count: number) => string,
+    private readonly summaryPrefix = "",
+    private readonly limit = 1,
     private readonly intervalMs = 1000,
     private readonly now: () => number = Date.now,
-    private readonly maxLength = 1000,
     // The timer never keeps the process alive; quitting within the interval only loses the count.
     private readonly schedule: (run: () => void, delayMs: number) => void =
       (run, delayMs) => { setTimeout(run, delayMs).unref?.(); }
@@ -78,12 +74,11 @@ export class RendererPlaybackLog {
     if (!this.dropped) return;
     const count = this.dropped;
     this.dropped = 0;
-    this.write(`${PLAYBACK_CONSOLE_PREFIX} ${count} more playback failure line(s) were not logged`);
+    this.write(`${this.summaryPrefix}${this.droppedNotice(count)}`);
   }
 
-  /** Returns whether the message was written. */
-  accept(message: unknown) {
-    if (typeof message !== "string" || !message.startsWith(PLAYBACK_CONSOLE_PREFIX)) return false;
+  /** Returns whether the line was written. */
+  accept(line: string) {
     const time = this.now();
     if (time - this.intervalStart >= this.intervalMs) {
       this.intervalStart = time;
@@ -98,13 +93,50 @@ export class RendererPlaybackLog {
       return false;
     }
     this.written++;
-    let line = message.replace(/[\r\n]+/g, " ").trim();
-    if (line.length > this.maxLength) line = `${line.slice(0, this.maxLength)}…`;
     if (this.dropped) {
-      line += ` (${this.dropped} more playback failure line(s) were not logged)`;
+      line += ` (${this.droppedNotice(this.dropped)})`;
       this.dropped = 0;
     }
     this.write(line);
     return true;
+  }
+}
+
+/** Marks a renderer console line that reports a file the player could not play. */
+export const PLAYBACK_CONSOLE_PREFIX = "[playback]";
+
+/**
+ * The renderer has no log channel of its own; it reports playback failures on
+ * its console as "[playback] cannot play <path>: MediaError <code> <message>".
+ * This forwards those lines, and nothing else from the console, to the log:
+ * one line each, cut to a sane length, and at most `limit` per interval so a
+ * queue of broken files skipping one after another cannot flood the file.
+ */
+export class RendererPlaybackLog {
+  private readonly limited: RateLimitedLog;
+
+  constructor(
+    write: (message: string) => void,
+    limit = 3,
+    intervalMs = 1000,
+    now: () => number = Date.now,
+    private readonly maxLength = 1000,
+    schedule?: (run: () => void, delayMs: number) => void
+  ) {
+    this.limited = new RateLimitedLog(write, count => `${count} more playback failure line(s) were not logged`,
+      `${PLAYBACK_CONSOLE_PREFIX} `, limit, intervalMs, now, schedule);
+  }
+
+  /** Writes the number of lines left out, if any, on a line of its own. */
+  flush() {
+    this.limited.flush();
+  }
+
+  /** Returns whether the message was written. */
+  accept(message: unknown) {
+    if (typeof message !== "string" || !message.startsWith(PLAYBACK_CONSOLE_PREFIX)) return false;
+    let line = message.replace(/[\r\n]+/g, " ").trim();
+    if (line.length > this.maxLength) line = `${line.slice(0, this.maxLength)}…`;
+    return this.limited.accept(line);
   }
 }

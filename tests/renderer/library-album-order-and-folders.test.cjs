@@ -77,6 +77,78 @@ test("a whole-drive root shows in the overview however its separator is spelled"
   assert.deepEqual(drive.folderNodes(["E:", "E:\\", "D:\\Music\\"], "").map(node => node.path), ["D:\\Music", "E:\\"], "no duplicate, trailing separator ignored");
 });
 
+test("files directly on a whole-drive root are listed and counted under that drive", () => {
+  const tracks = [track("a", { folder: "E:\\" }), track("b", { folder: "E:\\Music" }), track("c", { folder: "F:" })];
+  const index = new LibraryIndex(tracks);
+  const [drive] = index.folderNodes(["E:\\"], "");
+  assert.equal(drive.path, "E:\\");
+  assert.equal(drive.count, 2, "the file on the drive root counts too");
+  assert.deepEqual(drive.directIds, ["a"]);
+  assert.deepEqual(index.folderNodes(["E:\\"], "E:\\").map(node => node.path), ["E:\\Music"]);
+  for (const folder of ["E:\\", "E:", "e:/"]) assert.deepEqual(index.queryIds({ folders: [folder] }), ["a"], folder);
+  assert.deepEqual(index.queryIds({ folders: ["E:\\Music\\"] }), ["b"]);
+  // A drive holding only files directly on it still shows up.
+  assert.deepEqual(index.folderNodes(["F:\\"], "").map(node => [node.path, node.count]), [["F:\\", 1]]);
+  // The derived cache round-trips; one from before (a bare "E:" node) is rebuilt.
+  const snapshot = index.exportSnapshot();
+  assert.equal(new LibraryIndex(tracks, snapshot).usedDerivedCache, true);
+  const legacy = { ...snapshot, folders: [...snapshot.folders, { path: "E:", directIds: ["a"], descendantIds: ["a"], formats: ["FLAC"], covers: [] }] };
+  const rebuilt = new LibraryIndex(tracks, legacy);
+  assert.equal(rebuilt.usedDerivedCache, false);
+  assert.equal(rebuilt.folderNodes(["E:\\"], "")[0].count, 2);
+});
+
+test("albums with the same title stay together in album order", () => {
+  const album = (id, artist, number) => ({
+    ...track(id, { album: "Greatest Hits", number }),
+    albumId: `album:${artist}:greatest-hits`, artist,
+    tags: { title: `Track ${id}`, artists: [{ artistId: artist, name: artist }], album: "Greatest Hits", albumArtist: artist, genres: [], trackNumber: number }
+  });
+  const legacy = (id, artist, number) => {
+    const value = album(id, artist, number);
+    delete value.albumId;
+    value.tags = { ...value.tags, albumArtist: undefined };
+    return value;
+  };
+  const index = new LibraryIndex([album("y1", "Y", 1), album("x2", "X", 2), album("y2", "Y", 2), album("x1", "X", 1)]);
+  assert.deepEqual(index.queryIds({ sort: "track", sortAscending: true }, "en-US"), ["x1", "x2", "y1", "y2"]);
+  // Without an album artist the album identity still keeps them apart.
+  const untagged = new LibraryIndex([legacy("q1", "Q", 1), legacy("p2", "P", 2), legacy("q2", "Q", 2), legacy("p1", "P", 1)]);
+  const order = untagged.queryIds({ sort: "track", sortAscending: true }, "en-US");
+  assert.ok(["p1,p2,q1,q2", "q1,q2,p1,p2"].includes(order.join(",")), order.join(","));
+});
+
+test("choosing a sort stores the direction shown, so a restart keeps it", () => {
+  const library = fs.readFileSync(path.join(root, "src/components/MusicLibrary.tsx"), "utf8");
+  const start = library.indexOf("const setLibrarySort = (sort: LibrarySort) => {");
+  const body = library.slice(library.indexOf("{", start) + 1, library.indexOf("\n  };", start));
+  const initializerStart = library.indexOf("const [sortAscending, setSortAscending] = useState(");
+  const initializer = library.slice(initializerStart, library.indexOf("\n  });", initializerStart)).replace(/^[^]*?useState\(\(\) => \{/, "");
+  const memory = values => ({
+    values,
+    getItem: key => key in values ? values[key] : null,
+    setItem: (key, value) => { values[key] = String(value); }
+  });
+  const readDirection = Function("localStorage", initializer);
+  const choose = Function("localStorage", "setLibrarySortState", "sortAscending", "sort", body);
+  // New user: ascending, picks "title" without touching the direction.
+  const fresh = memory({});
+  const shown = readDirection(fresh);
+  assert.equal(shown, true);
+  choose(fresh, () => {}, shown, "title");
+  assert.deepEqual(fresh.values, { "auralis.library.sortAscending": "true", "auralis.library.sort": "title" });
+  assert.equal(readDirection(fresh), true, "still ascending after a restart");
+  // An old user with a stored sort and no direction keeps descending.
+  const old = memory({ "auralis.library.sort": "size" });
+  const oldShown = readDirection(old);
+  choose(old, () => {}, oldShown, "title");
+  assert.equal(readDirection(old), false);
+  // A direction the user chose is never overwritten by choosing a sort.
+  const chosen = memory({ "auralis.library.sortAscending": "false" });
+  choose(chosen, () => {}, true, "artist");
+  assert.equal(chosen.values["auralis.library.sortAscending"], "false");
+});
+
 test("a sort chosen before the track default keeps its old descending direction", () => {
   const library = fs.readFileSync(path.join(root, "src/components/MusicLibrary.tsx"), "utf8");
   const start = library.indexOf("const [sortAscending, setSortAscending] = useState(");

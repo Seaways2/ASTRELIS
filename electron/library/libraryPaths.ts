@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -23,6 +24,36 @@ export function libraryPathKey(value: string) {
 
 export function libraryPathWithin(candidateKey: string, rootKey: string) {
   return candidateKey === rootKey || candidateKey.startsWith(rootKey + "\\");
+}
+
+/**
+ * True only when the scan of `parent` is known to cover the folder `nested`
+ * below it: every level between them is a plain folder, or a level is
+ * missing although the levels above it were read (nothing there to keep).
+ * A junction or symbolic link at any level points somewhere else, which the
+ * parent's scan never enters. When the parent cannot be read (drive unplugged,
+ * network share offline) or a level fails otherwise, nothing is known, so the
+ * answer is false: a registered root is never dropped on a guess.
+ */
+export function libraryRootCovers(parent: string, nested: string) {
+  const parentRoot = libraryRootPath(parent), nestedRoot = libraryRootPath(nested);
+  if (!libraryPathWithin(libraryPathKey(nestedRoot), libraryPathKey(parentRoot))) return false;
+  // stat, not lstat: a parent that is itself a link must reach its target.
+  try { if (!fs.statSync(parentRoot).isDirectory()) return false; }
+  catch { return false; }
+  let current = parentRoot;
+  for (const segment of path.relative(parentRoot, nestedRoot).split(/[\\/]+/).filter(Boolean)) {
+    current = path.join(current, segment);
+    let stat: fs.Stats;
+    try { stat = fs.lstatSync(current); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === "ENOENT" || code === "ENOTDIR";
+    }
+    if (stat.isSymbolicLink()) return false;
+    if (!stat.isDirectory()) return true;
+  }
+  return true;
 }
 
 /**

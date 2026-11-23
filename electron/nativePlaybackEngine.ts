@@ -418,6 +418,14 @@ const outputHealth = new WeakMap<ChildProcessWithoutNullStreams, OutputHealth>()
 // a check never overrides a device the user is applying at the same moment.
 let outputCommandGeneration = 0;
 let outputCommandsInFlight = 0;
+// Commands after which the host has (re)opened or closed its output: besides
+// the device changes, HDMI direct output and every command the host answers
+// by tearing that down and restarting the shared device (PlaybackEngine.cpp).
+const OUTPUT_COMMANDS = new Set(["device-apply", "output", "direct-load", "direct-close", "load", "pcm-start"]);
+
+function outputChangedSince(generation: number) {
+  return outputCommandsInFlight > 0 || outputCommandGeneration !== generation;
+}
 
 function outputHealthFor(engine: ChildProcessWithoutNullStreams) {
   let health = outputHealth.get(engine);
@@ -435,7 +443,7 @@ async function checkOutputHealth(engine: ChildProcessWithoutNullStreams, health:
   // HDMI direct output deliberately closes the shared device.
   if (device.directOutput) { health.state = "ok"; health.callbackSample = undefined; return; }
   const now = clock();
-  const saved = readNativeOutputState(app.getPath("userData"));
+  let saved = readNativeOutputState(app.getPath("userData"));
   const expected = saved?.lastKnownGood.juceDeviceName || "";
   const actual = device.state === "active" ? String(device.juceDeviceName || "") : "";
   let state: OutputHealthState;
@@ -462,10 +470,15 @@ async function checkOutputHealth(engine: ChildProcessWithoutNullStreams, health:
     health.parkedDevices = undefined;
     return;
   }
-  if (now < health.nextRetryAt || outputCommandsInFlight > 0 || outputCommandGeneration !== generation) return;
+  if (now < health.nextRetryAt || outputChangedSince(generation)) return;
   if (state === "fallback-device" && health.parkedDevices !== undefined) {
     const devices = await outputDeviceSignature(engine, expected);
     if (!nativePlaybackEngineGate().isCurrent(engine) || !isEngineAlive(engine)) return;
+    // The user may have chosen another device (or main opened HDMI direct
+    // output) while the list was read: that wins over this stale repair.
+    if (outputChangedSince(generation)) return;
+    saved = readNativeOutputState(app.getPath("userData"));
+    if ((saved?.lastKnownGood.juceDeviceName || "") !== expected) return;
     if (devices === null || devices === health.parkedDevices) {
       health.nextRetryAt = clock() + OUTPUT_RETRY_MAX_MS;
       return;
@@ -641,6 +654,23 @@ async function handleWhileEngineLost(command: Record<string, unknown>): Promise<
   return engineLoss ? engineLostResponse() : null;
 }
 
+/**
+ * True when a request failed because `engine` was lost under it (a crash or a
+ * timeout, both recorded before its requests are failed). A write into a host
+ * that is exiting can fail its requests first; its exit is then waited for.
+ */
+async function engineLostUnderRequest(engine: ChildProcessWithoutNullStreams) {
+  const lostHere = () => engineLoss !== null && engineLoss.engineInstance === engineInstances.get(engine);
+  if (lostHere()) return true;
+  // kill() or closing stdin is an intentional stop, not a loss.
+  if (engine.killed || engine.stdin.writableEnded) return false;
+  if (isEngineAlive(engine) && engine.stdin.writable) return false;
+  await waitForPlaybackEngineExit(engine, 2000);
+  // An exit code can be visible a moment before the "exit" event records the loss.
+  if (!lostHere()) await new Promise(resolve => setImmediate(resolve));
+  return lostHere();
+}
+
 async function forwardPlaybackCommand(command: Record<string, unknown>): Promise<NativeResponse> {
   const answered = await handleWhileEngineLost(command);
   if (answered) return answered;
@@ -649,11 +679,14 @@ async function forwardPlaybackCommand(command: Record<string, unknown>): Promise
   try {
     response = await requestFromEngine(engine, command) as NativeResponse;
   } catch (error) {
+    if (!await engineLostUnderRequest(engine)) throw error;
     // A status that was in flight when its host died goes through the loss
     // handling like the next poll would: restore once, otherwise report it.
-    if (command.type === "status" && engineLoss?.engineInstance === engineInstances.get(engine))
+    if (command.type === "status")
       return await handleWhileEngineLost(command) ?? forwardPlaybackCommand(command);
-    throw error;
+    // Any other command reports the loss, not a failure of its own: a plugin
+    // that crashes the host during a load is not an unplayable file to skip.
+    return engineLostResponse();
   }
   if (!response || typeof response !== "object") return response;
   recordJournal(command, response);
@@ -677,7 +710,7 @@ function nativeCommandTimeoutMs(type: unknown) {
 }
 
 export async function sendPlaybackCommand(command: Record<string, unknown>) {
-  if (command.type !== "device-apply" && command.type !== "output") return forwardPlaybackCommand(command);
+  if (!OUTPUT_COMMANDS.has(String(command.type))) return forwardPlaybackCommand(command);
   outputCommandGeneration++;
   outputCommandsInFlight++;
   try { return await forwardPlaybackCommand(command); }

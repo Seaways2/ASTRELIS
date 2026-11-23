@@ -185,14 +185,17 @@ interface PlayerState {
   /**
    * Plays a queue entry. `skipMissing` lets automatic advancement move past
    * that many entries whose files are gone instead of stopping on the first.
+   * `keepPosition` prepares the entry that is already current in place: it
+   * keeps its play request and position (see awaitsDecodedSource).
    */
-  playTrack: (index: number, options?: { navigateToNowPlaying?: boolean; skipMissing?: number }) => Promise<void>;
+  playTrack: (index: number, options?: { navigateToNowPlaying?: boolean; skipMissing?: number; keepPosition?: boolean }) => Promise<void>;
   cancelPendingPlay: () => void;
   hasPendingPlay: () => boolean;
   /**
    * The current entry cannot be decoded. Moves on when its play request was
-   * allowed to skip entries (automatic advancement, Next); otherwise stops.
-   * Returns whether another entry is being started.
+   * allowed to skip entries (automatic advancement, Next) and it is playing;
+   * a playing entry that may not skip stops. A paused entry stays where it is
+   * and keeps its budget. Returns whether another entry is being started.
    */
   skipUnplayableTrack: () => boolean;
   /**
@@ -336,6 +339,16 @@ export const AUDIO_FILE_PATTERN = /\.(mp3|wav|flac|aac|ogg|m4a|ape|dsf|aiff|aif|
 // Audio Chromium cannot play, which library.prepare decodes with ffmpeg first
 // (main.ts prepareLocalSource): FFMPEG_DECODED_AUDIO_EXTENSIONS plus AIFF.
 export const WEB_DECODED_AUDIO_PATTERN = /\.(ape|dsf|wma|dts|ac3|eac3|wv|tta|aiff|aif)$/i;
+/**
+ * A queued entry of such a format whose playable source is still the original
+ * file: it became current without playTrack (a restored queue, an entry added
+ * to an empty queue, the next entry after removing the current one), so it was
+ * never prepared. Chromium cannot play it; prepared entries point at the
+ * decoded cache file instead (nativePath is that file, not sourcePath).
+ */
+export const awaitsDecodedSource = (track: Track | undefined) => Boolean(track?.sourcePath
+  && WEB_DECODED_AUDIO_PATTERN.test(track.sourcePath)
+  && (!track.nativePath || track.nativePath === track.sourcePath));
 const cleanName = (name: string) => name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
 const libraryCommandMeta = (expectedRevision: number): LibraryCommandMeta => ({
   requestId: typeof crypto.randomUUID === "function"
@@ -894,7 +907,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       if (!requestIsCurrent()) return;
       if (options?.navigateToNowPlaying !== false) get().setActivePage("nowPlaying");
-      get().setCurrentIndex(get().tracks.findIndex(item => item.id === track.id));
+      const position = get().tracks.findIndex(item => item.id === track.id);
+      // An entry prepared in place keeps its request and position: its new
+      // url makes App load the decoded file and seek to the position.
+      if (!options?.keepPosition || position !== get().currentIndex) get().setCurrentIndex(position);
       playbackSkip = { request: get().localPlayRequest, remaining: options?.skipMissing ?? 0 };
       get().setPlaying(true);
     } catch (error) {
@@ -907,6 +923,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   hasPendingPlay: () => Boolean(pendingPlayTrackId),
   skipUnplayableTrack: () => {
     const state = get();
+    // A paused entry (an automatic advance the user paused, say) reports the
+    // failure only: moving on would start the next track against the pause.
+    if (!state.playing) return false;
     const remaining = playbackSkip.request === state.localPlayRequest ? playbackSkip.remaining : 0;
     playbackSkip = { request: -1, remaining: 0 };
     const count = state.tracks.length;

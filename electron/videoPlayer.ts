@@ -84,8 +84,10 @@ export class VideoPlayer {
   private sourceFile = "";
   private switching = false;
   private embeddedParent?: string;
-  // The embedded renderer sends 0 while muted; this is the level it unmutes to.
-  private embeddedAudibleVolume?: number;
+  // The embedded renderer sends 0 while muted. Right before it detaches into
+  // fullscreen it states the level it would unmute to (its store volume), so
+  // the mute carries over at that level; undefined when it is not muted.
+  private embeddedMutedVolume?: number;
   private externalSubtitles: string[] = [];
   private dsp = defaultVideoDsp();
   private dspQueue: Promise<void> = Promise.resolve();
@@ -321,9 +323,12 @@ export class VideoPlayer {
       // the renderer, which only sends a volume (0 while muted) and never mute,
       // so carry a fullscreen mute back as silence it can lift, and carry an
       // embedded silence into fullscreen as a mute of the last audible level.
-      const silenced = standalone && !saved.standalone && !saved.direct && !saved.muted && saved.volume <= 0.1 && this.embeddedAudibleVolume !== undefined;
+      // The renderer's statement is used once, for the switch it preceded.
+      const mutedLevel = this.embeddedMutedVolume;
+      this.embeddedMutedVolume = undefined;
+      const silenced = standalone && !saved.standalone && !saved.direct && !saved.muted && mutedLevel !== undefined;
       const muted = standalone && (Boolean(saved.muted) || silenced);
-      const volume = silenced ? this.embeddedAudibleVolume! : !standalone && saved.muted ? 0 : saved.volume;
+      const volume = silenced ? mutedLevel! : !standalone && saved.muted ? 0 : saved.volume;
       if (!saved.direct) await this.request(["set_property","volume",amplitudePercentToMpvVolume(volume)]);
       await this.request(["set_property","mute",muted]);
       await this.request(["set_property","pause",saved.rackAudio ? true : saved.paused]);
@@ -379,7 +384,13 @@ export class VideoPlayer {
         // Embedded: the renderer's volume is authoritative (0 while muted), so
         // no mpv mute may outlive it.
         if (!this.state.standalone && this.state.muted) { await this.request(["set_property", "mute", false]); this.publish({ muted: false }); }
-        if (!this.state.standalone && value > 0.1) this.embeddedAudibleVolume = clampVolumePercent(value);
+        break;
+      case "mutedVolume":
+        // Sent by the renderer right before "detach": its volume while muted,
+        // or a negative value when it is not muted. Inferring it from earlier
+        // volume commands went stale across fullscreen changes and new files.
+        if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("VIDEO_VALUE_INVALID");
+        this.embeddedMutedVolume = value >= 0 && !this.state.standalone ? clampVolumePercent(value) : undefined;
         break;
       case "subtitleDelay":
         if (typeof value !== "number" || !Number.isFinite(value) || value < -120 || value > 120) throw new Error("VIDEO_VALUE_INVALID");

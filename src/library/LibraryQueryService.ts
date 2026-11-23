@@ -123,7 +123,12 @@ const artistIdsOf = (track: Track) => track.tags?.artists.map(artist => artist.a
 const albumIdOf = (track: Track) => track.albumId
   || `legacy-album:${normalize(track.tags?.albumArtist || track.artist)}:${normalize(track.tags?.album || track.album)}`;
 
-const canonicalFolder = (value?: string) => String(value || "").trim().replace(/\//g, "\\").replace(/\\+$/, "");
+const trimmedFolder = (value?: string) => String(value || "").trim().replace(/\//g, "\\").replace(/\\+$/, "");
+/** A folder node's path: no trailing separator, except a drive root keeps it ("E:" and "E:\" are both "E:\"). */
+const canonicalFolder = (value?: string) => {
+  const folder = trimmedFolder(value);
+  return /^[a-z]:$/i.test(folder) ? `${folder}\\` : folder;
+};
 const parentFolder = (value: string) => {
   if (/^[a-z]:\\?$/i.test(value) || /^\\\\[^\\]+\\[^\\]+\\?$/i.test(value)) return "";
   const index = value.lastIndexOf("\\");
@@ -131,12 +136,9 @@ const parentFolder = (value: string) => {
   const parent = value.slice(0, index);
   return /^[a-z]:$/i.test(parent) ? `${parent}\\` : parent;
 };
-const folderComparisonKey = (value: string) => normalize(canonicalFolder(value));
-/** The index key of a folder node: as folderAncestors spells it, a drive root keeps "\" ("E:" and "E:\" are both "e:\"). */
-const folderNodeKey = (value: string) => {
-  const folder = canonicalFolder(value);
-  return normalize(/^[a-z]:$/i.test(folder) ? `${folder}\\` : folder);
-};
+const folderComparisonKey = (value: string) => normalize(trimmedFolder(value));
+/** The index key of a folder node (byFolder and the folder tree use the same one). */
+const folderNodeKey = (value: string) => normalize(canonicalFolder(value));
 /** True when `folder` is `root` or below it (case-insensitive, drive roots included). */
 export function libraryFolderWithin(folder: string, root: string) {
   const candidate = folderComparisonKey(folder), parent = folderComparisonKey(root);
@@ -190,8 +192,17 @@ function trackCollator(locale: string) {
 // Missing disc or track numbers sort after numbered tracks of the same album.
 const positionNumber = (value: number | undefined) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER;
 
+// Albums with the same title ("Greatest Hits", "Live") stay apart: after the
+// title come the album artist and the album identity, then disc and track.
+function compareAlbumIdentity(left: Track, right: Track) {
+  const leftAlbum = albumIdOf(left), rightAlbum = albumIdOf(right);
+  return leftAlbum < rightAlbum ? -1 : leftAlbum > rightAlbum ? 1 : 0;
+}
+
 function compareAlbumOrder(left: Track, right: Track, collator: Intl.Collator) {
   return collator.compare(String(left.tags?.album || left.album || ""), String(right.tags?.album || right.album || ""))
+    || collator.compare(String(left.tags?.albumArtist || ""), String(right.tags?.albumArtist || ""))
+    || compareAlbumIdentity(left, right)
     || positionNumber(left.tags?.discNumber) - positionNumber(right.tags?.discNumber)
     || positionNumber(left.tags?.trackNumber) - positionNumber(right.tags?.trackNumber);
 }
@@ -264,8 +275,11 @@ export class LibraryIndex {
       addIndex(this.byFormat, normalize(track.format), mediaId);
     }
     this.signature = trackSignature(tracks);
+    // A cache from before drive roots kept their separator has a bare "E:" node
+    // for files directly on the drive, next to "E:\" for its folders: rebuild.
     this.usedDerivedCache = Boolean(cache && cache.schemaVersion === 1 && cache.normalizationVersion === 1
-      && cache.libraryRevision === libraryRevision && cache.trackSignature === this.signature);
+      && cache.libraryRevision === libraryRevision && cache.trackSignature === this.signature
+      && !cache.folders.some(folder => /^[a-z]:$/i.test(folder.path)));
     if (this.usedDerivedCache) this.hydrateDerived(cache!);
     else this.buildDerived();
   }
@@ -425,7 +439,7 @@ export class LibraryIndex {
     if (scope.rootIds) candidates = intersect(candidates, this.idsFor(this.byRootId, scope.rootIds));
     if (scope.genres) candidates = intersect(candidates, this.idsFor(this.byGenre, scope.genres));
     if (scope.formats) candidates = intersect(candidates, this.idsFor(this.byFormat, scope.formats));
-    if (scope.folders) candidates = intersect(candidates, this.idsFor(this.byFolder, scope.folders));
+    if (scope.folders) candidates = intersect(candidates, this.idsFor(this.byFolder, scope.folders.map(folderNodeKey)));
     if (scope.favoriteMediaIds) candidates = intersect(candidates, scope.favoriteMediaIds);
     const search = normalize(scope.search);
     let result = candidates ? [...candidates] : [...this.orderedMediaIds];

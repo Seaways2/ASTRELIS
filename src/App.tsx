@@ -26,7 +26,7 @@ import { AtmosphereLayer } from "./components/AtmosphereLayer";
 import { AmbientBackground } from "./components/AmbientBackground";
 import { ChannelStripPopover } from "./components/ChannelStripPopover";
 import { VolumeLevelIcon } from "./components/VolumeLevelIcon";
-import { usePlayerStore } from "./stores/playerStore";
+import { awaitsDecodedSource, usePlayerStore } from "./stores/playerStore";
 import { useShallow } from "zustand/react/shallow";
 import { WithStoreVolume } from "./components/WithStoreVolume";
 import { formatTime, isAudioFileDrag, modes, nav, selectShellState, visualTransitionTimings, waitForAudioTransition } from "./app/appShell";
@@ -167,6 +167,9 @@ export default function App() {
   const nativeEngineLostWait = useRef("");
   // Play request whose video could not be opened (Play opens it again).
   const videoOpenFailedToken = useRef("");
+  // Playing as the video transport effect last saw it, so Play on a failed
+  // video (false -> true) reopens it and nothing else does.
+  const previousVideoPlaying = useRef(state.playing);
   // The native output condition last shown, so a poll never repeats it.
   const [outputNotice, setOutputNotice] = useState<NativeOutputNotice | null>(null);
   const outputNoticeId = useRef("");
@@ -581,6 +584,10 @@ export default function App() {
     // MEDIA_ERR_ABORTED: loading was stopped on purpose (a newer source).
     if (mediaError?.code === 1) return;
     failedLocalPlaybackToken.current = token;
+    // A track the user chose is being prepared: it replaces this source, or
+    // reports itself why it cannot. Stopping (setPlaying(false)) would cancel
+    // it; only mark this source idle, and leave the report to that choice.
+    if (latest.hasPendingPlay()) { latest.setPlaybackObserved(false); return; }
     console.error(`[playback] cannot play ${track.sourcePath || track.name}: MediaError ${mediaError?.code ?? "?"} ${mediaError?.message || ""}`.trim());
     const skipped = latest.skipUnplayableTrack();
     setDeviceError(t(skipped ? "playback.failedSkipped" : "playback.failed", { name: track.name }));
@@ -645,6 +652,19 @@ export default function App() {
     latest.setPlaying(false);
     setDeviceError(error instanceof Error && error.message ? error.message : t("playback.startFailed"));
   }, [reportNativeEngineLost, t]);
+  // Play on a current entry that was never prepared (awaitsDecodedSource):
+  // decode it like a chosen track, keeping its position. When that fails
+  // (playTrack reports why) it stops instead of silent "playing".
+  const prepareCurrentEntry = useCallback(() => {
+    const latest = usePlayerStore.getState();
+    const track = latest.tracks[latest.currentIndex];
+    if (!track || latest.hasPendingPlay()) return Promise.resolve();
+    return latest.playTrack(latest.currentIndex, { navigateToNowPlaying: false, keepPosition: true }).then(() => {
+      const now = usePlayerStore.getState();
+      const entry = now.tracks[now.currentIndex];
+      if (entry?.id === track.id && awaitsDecodedSource(entry) && !now.hasPendingPlay() && now.playing) now.setPlaying(false);
+    });
+  }, []);
 
   const rememberedOutputLabel = (id: string) => {
     if (id === "default") return "";
@@ -798,14 +818,21 @@ export default function App() {
             routeSource: "local", routeSessionId, routeAction: "prepare"
           });
           if (backendSuperseded()) return;
+          // The host died (or hung) during the load, e.g. a plug-in crashing
+          // in prepareToPlay: that is not this file's fault, and skipping on
+          // would restart the host and reload that plug-in for every track.
+          if (isNativeEngineLost(loaded)) { reportNativeEngineLost(playbackToken, loaded); return; }
           if (!loaded?.ok) {
             // Play on this request reports it again instead of a silent
             // "playing" (localNativeReady stays false, so nothing would start).
             failedNativeLoadToken.current = playbackToken;
             console.error(`[playback] native load failed for ${current.sourcePath || current.name}: ${loaded?.error || "unknown"}`);
             const live = usePlayerStore.getState();
+            // A track the user chose is being prepared and replaces this one:
+            // stopping would cancel it (as on Web Audio).
+            if (live.hasPendingPlay()) { live.setPlaybackObserved(false); return; }
             // An automatic or Next request moves past it, as on Web Audio.
-            const skipped = live.playing && !live.hasPendingPlay() && live.skipUnplayableTrack();
+            const skipped = live.playing && live.skipUnplayableTrack();
             if (!skipped) live.setPlaying(false);
             setDeviceError(skipped ? t("playback.failedSkipped", { name: current.name }) : loaded?.error || "原生引擎无法加载音频");
             return;
@@ -840,6 +867,11 @@ export default function App() {
       void audioEngine.pause();
       finishTrackTransition();
     } else {
+      // Chromium cannot play an unprepared original file (awaitsDecodedSource)
+      // and its "error" would read as a broken file, so it is not loaded. A
+      // playing entry (a removal moved it into place) is prepared now, else on
+      // Play. A prepared url of the same request is a new source, not failed.
+      const unprepared = awaitsDecodedSource(current);
       void (async () => {
         try {
           await fadeOutPreviousTrack();
@@ -851,6 +883,8 @@ export default function App() {
           await window.desktop?.nativeAudio.command({ type: "enable", enabled: false });
           if (backendSuperseded()) return;
           audioEngine.useLocalAnalysis();
+          if (unprepared) { audioEngine.stop(); if (usePlayerStore.getState().playing) void prepareCurrentEntry(); return; }
+          failedLocalPlaybackToken.current = "";
           localWebSourceToken.current = playbackToken;
           audioEngine.load(current.url);
           if (resumePosition > 0) {
@@ -877,18 +911,25 @@ export default function App() {
     if (!current) return;
     if (videoActive) {
       previousLocalPlaying.current = false;
+      const startedVideo = state.playing && !previousVideoPlaying.current;
+      previousVideoPlaying.current = state.playing;
       const token = `${current.id}:${state.localPlayRequest}`;
       if (!videoPreparing && videoState?.ready && videoState.playbackToken === token)
         void window.desktop?.video.control(state.playing ? "play" : "pause");
-      // Play after this item failed to open opens it again (a new play
-      // request) instead of showing "running" with nothing playing. A failure
-      // the player reported itself is retried by VideoView.
-      const viewShowsFailure = Boolean(videoState?.error) && !videoState?.ready && videoState?.playbackToken === token;
-      if (state.playing && !videoPreparing && videoOpenFailedToken.current === token && !viewShowsFailure && !state.hasPendingPlay()) {
-        videoOpenFailedToken.current = "";
-        // A new request for the same entry that keeps its position: choosing
-        // it again (playTrack) would start from the top and drop the bookmark.
-        state.reloadCurrentTrack();
+      // Play after this request failed (it could not be opened, or the player
+      // reported a load/decode error) opens it again instead of showing
+      // "running" with nothing playing. This effect is always mounted, so Play
+      // from the footer or a media key works on every page, not only where
+      // VideoView shows the failure.
+      const openFailed = videoOpenFailedToken.current === token;
+      const playerFailed = Boolean(videoState?.error) && !videoState?.ready && videoState?.playbackToken === token;
+      if (state.playing && !videoPreparing && (openFailed || playerFailed) && !state.hasPendingPlay()) {
+        if (startedVideo) {
+          videoOpenFailedToken.current = "";
+          // A new request for the same entry that keeps its position: choosing
+          // it again (playTrack) would start from the top and drop the bookmark.
+          state.reloadCurrentTrack();
+        } else state.setPlaying(false);
       }
       return;
     }
@@ -957,7 +998,9 @@ export default function App() {
     if (state.playing) {
       // Like Native: the load chain starts a source it is loading. Playing the
       // element before then would replay the previous (or a cleared) track.
-      if (localWebSourceToken.current === playToken) {
+      // An entry that was never prepared has no source yet: prepare it.
+      if (awaitsDecodedSource(current)) void prepareCurrentEntry();
+      else if (localWebSourceToken.current === playToken) {
         // A source that failed to load cannot start (play() rejects without a
         // new "error" event): Play reports it again instead of silent "playing".
         if (failedLocalPlaybackToken.current !== playToken) playExclusive(false).catch(handleWebPlayRejection);
@@ -988,7 +1031,13 @@ export default function App() {
   const detachVideo = useCallback(async () => {
     if (videoWindowBusy) return;
     setVideoWindowBusy(true);
-    try { const result=await window.desktop?.video.control("detach",resolvedLanguage); if (!result?.ok) setDeviceError(result?.error || t("video.failed")); }
+    try {
+      // The embedded player only ever hears 0 while muted, so tell it the
+      // level a fullscreen mute stands for (the store's, not an older one).
+      const audio = usePlayerStore.getState();
+      await window.desktop?.video.control("mutedVolume", audio.muted ? audio.volume * 100 : -1);
+      const result=await window.desktop?.video.control("detach",resolvedLanguage); if (!result?.ok) setDeviceError(result?.error || t("video.failed"));
+    }
     finally { setVideoWindowBusy(false); }
   }, [videoWindowBusy, resolvedLanguage, t]);
 

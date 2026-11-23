@@ -58,19 +58,11 @@ export function VideoView({ state, visible, direct, setDirect, rackEnabled, setR
   };
   const dspBlocked = !state?.ready || Boolean(state?.direct) || Boolean(state?.rackAudio) || state?.outputChannels !== 2;
   // A file mpv cannot load keeps its error on the closed engine. Show it in
-  // place of the picture for this play request, and make Play retry the open
-  // instead of reporting a run that never starts.
+  // place of the picture for this play request. Play on it reopens the file
+  // in App's transport effect, which stays mounted on every page; this view
+  // only offers the explicit retry.
   const playbackToken = usePlayerStore(store => { const track = store.tracks[store.currentIndex]; return track ? `${track.id}:${store.localPlayRequest}` : ""; });
-  const playing = usePlayerStore(store => store.playing);
   const failed = !busy && Boolean(state?.error) && !state?.ready && Boolean(playbackToken) && state?.playbackToken === playbackToken;
-  const wasPlaying = useRef(playing);
-  useEffect(() => {
-    const started = playing && !wasPlaying.current;
-    wasPlaying.current = playing;
-    if (!failed || !playing) return;
-    if (started) retryCurrentVideo();
-    else usePlayerStore.getState().setPlaying(false);
-  }, [failed, playing]);
 
   useEffect(() => {
     const sync = () => {

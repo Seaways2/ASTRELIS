@@ -192,21 +192,71 @@ test('a queue advance carried into standalone fullscreen keeps playing',()=>{
 
 test('entering standalone fullscreen while the embedded player is muted keeps the level and the mute',async()=>{
  const {player,commands}=rehostPlayer({standalone:false,muted:false});
- // The embedded renderer sends its level, then 0 when the viewer mutes.
- await player.control('volume',72);await player.control('volume',0);
+ // The embedded renderer sends 0 while muted, and states its level right before detaching.
+ await player.control('volume',0);
  player.state.volume=0;commands.length=0;
+ await player.control('mutedVolume',72);
  await player.rehost(true);
  assert.deepEqual(commands.find(c=>c[1]==='mute'),['set_property','mute',true]);
  assert.deepEqual(commands.find(c=>c[1]==='volume'),['set_property','volume',amplitudePercentToMpvVolume(72)]);
  assert.equal(player.state.muted,true);assert.equal(player.state.volume,72);
  // Unmuted embedded playback enters fullscreen at its own level.
  const audible=rehostPlayer({standalone:false,muted:false,volume:40});
- await audible.player.control('volume',40);await audible.player.rehost(true);
+ await audible.player.control('volume',40);await audible.player.control('mutedVolume',-1);await audible.player.rehost(true);
  assert.equal(audible.player.state.muted,false);assert.equal(audible.player.state.volume,40);
+ // A fader at 0 that is not muted stays an unmuted 0.
+ const zero=rehostPlayer({standalone:false,muted:false,volume:0});
+ await zero.player.control('volume',72);await zero.player.control('volume',0);await zero.player.control('mutedVolume',-1);await zero.player.rehost(true);
+ assert.equal(zero.player.state.muted,false);assert.equal(zero.player.state.volume,0);
  // Bitstream output has no software volume or mute to carry.
  const direct=rehostPlayer({standalone:false,muted:false,volume:0,direct:true});
- await direct.player.rehost(true);
+ await direct.player.control('mutedVolume',72);await direct.player.rehost(true);
  assert.equal(direct.player.state.muted,false);
+ await assert.rejects(player.control('mutedVolume','loud'),/VIDEO_VALUE_INVALID/);
+});
+
+test('a mute changed in fullscreen is carried at the level the viewer left, not an older one',async()=>{
+ // Embedded at 80; in fullscreen the viewer lowers to 30 and mutes, then returns.
+ const {player,commands}=rehostPlayer({standalone:false,muted:false,volume:80});
+ await player.control('volume',80);
+ await player.control('mutedVolume',-1);await player.rehost(true);
+ assert.equal(player.state.volume,80);assert.equal(player.state.muted,false);
+ player.state={...player.state,ready:true,volume:30,muted:true};
+ await player.rehost(false);
+ assert.equal(player.state.volume,0);assert.equal(player.state.muted,false);
+ // Back embedded, the renderer (store: 30, muted) sends 0; F11 states 30.
+ await player.control('volume',0);
+ commands.length=0;
+ await player.control('mutedVolume',30);await player.rehost(true);
+ assert.deepEqual(commands.find(c=>c[1]==='volume'),['set_property','volume',amplitudePercentToMpvVolume(30)]);
+ assert.equal(player.state.muted,true);assert.equal(player.state.volume,30,'not the 80 from before fullscreen');
+});
+
+test('a new video does not inherit the previous video\'s level for its fullscreen mute',async()=>{
+ // Video A embedded at 80, then music at 30 muted, then video B opened while muted.
+ const {player,commands}=rehostPlayer({standalone:false,muted:false,volume:0});
+ await player.control('volume',80);await player.control('volume',0);
+ commands.length=0;
+ await player.control('mutedVolume',30);await player.rehost(true);
+ assert.deepEqual(commands.find(c=>c[1]==='volume'),['set_property','volume',amplitudePercentToMpvVolume(30)]);
+ assert.equal(player.state.muted,true);assert.equal(player.state.volume,30);
+ // A statement is used once: a later switch without one does not reuse it.
+ const again=rehostPlayer({standalone:false,muted:false,volume:0});
+ await again.player.control('mutedVolume',30);await again.player.rehost(true);
+ again.player.state={...again.player.state,standalone:false,ready:true,volume:0,muted:false};
+ await again.player.rehost(true);
+ assert.equal(again.player.state.muted,false);assert.equal(again.player.state.volume,0);
+});
+
+test('the renderer states its muted level right before detaching into fullscreen',()=>{
+ const app=fs.readFileSync(path.join(__dirname,'../../src/App.tsx'),'utf8');
+ const detach=app.slice(app.indexOf('const detachVideo = useCallback('),app.indexOf('}, [videoWindowBusy, resolvedLanguage, t]);'));
+ const stated=detach.indexOf('video.control("mutedVolume", audio.muted ? audio.volume * 100 : -1)');
+ assert.ok(stated>0,'detach states the store level while muted');
+ assert.ok(stated<detach.indexOf('video.control("detach",resolvedLanguage)'),'before the switch it applies to');
+ assert.match(detach,/const audio = usePlayerStore\.getState\(\);/);
+ const player=fs.readFileSync(path.join(__dirname,'../../electron/videoPlayer.ts'),'utf8');
+ assert.doesNotMatch(player,/embeddedAudibleVolume/,'the level is no longer inferred from earlier volume commands');
 });
 
 test('every load failure is reported with its playback token',async()=>{

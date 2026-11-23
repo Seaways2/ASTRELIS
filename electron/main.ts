@@ -42,7 +42,7 @@ import { LocalMediaAccessPolicy, safeExternalUrl, sameOriginNavigation } from ".
 import { removeDevelopmentSwitches } from "./security/DevelopmentSwitches";
 import { ExternalOpenThrottle, applyOnlineSessionPolicy, onlineNavigationAllowed } from "./security/OnlineViewPolicy";
 import { ScannedPluginPolicy } from "./security/PluginPathPolicy";
-import { RendererPlaybackLog, RotatingLogFile } from "./logFile";
+import { RateLimitedLog, RendererPlaybackLog, RotatingLogFile } from "./logFile";
 import { AuthorizedFileStore } from "./security/AuthorizedFileStore";
 import { DesktopMediaKeys, DesktopPreferenceService, defaultDesktopPreferences } from "./desktopPreferences";
 import { AUDIO_EXTENSIONS, externalAudioPaths } from "./externalOpenPaths";
@@ -403,6 +403,9 @@ function onlineAddressTarget(input: string): string | undefined {
 }
 
 const onlineExternalOpens = new ExternalOpenThrottle();
+// A page looping on navigations would otherwise write a line per refusal and rotate the other logs away.
+const onlineThrottledOpenLog = new RateLimitedLog(message => writeLog("SECURITY", message),
+  count => `${count} more throttled external open(s) were not logged`, "Online view: ", 1, 60_000);
 /** A page may hand an http(s) link to the system browser, at most one per interval. */
 function openOnlineLinkExternally(url: string): "opened" | "throttled" | "refused" {
   if (!safeExternalUrl(url)) return "refused";
@@ -410,7 +413,7 @@ function openOnlineLinkExternally(url: string): "opened" | "throttled" | "refuse
     void shell.openExternal(url);
     return "opened";
   }
-  writeLog("SECURITY", `Online view external open throttled: ${new URL(url).origin}`);
+  onlineThrottledOpenLog.accept(`Online view external open throttled: ${new URL(url).origin}`);
   return "throttled";
 }
 

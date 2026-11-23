@@ -48,15 +48,23 @@ class FakeHost extends EventEmitter {
     this.position = 0;
     this.device = world.devices[0] || "";
     this.callbacks = 0;
-    readline.createInterface({ input: this.stdin }).on("line", line => {
+    const lines = readline.createInterface({ input: this.stdin });
+    lines.on("error", () => undefined); // a broken pipe is the engine's to report
+    lines.on("line", line => {
       const command = JSON.parse(line);
       this.commands.push(command);
+      // A plug-in that crashes in prepareToPlay when a load reopens the device.
+      if (command.type === "load" && world.crashOnLoad) { this.crash(); return; }
       const reply = this.handle(command);
       if (command.type === "status" && this.holdStatus) return; // never answered
-      setImmediate(() => {
+      const send = () => setImmediate(() => {
         if (this.exitCode === null && this.signalCode === null)
           this.stdout.write(`${JSON.stringify({ ...reply, requestId: command.requestId })}\n`);
       });
+      // Executed now, answered when the test releases it (releaseReplies).
+      const held = world.heldReplies[command.type];
+      if (held) held.push(send);
+      else send();
     });
   }
 
@@ -128,7 +136,7 @@ class FakeHost extends EventEmitter {
 function freshEngine({ devices = ["Speakers"], savedDevice } = {}) {
   delete require.cache[enginePath];
   const engine = require(enginePath);
-  const world = { devices: [...devices], unopenable: [], audibleFailures: 0, enumerations: 0, callbacksRunning: true, applied: [], hosts: [], logs: [], now: 1000 };
+  const world = { devices: [...devices], unopenable: [], audibleFailures: 0, enumerations: 0, callbacksRunning: true, applied: [], hosts: [], logs: [], now: 1000, heldReplies: {}, crashOnLoad: false };
   fs.rmSync(nativeOutputStatePath(userData), { force: true });
   if (savedDevice) {
     const candidate = { backend: "wasapi-shared", juceDeviceName: savedDevice, sampleRateMode: "system", bufferMode: "auto", exclusiveFallback: "shared-low-latency" };
@@ -147,6 +155,14 @@ function freshEngine({ devices = ["Speakers"], savedDevice } = {}) {
   });
   return { engine, world };
 }
+
+const holdReplies = (world, type) => { world.heldReplies[type] = world.heldReplies[type] || []; };
+const releaseReplies = (world, type) => {
+  const held = world.heldReplies[type] || [];
+  delete world.heldReplies[type];
+  held.forEach(send => send());
+  return held.length;
+};
 
 async function shutdown(engine) {
   const current = engine.playbackEngineGate?.current();
@@ -354,16 +370,25 @@ test("the health check never overrides an output change the user makes at the sa
   const tvApplies = () => host.commands.filter(command => command.type === "device-apply" && command.candidate.juceDeviceName === "TV").length;
   const tvBefore = tvApplies();
 
-  // The status reply starts a check while the user's apply is still queued in
-  // the host; main persists the new route once that apply commits.
-  world.now += 3000;
-  const status = engine.sendPlaybackCommand({ type: "status" });
+  // The host has switched to the user's device but not answered yet, so main
+  // has not saved it: a check now reads saved=TV and actual=Speakers.
+  holdReplies(world, "device-apply");
   const userApply = engine.sendPlaybackCommand({ type: "device-apply", generation: 7, candidate: { backend: "wasapi-shared", juceDeviceName: "Speakers" } })
     .then(response => {
       writeNativeOutputState(userData, { schemaVersion: 1, lastKnownGood: response.lastKnownGood, updatedAt: new Date(1).toISOString() });
       return response;
     });
-  await Promise.all([status, userApply]);
+  await flush();
+  assert.equal(host.device, "Speakers");
+  const checks = () => host.commands.filter(command => command.type === "device-status").length;
+  const checksBefore = checks();
+  world.now += 3000;
+  await engine.sendPlaybackCommand({ type: "status" });
+  await flush();
+  assert.equal(checks(), checksBefore + 1, "a check ran while the apply was pending");
+  assert.equal(tvApplies(), tvBefore, "the check must not re-apply the old device under the user's change");
+  assert.equal(releaseReplies(world, "device-apply"), 1);
+  await userApply;
   await flush();
   for (let round = 0; round < 3; round++) {
     world.now += 4000;
@@ -461,5 +486,107 @@ test("a saved device that is listed but cannot be opened is retried at most thre
   await flush();
   assert.equal(host.device, "TV");
   assert.equal(world.audibleFailures - failuresAtStart, 3);
+  await shutdown(engine);
+});
+
+test("a host that crashes during a load reports the loss with its plug-ins, not a failed file", async () => {
+  const { engine, world } = freshEngine();
+  world.crashOnLoad = true;
+  const rack = { type: "rack", plugins: [{ id: "crashy.vst3", path: "C:/crashy.vst3", enabled: true }], stateDirectory: "C:/state" };
+  await engine.sendPlaybackCommand(rack);
+  let loaded = await engine.sendPlaybackCommand({ type: "load", path: "D:/music/a.flac", playbackToken: "a:1" });
+  assert.equal(loaded.ok, false);
+  assert.equal(loaded.engineLost, true, "the renderer must not take this for an unplayable file");
+  assert.match(loaded.error, /^NATIVE_ENGINE_LOST/);
+  assert.deepEqual(loaded.suspectPlugins, ["crashy.vst3"]);
+  assert.equal(loaded.engineLossCount, 1);
+
+  // The next track's rack and load start one new host and crash it again.
+  await engine.sendPlaybackCommand(rack);
+  loaded = await engine.sendPlaybackCommand({ type: "load", path: "D:/music/b.flac", playbackToken: "b:2" });
+  assert.equal(loaded.engineLost, true);
+  assert.equal(loaded.engineLossCount, 2);
+  assert.deepEqual(loaded.suspectPlugins, ["crashy.vst3"]);
+  assert.equal(world.hosts.length, 2);
+
+  // Polls report the loss without starting an empty host.
+  const status = await engine.sendPlaybackCommand({ type: "status" });
+  assert.equal(status.engineLost, true);
+  assert.equal(world.hosts.length, 2);
+});
+
+test("a load whose pipe breaks before the host exits is reported as a lost host", async () => {
+  const { engine, world } = freshEngine();
+  await engine.sendPlaybackCommand({ type: "rack", plugins: [{ id: "crashy.vst3", path: "C:/crashy.vst3", enabled: true }], stateDirectory: "C:/state" });
+  const host = world.hosts[0];
+  holdReplies(world, "load");
+  const pending = engine.sendPlaybackCommand({ type: "load", path: "D:/music/a.flac", playbackToken: "a:1" });
+  await flush();
+  // A write into the exiting host fails (EPIPE) and fails every pending request first.
+  host.stdin.destroy(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+  setTimeout(() => host.crash(), 30);
+  const loaded = await pending;
+  assert.equal(loaded.ok, false);
+  assert.equal(loaded.engineLost, true);
+  assert.deepEqual(loaded.suspectPlugins, ["crashy.vst3"]);
+});
+
+test("a failure of an intentionally stopped host is still the command's own error", async () => {
+  const { engine, world } = freshEngine();
+  await engine.sendPlaybackCommand({ type: "rack", plugins: [], stateDirectory: "C:/state" });
+  holdReplies(world, "load");
+  const pending = engine.sendPlaybackCommand({ type: "load", path: "D:/music/a.flac", playbackToken: "a:1" });
+  await flush();
+  await engine.stopPlaybackEngine(world.hosts[0]);
+  await assert.rejects(pending, /JUCE playback engine exited/);
+  assert.equal(engine.nativeEngineHealthSnapshot().engineLost, false);
+});
+
+async function parkUnopenableTv(engine, world) {
+  world.unopenable.push("TV");
+  await startPlayingTrack(engine);
+  for (let round = 0; round < 8; round++) {
+    world.now += 61000;
+    await engine.sendPlaybackCommand({ type: "status" });
+    await flush();
+  }
+  assert.ok(world.logs.some(line => /retrying when the device list changes/.test(line)));
+  // The TV returns as a new endpoint, so the next check repairs again...
+  world.unopenable = [];
+  world.devices.push("TV (2)");
+  // ...after the device list it is waiting for.
+  holdReplies(world, "device-enumerate");
+  world.now += 61000;
+  await engine.sendPlaybackCommand({ type: "status" });
+  await flush();
+  assert.equal(world.heldReplies["device-enumerate"].length, 1, "the parked check is reading the device list");
+}
+
+test("a parked check never re-applies a stale device chosen by the user while it read the device list", async () => {
+  const { engine, world } = freshEngine({ devices: ["Speakers", "TV"], savedDevice: "TV" });
+  await parkUnopenableTv(engine, world);
+  const host = world.hosts[0];
+  const tvApplies = () => host.commands.filter(command => command.type === "device-apply" && command.candidate.juceDeviceName === "TV").length;
+  const tvBefore = tvApplies();
+  const candidate = { backend: "wasapi-shared", juceDeviceName: "TV (2)" };
+  const applied = await engine.sendPlaybackCommand({ type: "device-apply", generation: 9, candidate });
+  writeNativeOutputState(userData, { schemaVersion: 1, lastKnownGood: applied.lastKnownGood, updatedAt: new Date(2).toISOString() });
+  releaseReplies(world, "device-enumerate");
+  await flush();
+  assert.equal(tvApplies(), tvBefore);
+  assert.equal(host.device, "TV (2)");
+  await shutdown(engine);
+});
+
+test("a parked check never tears down HDMI direct output opened while it read the device list", async () => {
+  const { engine, world } = freshEngine({ devices: ["Speakers", "TV"], savedDevice: "TV" });
+  await parkUnopenableTv(engine, world);
+  const host = world.hosts[0];
+  const appliesBefore = host.commands.filter(command => command.type === "device-apply").length;
+  assert.equal((await engine.sendPlaybackCommand({ type: "direct-load", playbackToken: "d:1" })).ok, true);
+  releaseReplies(world, "device-enumerate");
+  await flush();
+  // The real host answers a device-apply by closing the direct output.
+  assert.equal(host.commands.filter(command => command.type === "device-apply").length, appliesBefore);
   await shutdown(engine);
 });

@@ -110,7 +110,10 @@ test("a native source that cannot be loaded skips on auto-advance and is reporte
   const app = readAppSource();
   const failure = app.slice(app.indexOf("if (!loaded?.ok) {"), app.indexOf("if (resumePosition > 0) await window.desktop?.nativeAudio.command({ type: \"seek\""));
   assert.match(failure, /failedNativeLoadToken\.current = playbackToken;/);
-  assert.match(failure, /const skipped = live\.playing && !live\.hasPendingPlay\(\) && live\.skipUnplayableTrack\(\);/);
+  // A pending choice replaces the source: setPlaying(false) would cancel it.
+  assert.match(failure, /if \(live\.hasPendingPlay\(\)\) \{ live\.setPlaybackObserved\(false\); return; \}/);
+  assert.ok(failure.indexOf("live.hasPendingPlay()") < failure.indexOf("live.setPlaying(false)"));
+  assert.match(failure, /const skipped = live\.playing && live\.skipUnplayableTrack\(\);/);
   assert.match(failure, /if \(!skipped\) live\.setPlaying\(false\);/);
 });
 
@@ -121,8 +124,11 @@ test("Play after a video failed to open opens it again; its error text has one p
   assert.match(app, /\.replace\(\/\^\(\?:Error:\\s\*\)\+\/, ""\)/);
   // Reopened as a new request from the same position: playTrack of the
   // current entry would start from the top and drop its bookmark.
-  const reopen = app.slice(app.indexOf("if (state.playing && !videoPreparing && videoOpenFailedToken.current === token"), app.indexOf("if (state.onlineMedia?.playing) {"));
-  assert.match(reopen, /^if \(state\.playing && !videoPreparing && videoOpenFailedToken\.current === token && !viewShowsFailure && !state\.hasPendingPlay\(\)\) \{\s*videoOpenFailedToken\.current = "";[\s\S]*?state\.reloadCurrentTrack\(\);/);
+  // (An open that threw and a failure the player reported are handled alike;
+  // see video-load-failure.test.cjs.)
+  const reopen = app.slice(app.indexOf("if (state.playing && !videoPreparing && (openFailed || playerFailed)"), app.indexOf("if (state.onlineMedia?.playing) {"));
+  assert.match(app, /const openFailed = videoOpenFailedToken\.current === token;/);
+  assert.match(reopen, /^if \(state\.playing && !videoPreparing && \(openFailed \|\| playerFailed\) && !state\.hasPendingPlay\(\)\) \{\s*if \(startedVideo\) \{\s*videoOpenFailedToken\.current = "";[\s\S]*?state\.reloadCurrentTrack\(\);/);
   assert.doesNotMatch(reopen, /playTrack\(/);
   // Once String(error) of "Error: x" read "Error: Error: x".
   assert.equal(`${new Error("Error: x")}`, "Error: Error: x");

@@ -15,7 +15,8 @@ import { matchingBrowserOutputDevice, type BrowserOutputDevice } from "./outputD
 import { applyNativeWindowOutline, setNativeAccentAcrylic, restoreNativeTransparency } from "./nativeWindowOutline";
 import { onlineVolumeScript } from "./onlineVolume";
 import { onlinePlayerTimelineScript, onlinePlayerSeekScript } from "./onlinePlayerTimeline";
-import { app, BrowserWindow, safeStorage, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, protocol, screen, shell, Tray, WebContentsView, type IpcMainEvent, type WebContents } from "electron";
+import { app, BrowserWindow, safeStorage, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, protocol, screen, shell, Tray, WebContentsView, type Display, type IpcMainEvent, type WebContents } from "electron";
+import { DisplayLogScheduler, describeDisplays, describeGpuDevices, describeGpuFeatureStatus } from "./displayDiagnostics";
 import { configureNeteaseSession } from "./neteaseApi";
 import fs from "node:fs";
 import path from "node:path";
@@ -410,6 +411,9 @@ app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 // is completely covered by another maximized window. The YouTube PCM bridge
 // must keep AudioWorklet and page-to-main packet delivery at foreground cadence.
 app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+// getGPUFeatureStatus is only meaningful after the first gpu-info-update.
+// Registered before ready so that event cannot be missed.
+const gpuInfoUpdated = new Promise<void>(resolve => app.once("gpu-info-update", () => resolve()));
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
@@ -451,6 +455,51 @@ function syncWindowFit(clamp = false, restoreSize = false) {
     if(onlineView&&!onlineView.webContents.isDestroyed())onlineView.webContents.setZoomFactor(zoom);
     scheduleOnlineBoundsResync();
   },80);
+}
+
+// Scale factor, work area and acceleration mode decide most high-DPI layout
+// and performance reports; log them so a field log answers that without a
+// debug port.
+function logDisplays(reasons: string[]) {
+  try {
+    const windowDisplay = mainWindow && !mainWindow.isDestroyed() ? screen.getDisplayMatching(mainWindow.getBounds()).id : undefined;
+    for (const line of describeDisplays(screen.getAllDisplays(), screen.getPrimaryDisplay().id, windowDisplay, reasons.join("+"))) writeLog("DISPLAY", line);
+  } catch (error) { writeLog("DISPLAY", `display query failed: ${error instanceof Error ? error.message : String(error)}`); }
+}
+function gpuFeatures() {
+  try { return describeGpuFeatureStatus(app.getGPUFeatureStatus()); }
+  catch (error) { return `features unavailable (${error instanceof Error ? error.message : String(error)})`; }
+}
+// Feature status is synchronous and cheap, so every display change re-logs it:
+// a mid-session drop to software compositing shows up next to the change.
+function logDisplayChange(reasons: string[]) {
+  logDisplays(reasons);
+  writeLog("GPU", `${reasons.join("+")} ${gpuFeatures()}`);
+}
+const displayLog = new DisplayLogScheduler(logDisplayChange, 500);
+// A GPU process crash (driver TDR) can leave Chromium on software compositing
+// for the rest of the session; record it and the status once it relaunches.
+let gpuRelaunchPending = false;
+app.on("child-process-gone", (_event, details) => {
+  if (details.type !== "GPU") return;
+  writeLog("GPU", `process gone reason=${details.reason} exit=${details.exitCode}`);
+  if (gpuRelaunchPending) return;
+  gpuRelaunchPending = true;
+  app.once("gpu-info-update", () => { gpuRelaunchPending = false; writeLog("GPU", `after relaunch ${gpuFeatures()}`); });
+});
+let gpuLogRequested = false;
+/** Writes one GPU device line per launch; never awaited, so a slow GPU process cannot hold startup back. */
+function logGpu() {
+  if (gpuLogRequested) return;
+  gpuLogRequested = true;
+  let fallback: NodeJS.Timeout | undefined;
+  // Some GPU-disabled setups never emit gpu-info-update; still log something.
+  void Promise.race([gpuInfoUpdated, new Promise<void>(resolve => { fallback = setTimeout(resolve, 5000); })])
+    .then(() => { clearTimeout(fallback); return app.getGPUInfo("basic"); })
+    .then(
+      info => writeLog("GPU", `${describeGpuDevices(info)}; ${gpuFeatures()}`),
+      error => writeLog("GPU", `info unavailable (${error instanceof Error ? error.message : String(error)}); ${gpuFeatures()}`)
+    );
 }
 
 function createWindow() {
@@ -602,14 +651,25 @@ function createWindow() {
     observeWindow();
     saveWindowState();
   });
-  const displayChanged = () => syncWindowFit(true,true);
-  screen.on("display-metrics-changed",displayChanged);
-  screen.on("display-removed",displayChanged);
+  // Refit on every event as before; the log line is debounced separately.
+  // display-added does not refit: Windows also reports the work-area move as
+  // display-metrics-changed.
+  const displayMetricsChanged = (_event: unknown, display: Display, changed: string[]) => {
+    syncWindowFit(true,true);
+    displayLog.schedule(`metrics:${changed.join(",")}@${display.id}`);
+  };
+  const displayRemoved = () => { syncWindowFit(true,true); displayLog.schedule("removed"); };
+  const displayAdded = () => displayLog.schedule("added");
+  screen.on("display-metrics-changed",displayMetricsChanged);
+  screen.on("display-removed",displayRemoved);
+  screen.on("display-added",displayAdded);
   mainWindow.on("closed",()=>{
     if(windowFitTimer)clearTimeout(windowFitTimer);
     windowFitTimer=undefined;
-    screen.removeListener("display-metrics-changed",displayChanged);
-    screen.removeListener("display-removed",displayChanged);
+    screen.removeListener("display-metrics-changed",displayMetricsChanged);
+    screen.removeListener("display-removed",displayRemoved);
+    screen.removeListener("display-added",displayAdded);
+    displayLog.dispose();
   });
   const emitPresentationState = () => sendToMainWindow("window:presentation-state", {
     minimized: Boolean(mainWindow?.isMinimized()),
@@ -1854,6 +1914,8 @@ app.whenReady().then(async () => {
   // Normally finished by now; never hold the window back on a slow disk.
   await Promise.race([libraryRootsReady, new Promise(resolve => setTimeout(resolve, 1500))]);
   createWindow();
+  logDisplays(["startup"]);
+  logGpu();
   void createTray();
   setWindowGlass("mica");
   mainWindow?.webContents.on("render-process-gone", (_, details) =>

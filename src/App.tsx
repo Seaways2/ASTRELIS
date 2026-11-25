@@ -34,6 +34,8 @@ import { WithDisplayTime } from "./app/WithDisplayTime";
 import { useImmersiveMode } from "./app/useImmersiveMode";
 import { useVolumeRouting } from "./app/useVolumeRouting";
 import { useWindowPresence } from "./app/useWindowPresence";
+import { useMeterCrowding } from "./app/useMeterCrowding";
+import { metersShownFor } from "./utils/meterCrowding";
 import { toNativeRackPayload, useVstRackStore } from "./stores/vstRackStore";
 import type { OutputDevice, VisualizerMode } from "./types/audio";
 import { VisualizerCanvas } from "./visualizers/VisualizerCanvas";
@@ -205,7 +207,12 @@ export default function App() {
   const visualWheelLockedUntil = useRef(0);
   const [renderedPage, setRenderedPage] = useState<PageId>(state.activePage);
   const [metersExpanded, setMetersExpanded] = useState(true);
-  const showMeters = renderedPage === "nowPlaying" || metersExpanded;
+  // A narrow window folds the meters away before the sidebar or mode names lose room.
+  const visualHeadRef = useRef<HTMLDivElement>(null);
+  const metersCrowded = useMeterCrowding(visualHeadRef, renderedPage === "nowPlaying" && !videoActive, resolvedLanguage);
+  const [metersForced, setMetersForced] = useState(false);
+  useEffect(() => { if (!metersCrowded) setMetersForced(false); }, [metersCrowded]);
+  const showMeters = metersShownFor({ nowPlaying: renderedPage === "nowPlaying", crowded: metersCrowded, forced: metersForced, expanded: metersExpanded });
   const [pageSwitchPhase, setPageSwitchPhase] = useState<"idle" | "out" | "in">("idle");
   const renderedPageRef = useRef<PageId>(state.activePage);
   const pageSwitchPhaseRef = useRef<"idle" | "out" | "in">("idle");
@@ -1628,7 +1635,7 @@ export default function App() {
 
       <div className={`workspace-page-transition ${state.activePage === "online" || renderedPage === "online" ? "native-browser-page" : ""} page-transition-${state.uiSettings.visualTransition} ${pageSwitchPhase === "idle" ? "" : `page-switch-${pageSwitchPhase}`}`}>
       {renderedPage === "nowPlaying" ? <section className={`center-stage `} onWheel={videoActive ? undefined : handleVisualizerWheel}>
-        <div className="visual-head">
+        <div className="visual-head" ref={visualHeadRef}>
           <div><span className="eyebrow">{videoActive ? "VIDEO PLAYBACK" : "REALTIME ANALYSIS"}</span><b>{t(videoActive ? "video.title" : "visual.title")}</b></div>
           <div className="visual-head-actions" >
             <div className="mode-tabs" style={videoActive ? {display:"none"} : undefined}>{modes.map((mode) => <button className={state.visualizer === mode.id ? "active" : ""} onClick={() => switchVisualizer(mode.id)} key={mode.id}>{t(mode.key)}</button>)}</div>
@@ -1701,12 +1708,14 @@ export default function App() {
       {showMeters && <MeterPanel visible={pageVisible && !windowBackgrounded} lowPerformance={lowPerformanceMode} format={onlineSession ? "STREAM" : current?.format || ""} device={deviceName} coverUrl={displayCover} name={displayName || ""} playbackState={playbackState} />}
       {/* A faint triangle on the meters' edge, shown only when the pointer comes near:
           it folds the meters away, and from the window's right edge brings them back. */}
-      {renderedPage !== "nowPlaying" && <button type="button"
-        className={`meter-edge-toggle ${metersExpanded ? "expanded" : "collapsed"}`}
-        aria-pressed={metersExpanded}
-        aria-label={t(metersExpanded ? "layout.hideMeters" : "layout.showMeters")}
-        title={t(metersExpanded ? "layout.hideMeters" : "layout.showMeters")}
-        onClick={() => setMetersExpanded(value => !value)}><i aria-hidden="true" /></button>}
+      {/* While the window is too narrow the meters fold away on every page; the toggle
+          then brings them back over the names until the window is wide enough again. */}
+      {(renderedPage !== "nowPlaying" || metersCrowded) && <button type="button"
+        className={`meter-edge-toggle ${showMeters ? "expanded" : "collapsed"}`}
+        aria-pressed={showMeters}
+        aria-label={t(showMeters ? "layout.hideMeters" : "layout.showMeters")}
+        title={t(showMeters ? "layout.hideMeters" : "layout.showMeters")}
+        onClick={() => metersCrowded ? setMetersForced(value => !value) : setMetersExpanded(value => !value)}><i aria-hidden="true" /></button>}
     </div>
 
     <footer className="transport">

@@ -1078,15 +1078,26 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 1px s
   border-color: #e47781;
 }
 
+/* Narrowing the window folds the meters first (useMeterCrowding, METERS_FOLD_WIDTH
+   in src/utils/meterCrowding.ts): with them folded the sidebar keeps its names down
+   to 1000px. Only meters brought back by hand cost the sidebar its names here. */
 @media (max-width: 1250px) {
   .workspace { grid-template-columns: 66px minmax(500px,1fr) 262px; }
+  .workspace.workspace-focus { grid-template-columns: 184px minmax(0, 1fr); }
+  .workspace:not(.workspace-focus) > .sidebar { padding-inline: 8px; }
+  .workspace:not(.workspace-focus) > .sidebar nav button { justify-content: center; padding: 0; }
+  .workspace:not(.workspace-focus) > .sidebar nav span { font-size: 0; }
+  .workspace:not(.workspace-focus) > .sidebar .import-button { width: 42px; height: 42px; margin-inline: auto; padding: 0; gap: 0; font-size: 0 !important; line-height: 0; letter-spacing: 0; white-space: nowrap; overflow: hidden; }
+  .workspace:not(.workspace-focus) > .sidebar .import-button svg { flex: 0 0 17px; width: 17px; height: 17px; }
+  .brand { width: 200px; }
+}
+@media (max-width: 1000px) {
   .workspace.workspace-focus { grid-template-columns: 66px minmax(0, 1fr); }
   .sidebar { padding-inline: 8px; }
   .sidebar nav button { justify-content: center; padding: 0; }
   .sidebar nav span { font-size: 0; }
   .sidebar .import-button { width: 42px; height: 42px; margin-inline: auto; padding: 0; gap: 0; font-size: 0 !important; line-height: 0; letter-spacing: 0; white-space: nowrap; overflow: hidden; }
   .sidebar .import-button svg { flex: 0 0 17px; width: 17px; height: 17px; }
-  .brand { width: 200px; }
 }
 
 /* Readability pass: retain dense instrumentation without sub-9px desktop text. */

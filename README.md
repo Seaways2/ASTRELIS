@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.9
+# ASTRELIS 2.18.10
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,16 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.10 窗口变窄时先收起右侧仪表
+
+（只更新源码，未打安装包。）
+
+窗口变窄或缩放变大时，先收起右侧的音频仪表，把位置让给可视化模式名称和左侧导航名称：
+
+- 窗口宽度在 1250 像素（CSS 像素）以下时，仪表自动收起，左侧导航的文字一直保留到 1000 像素；以前一过 1250 像素，导航就只剩图标。
+- 在「正在播放」页，只要放着仪表就会挤掉模式名称，仪表也会先收起。这一点按实际宽度判断，中英日界面都适用。
+- 收起后，窗口右边缘的小三角可以手动把仪表拿回来；窗口重新变宽、名称放得下时，仪表会自动回来。
 
 ## 2.18.9 修复全量测试报告的优先问题
 

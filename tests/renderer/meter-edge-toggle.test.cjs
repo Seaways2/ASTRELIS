@@ -10,11 +10,11 @@ const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 test("the sidebar no longer has a fold-meters button; a triangle on the meters' edge folds them", () => {
   const app = readAppSource();
   assert.doesNotMatch(app, /className="meter-toggle"/);
-  assert.match(app, /className=\{`meter-edge-toggle \$\{metersExpanded \? "expanded" : "collapsed"\}`\}/);
-  assert.match(app, /onClick=\{\(\) => setMetersExpanded\(value => !value\)\}><i aria-hidden="true" \/><\/button>\}/);
-  assert.match(app, /aria-label=\{t\(metersExpanded \? "layout\.hideMeters" : "layout\.showMeters"\)\}/);
-  // Now Playing keeps its meters, as before.
-  assert.match(app, /\{renderedPage !== "nowPlaying" && <button type="button"\s*className=\{`meter-edge-toggle/);
+  assert.match(app, /className=\{`meter-edge-toggle \$\{showMeters \? "expanded" : "collapsed"\}`\}/);
+  assert.match(app, /onClick=\{\(\) => metersCrowded \? setMetersForced\(value => !value\) : setMetersExpanded\(value => !value\)\}><i aria-hidden="true" \/><\/button>\}/);
+  assert.match(app, /aria-label=\{t\(showMeters \? "layout\.hideMeters" : "layout\.showMeters"\)\}/);
+  // Now Playing keeps its meters unless a narrow window folds them (meter-crowding.test.cjs).
+  assert.match(app, /\{\(renderedPage !== "nowPlaying" \|\| metersCrowded\) && <button type="button"\s*className=\{`meter-edge-toggle/);
 });
 
 test("the triangle appears only near the edge and points the way the meters move", () => {

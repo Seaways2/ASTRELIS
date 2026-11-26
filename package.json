@@ -1,7 +1,7 @@
 {
   "name": "astrelis",
   "productName": "ASTRELIS",
-  "version": "2.18.12",
+  "version": "2.18.13",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "Professional futuristic audio workstation and music visualizer for Windows",

@@ -156,6 +156,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const mosaicPan = useRef<MosaicPan | null>(null);
   const mosaicStage = useRef<HTMLDivElement>(null);
   const mosaicCanvasOffset = useRef({ x: 0, y: 0 });
+  const pendingFlowFocus = useRef<{ entryKey: string; browseKey: string } | null>(null);
   const mosaicInertiaFrame = useRef<number | null>(null);
   const suppressMosaicClickUntil = useRef(0);
   const fullscreenBreadcrumbPointerAt = useRef(0);
@@ -358,6 +359,16 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const pageOffset = libraryView === "flow" ? flowOffset : virtual.offset;
   const pageRemaining = libraryView === "flow" ? Math.min(flowVisibleRadius * 2 + 1, totalListItems - flowOffset) : virtual.limit;
   const visibleEntries = entriesAt(pageOffset, pageRemaining);
+  // After a sort change in the cover flow, put the entry that was in front back in front.
+  useLayoutEffect(() => {
+    const pending = pendingFlowFocus.current;
+    if (!pending || pending.browseKey === browseKey) return;
+    pendingFlowFocus.current = null;
+    // Artist and album overviews keep their order (count, then name) whatever the sort.
+    if (libraryView !== "flow" || categoryItemsVisible) return;
+    const index = entriesAt(0, totalListItems).findIndex(entry => entry.key === pending.entryKey);
+    if (index >= 0 && index !== selectedFlowIndex) setFlowIndex(index);
+  });
   const infiniteMosaicBoards = previewFullscreen && libraryView === "mosaic" && totalListItems
     ? Array.from({ length: 9 }, (_, index) => {
       const column = index % 3 - 1;
@@ -447,6 +458,17 @@ export const MusicLibrary = memo(function MusicLibrary() {
     localStorage.setItem("auralis.library.sortAscending", String(next));
     return next;
   });
+  // The cover flow is centred on one entry: a new sort keeps that entry in front
+  // (restored below once the new order exists) instead of jumping to the start.
+  const rememberFlowFocus = () => {
+    // Artist and album overviews keep their order (count, then name) whatever the sort.
+    if (libraryView !== "flow" || categoryItemsVisible) return;
+    const entry = entriesAt(selectedFlowIndex, 1)[0];
+    pendingFlowFocus.current = entry ? { entryKey: entry.key, browseKey } : null;
+  };
+  // Picking the current sort again changes nothing, so it must not leave a pending focus behind.
+  const chooseSort = (sort: LibrarySort) => { if (sort !== librarySort) rememberFlowFocus(); setLibrarySort(sort); };
+  const chooseSortDirection = () => { rememberFlowFocus(); toggleSortDirection(); };
   const navigateToParentFolder = () => {
     setFacet("文件夹");
     setFolderPath(parentFolder);
@@ -742,11 +764,11 @@ export const MusicLibrary = memo(function MusicLibrary() {
       <div className="facet-tabs">{facets.filter(item => previewFullscreen ? item === "文件夹" || item === "收藏" : mediaFilter !== "video" || item === "文件夹" || item === "收藏").map(item => <button className={facet === item ? "active" : ""} key={item} onClick={() => { setFacet(item); setValue("全部"); setCategoryId(""); if (item !== "文件夹") setFolderPath(""); }}>{item === "文件夹" ? <FolderOpen /> : item === "收藏" ? <Heart /> : item === "艺术家" ? <UserRound /> : <Album />}<span>{t(`library.${facetTranslationKey(item)}`)}</span></button>)}</div>
       <LibrarySelect className="library-view-select" label={t("library.viewMode")} value={libraryView} options={libraryViews.map(view => ({ value: view.id, label: t(view.labelKey) }))} onChange={setLibraryView} />
       <button type="button" className="library-mosaic-preview-toggle" title={t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")} aria-label={t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")} aria-pressed={previewFullscreen} onClick={() => void toggleMosaicFullscreen()}>{previewFullscreen ? <X /> : <Expand />}<span>{t(previewFullscreen ? "library.previewExit" : "library.previewFullscreen")}</span></button>
-      {/* Cover flow keeps the order set in the grid views (album order by default); the menu lives there. */}
-      {libraryView !== "flow" && <LibraryMenu className="library-sort-controls" label={`${t("library.sort" + librarySort[0].toUpperCase() + librarySort.slice(1))} ${sortAscending ? "↑" : "↓"}`}>
-        {LIBRARY_SORTS.map(sort => <button key={sort} aria-pressed={librarySort === sort} onClick={() => setLibrarySort(sort as LibrarySort)}>{t("library.sort" + sort[0].toUpperCase() + sort.slice(1))}</button>)}
-        <button className="library-sort-direction" onClick={toggleSortDirection}><ArrowUpDown />{t(sortAscending ? "library.sortAscending" : "library.sortDescending")}</button>
-      </LibraryMenu>}
+      {/* Every view, cover flow included, shows the order it lists in and lets it be changed there. */}
+      <LibraryMenu className="library-sort-controls" label={`${t("library.sort" + librarySort[0].toUpperCase() + librarySort.slice(1))} ${sortAscending ? "↑" : "↓"}`}>
+        {LIBRARY_SORTS.map(sort => <button key={sort} aria-pressed={librarySort === sort} onClick={() => chooseSort(sort as LibrarySort)}>{t("library.sort" + sort[0].toUpperCase() + sort.slice(1))}</button>)}
+        <button className="library-sort-direction" onClick={chooseSortDirection}><ArrowUpDown />{t(sortAscending ? "library.sortAscending" : "library.sortDescending")}</button>
+      </LibraryMenu>
       {previewFullscreen && (libraryView === "mosaic" || libraryView === "flow") && <label className="library-preview-zoom" title={t("library.zoom")}>
         <ZoomOut aria-hidden="true" />
         <input type="range" min={MIN_PREVIEW_ZOOM * 100} max={100} step={5} value={Math.round(previewZoom * 100)} aria-label={t("library.zoom")} onChange={event => updatePreviewZoom(Number(event.target.value))} />

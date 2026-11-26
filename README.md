@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.12
+# ASTRELIS 2.18.13
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,14 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.13 3D 封面流里也能排序
+
+（只更新源码，未打安装包。）
+
+- 3D 封面流的工具栏里也有排序菜单了。以前只有网格、列表这几种视图显示它，封面流里看不到当前按什么排，也改不了，只能沿用在别的视图里选过的排序（比如以前默认的「文件大小」）。
+- 在封面流里换排序或升降序时，正对着你的那张卡片会留在中间，不会跳回第一张。
+- 全屏预览时工具栏在屏幕底部，下拉菜单下面放不下时会改成向上展开，不再盖住自己的按钮。
 
 ## 2.18.12 隐藏后的数量不再算上隐藏内容
 

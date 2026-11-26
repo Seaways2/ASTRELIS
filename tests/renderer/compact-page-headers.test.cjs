@@ -91,7 +91,32 @@ test("settings use compact, aligned rows and fill wide windows", () => {
   assert.match(read("src/components/WorkspacePage.tsx"), /hint=\{t\("fx\.motionHint"\)\}/);
 });
 
-test("cover flow hides the sort menu", () => {
+// Hidden in cover flow before 2.18.13: the flow still followed a sort chosen
+// elsewhere (e.g. file size), with no way to see or change it there.
+test("every view, cover flow included, shows the sort menu", () => {
   const library = read("src/components/MusicLibrary.tsx");
-  assert.match(library, /\{libraryView !== "flow" && <LibraryMenu className="library-sort-controls"/);
+  assert.match(library, /\n\s*<LibraryMenu className="library-sort-controls"/);
+  assert.doesNotMatch(library, /libraryView !== "flow" && <LibraryMenu className="library-sort-controls"/);
+  // A sort change in the flow keeps the entry in front instead of jumping to the start.
+  assert.match(library, /onClick=\{\(\) => chooseSort\(sort as LibrarySort\)\}/);
+  assert.match(library, /<button className="library-sort-direction" onClick=\{chooseSortDirection\}>/);
+  assert.match(library, /const chooseSort = \(sort: LibrarySort\) => \{ if \(sort !== librarySort\) rememberFlowFocus\(\); setLibrarySort\(sort\); \};/);
+  assert.match(library, /pendingFlowFocus\.current = entry \? \{ entryKey: entry\.key, browseKey \} : null;/);
+  // Artist and album overviews ignore the sort: nothing to keep, and no full rebuild of every group.
+  assert.equal((library.match(/if \(libraryView !== "flow" \|\| categoryItemsVisible\) return;/g) || []).length, 2);
+  assert.match(library, /if \(!pending \|\| pending\.browseKey === browseKey\) return;[\s\S]{0,400}entriesAt\(0, totalListItems\)\.findIndex\(entry => entry\.key === pending\.entryKey\)/);
+});
+
+test("a menu with no room below its trigger opens above it", () => {
+  const menu = read("src/components/LibraryMenu.tsx");
+  const line = menu.match(/const below = r\.bottom \+ 6, above = r\.top - 6 - box\.height;\s*el\.style\.top = `\$\{(.+)\}px`;/);
+  assert.ok(line, "placement");
+  const place = Function("below", "above", "box", "innerHeight", `return ${line[1]};`);
+  const box = { height: 306 };
+  // Fullscreen preview: trigger at the bottom of a 912px window.
+  assert.equal(place(867, 549 - 306, box, 912), 243, "opens above");
+  // Normal header: room below.
+  assert.equal(place(120, -200, box, 912), 120, "opens below");
+  // No room either way: pinned inside the window.
+  assert.equal(place(300, 0, { height: 900 }, 912), 8);
 });

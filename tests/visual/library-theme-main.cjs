@@ -20,7 +20,6 @@ const click=async selector=>{
   await js(`(()=>{const a=document.querySelector('.app-shell');a.classList.toggle('theme-light',${theme==='light'});a.style.setProperty('--accent','#9b79e8')})()`);
   let surface;
   for(const name of ['library-media-filter','library-view-select','library-management','library-sort-controls']){
-   if(name==='library-sort-controls'&&!(await js(`Boolean(document.querySelector('.library-sort-controls'))`)))continue; // hidden in cover flow
    await click('.'+name+' > .library-menu-trigger');
    const style=await js(`(()=>{const p=document.querySelector('.${name} .library-menu-popup'),r=p.getBoundingClientRect(),c=getComputedStyle(p);return {bg:c.backgroundColor,text:c.color,border:c.borderColor,visible:p.matches(':popover-open'),fits:r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1}})()`);
    assert.ok(style.visible&&style.fits,JSON.stringify(style));if(surface)assert.deepEqual([style.bg,style.text,style.border],surface);else surface=[style.bg,style.text,style.border];

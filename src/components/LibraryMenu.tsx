@@ -18,7 +18,11 @@ export function LibraryMenu({ label, className, children, closeOnAction = false,
         el.style.maxHeight = `${Math.max(80, innerHeight - 16)}px`;
         const box = el.getBoundingClientRect();
         el.style.left = `${Math.max(8, Math.min(r.right - box.width, innerWidth - box.width - 8))}px`;
-        el.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - box.height - 8))}px`;
+        // Below the trigger when it fits; otherwise above it when that fits (the
+        // fullscreen preview's toolbar sits at the bottom), so the popup never
+        // covers its own trigger; failing both, pinned inside the window.
+        const below = r.bottom + 6, above = r.top - 6 - box.height;
+        el.style.top = `${below + box.height > innerHeight - 8 && above >= 8 ? above : Math.max(8, Math.min(below, innerHeight - box.height - 8))}px`;
       }
       setOpen(visible);
       if (visible && popupRole === "listbox") el.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus({ preventScroll: true });

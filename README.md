@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.10
+# ASTRELIS 2.18.11
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,16 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.11 媒体库文件夹分组排列
+
+（只更新源码，未打安装包。）
+
+媒体中心的文件夹视图里，装着其他文件夹的分类文件夹（例如「华语」「Live」）不再和专辑文件夹混在一起：
+
+- 进入任意文件夹，顺序都是：分类文件夹 → 只装歌曲的文件夹 → 歌曲。不管选哪种排序、升序还是降序，都按这三段排；每一段里面再按所选的排序方式排。
+- 一个文件夹只要含有子文件夹，就算分类文件夹，哪怕它里面也直接放着歌曲。被隐藏的子文件夹不算。
+- 分类文件夹的卡片换成叠放的文件夹图标，角标写「N 个文件夹 · M 项」（封面小时末尾用省略号，不会折行盖住封面）；详情视图的类型一栏显示「分类」。封面流、卡片、马赛克、详情四种视图都一样。
 
 ## 2.18.10 窗口变窄时先收起右侧仪表
 

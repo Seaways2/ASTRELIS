@@ -9,13 +9,13 @@ import { isVideoTrack } from "../utils/videoTrack";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { LibraryThumbnail } from "./LibraryThumbnail";
 import { createPortal } from "react-dom";
-import { Expand, EyeOff, ImagePlus, LockKeyhole, Album, ArrowUp, ArrowUpDown, AudioWaveform, CheckCircle2, ChevronRight, Folder, FolderOpen, FolderPlus, Film, Grid2X2, Grid3X3, Heart, ListPlus, RefreshCw, Rows3, Search, TableProperties, Tags, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Expand, EyeOff, ImagePlus, LockKeyhole, Album, ArrowUp, ArrowUpDown, AudioWaveform, CheckCircle2, ChevronRight, Folder, FolderOpen, FolderPlus, Folders, Film, Grid2X2, Grid3X3, Heart, ListPlus, RefreshCw, Rows3, Search, TableProperties, Tags, UserRound, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { favoriteTrackKey, usePlayerStore } from "../stores/playerStore";
 import { useI18n } from "../i18n";
 import { useLibraryViewModel } from "../hooks/useLibraryViewModel";
 import { useVirtualLibraryGrid } from "../hooks/useVirtualLibraryGrid";
-import { LIBRARY_SORTS, libraryFolderWithin, type LibraryCategoryGroup, type LibraryFolderNode, type LibrarySort } from "../library/LibraryQueryService";
+import { LIBRARY_SORTS, libraryFolderWithin, type LibraryCategoryGroup, type LibraryFolderEntry, type LibrarySort } from "../library/LibraryQueryService";
 import type { Track } from "../types/audio";
 
 type Facet = "文件夹" | "艺术家" | "专辑" | "收藏";
@@ -66,7 +66,7 @@ const parentFolderPath = (value: string) => {
 };
 
 type VisibleLibraryEntry =
-  | { kind: "folder"; key: string; item: LibraryFolderNode }
+  | { kind: "folder"; key: string; item: LibraryFolderEntry }
   | { kind: "category"; key: string; item: LibraryCategoryGroup & { artistSummary: string } }
   | { kind: "track"; key: string; item: Track };
 type MosaicPan = { pointerId: number; lastX: number; lastY: number; distanceX: number; distanceY: number; lastTime: number; velocityX: number; velocityY: number; scroller: HTMLElement; mode: "scroll" | "infinite"; viewportWidth: number; viewportHeight: number; moved: boolean };
@@ -603,15 +603,19 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const renderLibraryEntry = (entry: VisibleLibraryEntry) => {
     if (entry.kind === "folder") {
       const group = entry.item;
-      return <div className="library-entry library-folder-entry" role="button" tabIndex={0} key={entry.key} onContextMenu={e => protection.context(e, group.path)} onClick={() => setFolderPath(group.path)} onKeyDown={event => { if (event.key === "Enter" && event.target === event.currentTarget) setFolderPath(group.path); }}>
-      <div className="library-entry-media"><CoverTile covers={group.covers} count={group.count} fallback={<Folder />} coverFlow={libraryView === "flow"} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} highResolutionSources={videoCoverSources} />{libraryView === "mosaic" ? <div className="library-folder-control">
-        <span className="library-folder-badge"><FolderOpen /><span>{t("library.folder")} · {group.count}</span></span>
+      // A folder holding other folders (a shelf) is listed first and drawn as a stack.
+      const shelf = group.subfolderCount > 0;
+      const badgeIcon = shelf ? <Folders /> : <FolderOpen />;
+      const badgeText = shelf ? t("library.shelfBadge", { folders: group.subfolderCount, count: group.count }) : `${t("library.folder")} · ${group.count}`;
+      return <div className={`library-entry library-folder-entry${shelf ? " library-folder-shelf" : ""}`} role="button" tabIndex={0} key={entry.key} onContextMenu={e => protection.context(e, group.path)} onClick={() => setFolderPath(group.path)} onKeyDown={event => { if (event.key === "Enter" && event.target === event.currentTarget) setFolderPath(group.path); }}>
+      <div className="library-entry-media"><CoverTile covers={group.covers} count={group.count} fallback={shelf ? <Folders /> : <Folder />} coverFlow={libraryView === "flow"} smartFocus={libraryView === "mosaic"} fullscreen={previewFullscreen} highResolutionSources={videoCoverSources} />{libraryView === "mosaic" ? <div className="library-folder-control">
+        <span className="library-folder-badge">{badgeIcon}<span>{badgeText}</span></span>
         {group.directIds.length > 0 && <button type="button" className="bulk-queue-action" onClick={event => { event.stopPropagation(); enqueueTracksWithFeedback(group.directIds); }}>+ {t("library.addLayer")} · {group.directIds.length}</button>}
-      </div> : <span className="library-folder-badge"><FolderOpen />{t("library.folder")} · {group.count}</span>}{hiddenIndicator(group.path)}</div>
+      </div> : <span className="library-folder-badge">{badgeIcon}<span>{badgeText}</span></span>}{hiddenIndicator(group.path)}</div>
         <b className="library-entry-title">{group.path.split(/[\\/]/).filter(Boolean).pop() || group.path}</b>
         <small className="library-entry-primary" title={group.path}>{group.path}</small>
         <em className="library-entry-secondary">{group.formats.size} FORMATS</em>
-        <span className="library-entry-type">{t("library.folder")}</span>
+        <span className="library-entry-type">{t(shelf ? "library.shelf" : "library.folder")}</span>
         <span className="library-entry-size">{group.count} TRACKS</span>
         {libraryView !== "mosaic" && group.directIds.length > 0 && <div className="library-entry-actions"><button type="button" className="bulk-queue-action" onClick={event => { event.stopPropagation(); enqueueTracksWithFeedback(group.directIds); }}>+ {t("library.addLayer")} · {group.directIds.length}</button></div>}
       </div>;

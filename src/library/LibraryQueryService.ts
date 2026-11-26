@@ -53,6 +53,11 @@ export interface LibraryFolderNode {
   covers: string[];
 }
 
+/** A folder as folderPage lists it: how many listed folders are directly inside it. */
+export interface LibraryFolderEntry extends LibraryFolderNode {
+  subfolderCount: number;
+}
+
 interface CachedCategoryGroup {
   key: string;
   name: string;
@@ -257,6 +262,7 @@ export class LibraryIndex {
   private readonly albumGroups = new Map<string, CachedCategoryGroup>();
   private readonly folderNodesByPath = new Map<string, CachedFolderNode>();
   private readonly folderChildren = new Map<string, string[]>();
+  private readonly subfolderCounts = new Map<string, number>();
   private readonly sortedGroupIds = new Map<string, string[]>();
   private readonly queryCache = new Map<string, string[]>();
   private derivedStats = { totalBytes: 0, hiRes: 0, artistCount: 0, albumCount: 0 };
@@ -340,6 +346,7 @@ export class LibraryIndex {
 
   private rebuildFolderChildren() {
     this.folderChildren.clear();
+    this.subfolderCounts.clear();
     for (const node of this.folderNodesByPath.values()) {
       const parent = normalize(parentFolder(node.path));
       if (!parent) continue;
@@ -483,23 +490,41 @@ export class LibraryIndex {
 
   stats() { return { ...this.derivedStats }; }
 
-  folderPage(roots: string[], currentPath: string, offset = 0, limit = 100, sort: LibrarySort = "title", sortAscending = true): LibraryPage<LibraryFolderNode> {
+  /** Folders with media directly inside `node` (the ones browsing into it would list). */
+  private subfolderCount(node: CachedFolderNode) {
+    const nodeKey = normalize(node.path);
+    const cached = this.subfolderCounts.get(nodeKey);
+    if (cached !== undefined) return cached;
+    let count = 0;
+    for (const key of this.folderChildren.get(nodeKey) || []) if (this.folderNodesByPath.get(key)?.count) count++;
+    this.subfolderCounts.set(nodeKey, count);
+    return count;
+  }
+
+  // Folders holding other folders (a genre or artist shelf) come first, then the
+  // folders holding only media (albums), then the media themselves (MusicLibrary
+  // lists tracks after every folder). The chosen sort orders each group; the
+  // groups stay in this order whatever the sort and its direction.
+  folderPage(roots: string[], currentPath: string, offset = 0, limit = 100, sort: LibrarySort = "title", sortAscending = true): LibraryPage<LibraryFolderEntry> {
     // The index keeps every ancestor up to the drive, but browsing stays inside
     // the library roots: a folder above them is not part of the library.
     const insideRoots = !currentPath || roots.some(root => libraryFolderWithin(currentPath, root));
     const keys = !insideRoots ? [] : currentPath ? this.folderChildren.get(folderNodeKey(currentPath)) || [] : [...new Set(roots.map(folderNodeKey))].filter(key => this.folderNodesByPath.has(key));
     const nodes = keys.map(key => this.folderNodesByPath.get(key)).filter((node): node is CachedFolderNode => Boolean(node))
-      .filter(node => node.count).sort((left, right) => {
+      .filter(node => node.count).map(node => ({ node, subfolderCount: this.subfolderCount(node) }))
+      .sort((left, right) => {
+        const grouping = Number(right.subfolderCount > 0) - Number(left.subfolderCount > 0);
+        if (grouping) return grouping;
         if (sort === "size") {
-          const sizeDifference = (left.totalBytes - right.totalBytes) * (sortAscending ? 1 : -1);
+          const sizeDifference = (left.node.totalBytes - right.node.totalBytes) * (sortAscending ? 1 : -1);
           if (sizeDifference) return sizeDifference;
         }
-        return left.path.localeCompare(right.path, "zh-CN");
+        return left.node.path.localeCompare(right.node.path, "zh-CN");
       });
     const page = clampPage(nodes.length, offset, limit);
     return {
-      items: nodes.slice(page.offset, page.offset + page.limit).map(node => ({
-        path: node.path, count: node.count, directIds: [...node.directIds], formats: new Set(node.formats), covers: [...node.covers]
+      items: nodes.slice(page.offset, page.offset + page.limit).map(({ node, subfolderCount }) => ({
+        path: node.path, count: node.count, directIds: [...node.directIds], formats: new Set(node.formats), covers: [...node.covers], subfolderCount
       })), total: nodes.length, ...page, hasMore: page.offset + page.limit < nodes.length
     };
   }

@@ -68,6 +68,10 @@
 .library-folder-entry .cover-tile::before { display: none; }
 .library-folder-badge { position: absolute; left: 8px; top: 8px; z-index: 4; display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 5px; color: var(--accent); background: #0b171fee; font-size: 11px; }
 .library-folder-badge svg { width: 14px; height: 14px; }
+/* One line on any cover: a shelf's longer "12 个文件夹 · 340 项" ends in an ellipsis on small covers instead of wrapping over the artwork. */
+.library-folder-badge { box-sizing: border-box; max-width: calc(100% - 16px); white-space: nowrap; }
+.library-folder-badge svg { flex: 0 0 auto; }
+.library-folder-badge > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .library-folder-entry .cover-tile > span { display: none; }
 .library-view-details .library-folder-badge { display: none; }
 

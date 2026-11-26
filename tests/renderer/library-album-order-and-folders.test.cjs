@@ -74,7 +74,8 @@ test("a whole-drive root shows in the overview however its separator is spelled"
   for (const roots of [["E:\\"], ["E:"], ["e:/"]])
     assert.deepEqual(drive.folderNodes(roots, "").map(node => node.path), ["E:\\"], JSON.stringify(roots));
   assert.deepEqual(drive.folderNodes(["E:"], "E:\\").map(node => node.path), ["E:\\Music"]);
-  assert.deepEqual(drive.folderNodes(["E:", "E:\\", "D:\\Music\\"], "").map(node => node.path), ["D:\\Music", "E:\\"], "no duplicate, trailing separator ignored");
+  // "E:\" holds a folder, so it lists before "D:\Music", which holds only files.
+  assert.deepEqual(drive.folderNodes(["E:", "E:\\", "D:\\Music\\"], "").map(node => node.path), ["E:\\", "D:\\Music"], "no duplicate, trailing separator ignored");
 });
 
 test("files directly on a whole-drive root are listed and counted under that drive", () => {
@@ -96,6 +97,66 @@ test("files directly on a whole-drive root are listed and counted under that dri
   const rebuilt = new LibraryIndex(tracks, legacy);
   assert.equal(rebuilt.usedDerivedCache, false);
   assert.equal(rebuilt.folderNodes(["E:\\"], "")[0].count, 2);
+});
+
+test("folders holding other folders list before the album folders, whatever the sort", () => {
+  const base = "D:\\Music";
+  const tracks = [
+    track("a1", { folder: `${base}\\Abba Gold`, size: 900 }),
+    track("b1", { folder: `${base}\\Chinese\\Album One`, size: 10 }),
+    track("b2", { folder: `${base}\\Chinese\\Album Two`, size: 10 }),
+    track("c1", { folder: `${base}\\Zed`, size: 5000 }),
+    track("d1", { folder: `${base}\\Live`, size: 1 }),
+    track("d2", { folder: `${base}\\Live\\Tokyo 2019`, size: 1 }),
+    track("e1", { folder: `${base}\\Box Set\\Disc 1`, size: 300 })
+  ];
+  const index = new LibraryIndex(tracks);
+  const listed = (sort, ascending) => index.folderNodes([base], base, sort, ascending).map(node => [node.path.slice(base.length + 1), node.subfolderCount]);
+  // A folder with files of its own and a subfolder ("Live") is a shelf too.
+  const byName = [["Box Set", 1], ["Chinese", 2], ["Live", 1], ["Abba Gold", 0], ["Zed", 0]];
+  assert.deepEqual(listed("track", true), byName);
+  assert.deepEqual(listed("title", false), byName, "name order ignores the direction, as before");
+  assert.deepEqual(listed("size", false), [["Box Set", 1], ["Chinese", 2], ["Live", 1], ["Zed", 0], ["Abba Gold", 0]]);
+  assert.deepEqual(listed("size", true), [["Live", 1], ["Chinese", 2], ["Box Set", 1], ["Abba Gold", 0], ["Zed", 0]]);
+  // The overview of the roots and paging keep the groups.
+  assert.deepEqual(index.folderNodes([base], "").map(node => node.subfolderCount), [5]);
+  assert.deepEqual(index.folderPage([base], base, 2, 2, "track", true).items.map(node => node.path.slice(base.length + 1)), ["Live", "Abba Gold"]);
+  // The cached index gives the same groups.
+  const cached = new LibraryIndex(tracks, index.exportSnapshot());
+  assert.equal(cached.usedDerivedCache, true);
+  assert.deepEqual(cached.folderNodes([base], base, "track", true).map(node => [node.path.slice(base.length + 1), node.subfolderCount]), byName);
+});
+
+test("a folder whose only subfolders are hidden lists with the album folders", () => {
+  const { reusableHiddenFolderIndex } = loadQueryModule();
+  const base = "D:\\Music";
+  const canonical = new LibraryIndex([
+    track("p1", { folder: `${base}\\Private` }),
+    track("p2", { folder: `${base}\\Private\\Secret` }),
+    track("o1", { folder: `${base}\\Open` })
+  ]);
+  const hidden = [`${base}\\Private\\Secret`];
+  const index = reusableHiddenFolderIndex(canonical, hidden, item => item.sourcePath.startsWith(`${hidden[0]}\\`));
+  assert.deepEqual(index.folderNodes([base], base).map(node => [node.path.slice(base.length + 1), node.subfolderCount]), [["Open", 0], ["Private", 0]]);
+});
+
+test("a shelf folder card shows a folder stack and how many folders it holds", () => {
+  const library = fs.readFileSync(path.join(root, "src/components/MusicLibrary.tsx"), "utf8");
+  assert.match(library, /const shelf = group\.subfolderCount > 0;/);
+  assert.match(library, /const badgeIcon = shelf \? <Folders \/> : <FolderOpen \/>;/);
+  assert.match(library, /t\("library\.shelfBadge", \{ folders: group\.subfolderCount, count: group\.count \}\)/);
+  assert.match(library, /fallback=\{shelf \? <Folders \/> : <Folder \/>\}/);
+  assert.match(library, /<span className="library-entry-type">\{t\(shelf \? "library\.shelf" : "library\.folder"\)\}<\/span>/);
+  // The size column keeps its short form: the cards view sets it on the type label's line.
+  assert.match(library, /<span className="library-entry-size">\{group\.count\} TRACKS<\/span>/);
+  // Outside the mosaic the badge stays on one line and ends in an ellipsis on small covers.
+  assert.match(library, /<span className="library-folder-badge">\{badgeIcon\}<span>\{badgeText\}<\/span><\/span>/);
+  const flowCss = fs.readFileSync(path.join(root, "src/components/MediaFlow.css"), "utf8");
+  assert.match(flowCss, /\.library-folder-badge \{ box-sizing: border-box; max-width: calc\(100% - 16px\); white-space: nowrap; \}/);
+  assert.match(flowCss, /\.library-folder-badge > span \{ min-width: 0; overflow: hidden; text-overflow: ellipsis; \}/);
+  const dictionary = fs.readFileSync(path.join(root, "src/i18n/index.ts"), "utf8");
+  for (const key of ["library.shelf", "library.shelfBadge"]) assert.equal((dictionary.match(new RegExp(`"${key.replace(".", "\\.")}"`, "g")) || []).length, 3, key);
+  assert.equal((dictionary.match(/"library\.shelfBadge": "[^"]*\{folders\}[^"]*\{count\}[^"]*"/g) || []).length, 3);
 });
 
 test("albums with the same title stay together in album order", () => {

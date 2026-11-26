@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.11
+# ASTRELIS 2.18.12
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,14 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.12 隐藏后的数量不再算上隐藏内容
+
+（只更新源码，未打安装包。）
+
+- 「收藏」里的数量不再算上被隐藏文件夹里的收藏。以前数量没减，卡片之间会空出位置；收藏全被隐藏时也不会显示「还没有收藏」。
+- 「收藏」里勾选过的条目在重新上锁后，被隐藏的会自动取消勾选，「已选」数量不会比列出的还多。
+- 媒体库页头的文件夹数量不再算上被隐藏的媒体库根目录，和文件夹管理里列出的一致；根目录全被隐藏时显示「0 · 文件夹」。
 
 ## 2.18.11 媒体库文件夹分组排列
 

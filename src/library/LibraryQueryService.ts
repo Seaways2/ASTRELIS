@@ -449,7 +449,9 @@ export class LibraryIndex {
     if (scope.folders) candidates = intersect(candidates, this.idsFor(this.byFolder, scope.folders.map(folderNodeKey)));
     if (scope.favoriteMediaIds) candidates = intersect(candidates, scope.favoriteMediaIds);
     const search = normalize(scope.search);
-    let result = candidates ? [...candidates] : [...this.orderedMediaIds];
+    // Id lists from outside (favorites) may name media this index left out, such as
+    // media under hidden folders: keep only what the index holds, so totals and pages agree.
+    let result = candidates ? [...candidates].filter(mediaId => this.byMediaId.has(mediaId)) : [...this.orderedMediaIds];
     if (search) result = result.filter(mediaId => (this.searchTextByMediaId.get(mediaId) || "").includes(search));
     if (scope.availability?.length === 1) {
       const available = scope.availability[0] === "available";

@@ -57,6 +57,34 @@ test("the hidden-folder index matches a fresh build and is reused per folder set
   assert.notEqual(reusableHiddenFolderIndex(canonical, ["D:\\Music\\Public"], item => item.sourcePath.startsWith("D:\\Music\\Public")), reused);
 });
 
+test("favorites under hidden folders are not counted while locked", () => {
+  const tracks = Array.from({ length: 6 }, (_, index) => track(index));
+  const canonical = reusableLibraryIndex(tracks, null, 1);
+  const hidden = ["D:\\Music\\Private"];
+  const index = reusableHiddenFolderIndex(canonical, hidden, item => item.sourcePath.startsWith(hidden[0]));
+  const favorites = tracks.map(item => item.mediaId);
+  // Before, the hidden favourites stayed in the ids: the count and the grid
+  // were sized for six while only three cards came back.
+  const ids = index.queryIds({ favoriteMediaIds: favorites, sort: "title", sortAscending: true }, "en");
+  assert.deepEqual(ids, ["1", "3", "5"].map(id => id.padStart(64, "0")));
+  assert.equal(index.queryPage({ favoriteMediaIds: favorites }, "en", 0, 10).total, 3);
+  // All favourites hidden: an empty list, so the "no favourites" state shows.
+  assert.deepEqual(index.queryIds({ favoriteMediaIds: [favorites[0], favorites[2]] }, "en"), []);
+  // Unlocked, the canonical index still lists all of them.
+  assert.equal(canonical.queryIds({ favoriteMediaIds: favorites }, "en").length, 6);
+});
+
+test("the library header counts only the folders it shows", () => {
+  const library = fs.readFileSync(path.join(root, "src/components/MusicLibrary.tsx"), "utf8");
+  assert.match(library, /const visibleLibraryFolders = useMemo\(\(\) => state\.libraryFolders\.filter\(folder => !hiddenByFolders\(folder, hiddenFolders\)\), \[state\.libraryFolders, hiddenFolders\]\);/);
+  // Gated on the real roots: every root hidden reads "0 · 文件夹", not the empty-library hint.
+  assert.equal((library.match(/\{state\.libraryFolders\.length \? `\$\{visibleLibraryFolders\.length\} · \$\{t\("library\.folder"\)\}` : t\("library\.scanHint"\)\}/g) || []).length, 2, "both header variants");
+  // Hidden favourites drop out of the selection when the library locks.
+  assert.match(library, /favoriteKeySet\.has\(favoriteTrackKey\(track\)\) && !hiddenByFolders\(track\.sourcePath, hiddenFolders\)\)[\s\S]{0,60}\[state\.libraryTracks, favoriteKeySet, hiddenFolders\]/);
+  assert.doesNotMatch(library, /\$\{state\.libraryFolders\.length\} ·/);
+  assert.match(library, /\{visibleLibraryFolders\.map\(folder => <div className="library-managed-folder"/);
+});
+
 test("cached normalization keeps search semantics", () => {
   const tracks = [track(1), track(2)];
   const index = new LibraryIndex(tracks, null, 1);

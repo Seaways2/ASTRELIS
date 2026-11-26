@@ -205,9 +205,11 @@ export const MusicLibrary = memo(function MusicLibrary() {
   }, []);
   const facets: Facet[] = ["文件夹", "收藏", "艺术家", "专辑"];
   const favoriteKeySet = useMemo(() => new Set(state.favoriteTrackKeys), [state.favoriteTrackKeys]);
+  // Hidden favourites leave the selection when the library locks, so the selected
+  // count never exceeds the favourites shown.
   const availableFavoriteTrackIds = useMemo(() => new Set(state.libraryTracks
-    .filter(track => favoriteKeySet.has(favoriteTrackKey(track)))
-    .map(track => track.id)), [state.libraryTracks, favoriteKeySet]);
+    .filter(track => favoriteKeySet.has(favoriteTrackKey(track)) && !hiddenByFolders(track.sourcePath, hiddenFolders))
+    .map(track => track.id)), [state.libraryTracks, favoriteKeySet, hiddenFolders]);
   const viewModel = useLibraryViewModel({
     tracks: filteredTracks,
     hiddenFolders,
@@ -237,6 +239,8 @@ export const MusicLibrary = memo(function MusicLibrary() {
   }
   const { stats: libraryStats } = viewModel;
   const visibleMediaCount = useMemo(() => state.libraryTracks.reduce((count, track) => count + Number(!hiddenByFolders(track.sourcePath, hiddenFolders)), 0), [state.libraryTracks, hiddenFolders]);
+  // Hidden library roots are left out of the header count as well as the folder manager.
+  const visibleLibraryFolders = useMemo(() => state.libraryFolders.filter(folder => !hiddenByFolders(folder, hiddenFolders)), [state.libraryFolders, hiddenFolders]);
   const progress = useMemo(() => state.libraryScanProgress && hiddenFolders.length ? {...state.libraryScanProgress,current:t("media.indexUpdating")} : state.libraryScanProgress, [state.libraryScanProgress,hiddenFolders,t]);
   const progressPercent = progress?.total ? Math.round(progress.completed / progress.total * 100) : 0;
   // "Up" stops at the library root: above it is outside the library.
@@ -684,7 +688,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
   const favoritesBreadcrumb = facet === "收藏" && <div className="folder-breadcrumb favorites-breadcrumb"><div className="favorites-title"><Heart fill="currentColor" /> {t("library.favorites")} · {viewModel.trackTotal}</div><div className="favorite-bulk-actions"><label><input type="checkbox" checked={allFilteredFavoritesSelected} disabled={!viewModel.trackTotal} onChange={toggleAllFilteredFavorites} /><span>{t("library.selectAll")}</span></label><em>{t("library.selectedCount").replace("{count}", String(selectedFavoriteCount))}</em><button className="favorite-add-selected" type="button" disabled={!selectedFavoriteCount} onClick={enqueueSelectedFavorites}><ListPlus /> {t("library.addSelected")}</button></div></div>;
   const stats = <div className="library-page-stats">
       <b>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</b>
-      <span>{state.libraryFolders.length ? `${state.libraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</span>
+      <span>{state.libraryFolders.length ? `${visibleLibraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</span>
     </div>;
   return <div ref={libraryRootRef} className={`music-library ${libraryView === "flow" && totalListItems > 0 ? "library-flow-layout" : ""} ${toolsOpen ? "library-tools-open" : ""} ${previewFullscreen ? "library-mosaic-fullscreen" : ""} ${flowTitleRow ? "library-flow-title-row" : ""}`} onContextMenu={e => protection.context(e)}>
     {protection.overlays}
@@ -693,7 +697,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
     <div className="library-header library-header-simple panel">
     {statsSlot ? createPortal(<>{flowTitleRow && toolsToggle}{flowTitleRow && breadcrumbs}{favoritesInTitleRow && favoritesBreadcrumb}{stats}</>, statsSlot) : <section className="library-command workspace-section panel">
       <div className="library-pulse"><AudioWaveform /></div>
-      <div><h3>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</h3><p>{state.libraryFolders.length ? `${state.libraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</p></div>
+      <div><h3>{state.libraryTracks.length ? `${visibleMediaCount} ${t("library.stats.tracks")} · ${(libraryStats.totalBytes / 1024 ** 3).toFixed(1)} GB` : t("library.create")}</h3><p>{state.libraryFolders.length ? `${visibleLibraryFolders.length} · ${t("library.folder")}` : t("library.scanHint")}</p></div>
     </section>}
 
     {state.libraryScanning && progress && <section className="library-scan-progress">
@@ -705,7 +709,7 @@ export const MusicLibrary = memo(function MusicLibrary() {
 
     {folderManagerOpen && <LibraryFolderManager onClose={() => { setFolderManagerOpen(false); setRemovingFolder(null); }}><section className="library-folder-manager" id="library-folder-manager" aria-label={t("library.manageFolders")}>
       <p>{t("library.removeHint")}</p>
-      {state.libraryFolders.filter(folder => !hiddenByFolders(folder, hiddenFolders)).map(folder => <div className="library-managed-folder" key={folder}>
+      {visibleLibraryFolders.map(folder => <div className="library-managed-folder" key={folder}>
         <span title={folder}>{folder}</span>
         {removingFolder === folder ? <div>
           <span>{t("library.removeConfirm")}</span>

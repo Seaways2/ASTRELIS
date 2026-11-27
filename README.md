@@ -1,4 +1,4 @@
-# ASTRELIS 2.18.13
+# ASTRELIS 2.18.14
 
 [中文](#中文) · [日本語](#日本語) · [English](#english) · **[下载 / ダウンロード / Download](https://github.com/Seaways2/ASTRELIS/releases/latest)**
 
@@ -42,6 +42,12 @@ ASTRELIS is a local music and video player for Windows, with real-time audio vis
 - Download the Windows x64 installer from [Releases](https://github.com/Seaways2/ASTRELIS/releases/latest). Open source under the [GNU AGPL v3](LICENSE).
 
 ---
+
+## 2.18.14 媒体库工具栏按钮对齐
+
+（只更新源码，未打安装包。）
+
+媒体中心那一排按钮现在一样高、文字一样大：排序按钮以前只有 30 像素高（其他下拉按钮是 34），全屏按钮 32 像素，搜索框里的文字也比按钮上的大一号（13 像素对 12 像素）。现在都是 34 像素高、12 像素字。
 
 ## 2.18.13 3D 封面流里也能排序
 

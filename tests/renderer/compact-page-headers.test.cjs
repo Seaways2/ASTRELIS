@@ -107,6 +107,17 @@ test("every view, cover flow included, shows the sort menu", () => {
   assert.match(library, /if \(!pending \|\| pending\.browseKey === browseKey\) return;[\s\S]{0,400}entriesAt\(0, totalListItems\)\.findIndex\(entry => entry\.key === pending\.entryKey\)/);
 });
 
+// Measured in the renderer: the sort trigger was 30px, the fullscreen toggle 32px
+// and the search text 13.2px beside 34px, 12px menu triggers.
+test("the library control row shares one height and one text size", () => {
+  const modules = read("src/styles/workspace-modules.css");
+  assert.doesNotMatch(modules, /\.library-sort-controls button \{ height: 30px/);
+  assert.match(modules, /\.app-shell \.library-header-simple \.library-menu-trigger \{[^}]*height: 34px;/);
+  assert.match(modules, /\.library-header-simple \.library-mosaic-preview-toggle \{ width: 34px; height: 34px; min-height: 34px; padding: 0; \}/);
+  assert.match(modules, /\.app-shell \.library-header-simple \.library-search :is\(input, kbd\) \{ font-size: 12px; \}/);
+  assert.match(modules, /\.app-shell \.library-header-simple :is\(select,\.library-menu-trigger\) \{[^}]*font-size: 12px;/);
+});
+
 test("a menu with no room below its trigger opens above it", () => {
   const menu = read("src/components/LibraryMenu.tsx");
   const line = menu.match(/const below = r\.bottom \+ 6, above = r\.top - 6 - box\.height;\s*el\.style\.top = `\$\{(.+)\}px`;/);

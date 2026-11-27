@@ -294,8 +294,9 @@
 .app-shell .library-header .library-media-filter button { padding: 5px 9px; font-size: 12px; border-radius: 4px; }
 .app-shell .library-header .library-sort-controls { margin-left: auto; }
 .app-shell .library-header .library-view-switch button { padding: 5px 8px; min-height: 30px; }
-.app-shell .library-header .library-sort-controls select,
-.app-shell .library-header .library-sort-controls button { height: 30px; min-height: 30px; }
+/* The sort control is a library menu now: its trigger takes the 34px of the other
+   menu triggers (a 30px rule on its buttons made it the odd one out). */
+.app-shell .library-header .library-sort-controls select { height: 30px; min-height: 30px; }
 @media (max-width: 1100px) {
   .app-shell .library-header .library-controls { grid-template-columns: minmax(0,1fr); }
   .app-shell .library-header .library-command { grid-template-columns: 24px minmax(0,1fr) auto auto 32px; }
@@ -353,7 +354,9 @@
 .app-shell .music-library:not(:fullscreen) .library-header-simple .facet-tabs button { padding: 0 12px; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple .library-controls { order: 2; flex: 0 1 auto; grid-template-columns: clamp(150px, 15vw, 240px) auto auto; margin: 0; }
 /* The fullscreen toggle keeps its label as a tooltip here; its own bar shows the text. */
-.app-shell .music-library:not(:fullscreen) .library-header-simple .library-mosaic-preview-toggle { width: 34px; padding: 0; }
+.app-shell .music-library:not(:fullscreen) .library-header-simple .library-mosaic-preview-toggle { width: 34px; height: 34px; min-height: 34px; padding: 0; }
+/* One text size across the control row: the search field matches the 12px menus. */
+.app-shell .library-header-simple .library-search :is(input, kbd) { font-size: 12px; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple .library-mosaic-preview-toggle > span { display: none; }
 .app-shell .music-library:not(:fullscreen) .library-header-simple > .library-scan-progress { order: 3; flex: 1 1 100%; }
 @media (max-width: 760px) {
